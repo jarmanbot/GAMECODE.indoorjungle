@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Vite and build output
+dist/
+coverage/
+
+# TypeScript incremental build metadata
+*.tsbuildinfo
+
+# Local environment and secret material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local tooling and operating-system files
+.DS_Store
+*.log

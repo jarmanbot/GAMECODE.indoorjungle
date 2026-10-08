@@ -1,0 +1,132 @@
+:root {
+  color: #f6f7f3;
+  background: #0b0d0e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-width: 320px; min-height: 100%; background: #0b0d0e; }
+body { overflow: hidden; }
+button { font: inherit; color: inherit; }
+
+#app-shell {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 520px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: #171b1d;
+}
+
+.hud {
+  position: relative;
+  z-index: 20;
+  background: #0f1315;
+  border-color: #8a9291;
+  color: #f6f7f3;
+  display: flex;
+  align-items: center;
+}
+
+.hud-top {
+  min-height: 72px;
+  padding: max(12px, env(safe-area-inset-top)) clamp(14px, 2.4vw, 42px) 12px;
+  gap: clamp(12px, 2vw, 34px);
+  border-bottom: 3px solid #717978;
+}
+
+.hud-bottom {
+  min-height: 82px;
+  padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  gap: clamp(7px, 1.6vw, 26px);
+  border-top: 3px solid #717978;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hud-bottom::-webkit-scrollbar { display: none; }
+
+.hud-block { display: inline-flex; align-items: center; gap: 10px; font-size: clamp(16px, 1.6vw, 23px); font-weight: 800; min-width: 70px; }
+.hud-balance { white-space: nowrap; }
+.coin-mark { width: 21px; height: 21px; display: inline-block; border: 3px solid #f6f7f3; border-radius: 50%; box-shadow: inset 0 0 0 3px #5c6465; }
+.hud-objective { flex: 1; min-width: 0; text-align: center; display: grid; gap: 4px; }
+.eyebrow { color: #abb3b1; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.hud-objective strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(14px, 1.5vw, 20px); }
+
+.icon-button, .close-button { width: 48px; height: 48px; flex: 0 0 48px; border: 2px solid #f6f7f3; background: #1f2527; cursor: pointer; display: grid; place-items: center; font-size: 22px; }
+.icon-button:hover, .close-button:hover, .nav-button:hover, .zoom-controls button:hover, .restart-button:hover { background: #f6f7f3; color: #111416; }
+
+#game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; }
+#game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+
+.nav-button { min-width: 60px; height: 58px; padding: 4px 8px; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.nav-icon { font-size: 24px; line-height: 22px; }
+.zoom-controls { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 2px solid #7e8785; padding: 4px; }
+.zoom-controls button { width: 44px; height: 44px; border: 2px solid #f6f7f3; background: #1d2325; cursor: pointer; display: grid; place-items: center; align-content: center; gap: 0; }
+.zoom-glyph { font-size: 23px; line-height: 18px; }
+.zoom-caption { font-size: 7px; font-weight: 900; line-height: 9px; letter-spacing: .08em; }
+#zoom-label { min-width: 70px; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+
+.interact-button { position: absolute; z-index: 30; left: 50%; bottom: 96px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; min-height: 50px; padding: 10px 18px; border: 3px solid #111416; background: #f6f7f3; color: #111416; box-shadow: 5px 5px 0 #111416; font-size: 13px; font-weight: 900; cursor: pointer; }
+.interact-button:hover { background: #cfd5d3; }
+.interact-dot { width: 10px; height: 10px; display: inline-block; background: #111416; }
+
+.toast { position: absolute; z-index: 40; left: 50%; top: 86px; transform: translate(-50%, -12px); opacity: 0; pointer-events: none; max-width: min(520px, calc(100vw - 32px)); padding: 12px 18px; background: #f6f7f3; color: #111416; border: 3px solid #111416; box-shadow: 5px 5px 0 #111416; text-align: center; font-size: 13px; font-weight: 900; transition: opacity .16s ease, transform .16s ease; }
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+.panel-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(4, 6, 7, .76); opacity: 0; transition: opacity .16s ease; }
+.panel-backdrop.is-open { opacity: 1; }
+.panel { width: min(560px, 100%); max-height: min(680px, 90dvh); overflow: auto; background: #171c1e; border: 3px solid #f6f7f3; box-shadow: 9px 9px 0 #060708; transform: translateY(10px); transition: transform .16s ease; }
+.is-open .panel { transform: translateY(0); }
+.panel-heading { padding: 20px 20px 16px; display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; border-bottom: 2px solid #656e6d; }
+.panel-heading h2 { margin: 6px 0 0; font-size: clamp(20px, 4vw, 30px); }
+.close-button { font-size: 28px; }
+.panel-body { padding: 22px 20px 24px; }
+.panel-note, .empty-state small, .inventory-item small, .task-card small, .settings-list small { display: block; margin: 10px 0 0; color: #b9c0be; font-size: 13px; line-height: 1.5; }
+.empty-state, .inventory-item, .task-card, .settings-list > div { min-height: 90px; padding: 16px; background: #202729; border: 2px solid #697271; display: flex; align-items: center; gap: 16px; }
+.empty-state { display: grid; justify-items: center; text-align: center; }
+.empty-mark { font-size: 36px; }
+.home-outline { font-size: 44px; }
+.inventory-art { font-size: 35px; border: 2px solid #f6f7f3; width: 54px; height: 54px; display: grid; place-items: center; }
+.task-card.is-complete { border-color: #f6f7f3; }
+.task-check { width: 32px; height: 32px; border: 2px solid #f6f7f3; display: grid; place-items: center; font-size: 19px; }
+.settings-list { display: grid; gap: 12px; }
+.settings-list > div { display: block; }
+.restart-button { min-height: 50px; border: 2px solid #f6f7f3; background: #1e2426; cursor: pointer; font-size: 12px; font-weight: 900; }
+
+.mini-map { position: relative; height: 220px; overflow: hidden; background: #303738; border: 3px solid #f6f7f3; }
+.map-road { position: absolute; background: #111416; }
+.road-one { left: 0; right: 0; top: 58%; height: 34px; }
+.road-two { top: 0; bottom: 0; left: 72%; width: 26px; }
+.map-lot { position: absolute; background: #626b6b; border: 2px solid #c1c8c6; }
+.lot-one { left: 3%; top: 14%; width: 38%; height: 31%; }
+.lot-two { left: 4%; top: 70%; width: 56%; height: 23%; }
+.map-block { position: absolute; top: 33%; height: 21%; padding: 5px 4px; background: #d8dddc; color: #111416; border: 2px solid #111416; font-size: 8px; font-weight: 900; display: grid; place-items: center; text-align: center; }
+.block-one { left: 43%; width: 12%; }.block-two { left: 57%; width: 12%; }.block-three { left: 71%; width: 12%; }.block-four { left: 85%; width: 12%; }
+.map-player { position: absolute; top: 62%; left: 16%; width: 15px; height: 24px; transform: translate(-50%, -50%); background: #f6f7f3; border: 3px solid #111416; transition: left .16s linear; }
+
+@media (max-width: 680px) {
+  #app-shell { min-height: 480px; }
+  .hud-top { min-height: 64px; padding-left: 12px; padding-right: 12px; gap: 10px; }
+  .hud-bottom { min-height: 82px; gap: 0; padding-left: 8px; padding-right: 8px; }
+  .nav-button { min-width: 44px; height: 58px; padding: 2px 3px; font-size: 9px; }
+  .nav-icon { font-size: 19px; }
+  .zoom-controls { flex: 0 0 auto; margin-left: 4px; gap: 2px; padding: 2px; }
+  .zoom-controls button { width: 44px; height: 44px; }
+  #zoom-label { display: block; min-width: 42px; font-size: 8px; }
+  .interact-button { bottom: 90px; }
+  .toast { top: 76px; }
+}
+
+@media (max-width: 390px) {
+  .hud-objective .eyebrow { display: none; }
+  .hud-objective strong { font-size: 12px; }
+  .hud-block { min-width: 47px; font-size: 15px; }
+  .coin-mark { width: 17px; height: 17px; }
+  .nav-button { min-width: 44px; font-size: 8px; }
+  .nav-icon { font-size: 17px; }
+  #zoom-label { min-width: 38px; }
+}
