@@ -41,6 +41,7 @@ export class GameScene extends Phaser.Scene {
   private inventoryHasPot = false;
   private saleComplete = false;
   private modalOpen = false;
+  private mapMovementAllowed = false;
   private destinationMarker!: Phaser.GameObjects.Graphics;
   private toastTimer?: Phaser.Time.TimerEvent;
   private lastWorldInputAt = 0;
@@ -89,8 +90,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.updateCars(delta);
 
-    if (this.modalOpen) {
-      this.target = null;
+    if (this.modalOpen && !this.mapMovementAllowed) {
       this.updateInteraction();
       return;
     }
@@ -101,8 +101,8 @@ export class GameScene extends Phaser.Scene {
     this.updateCloseVerticalFollow();
 
     const direction = new Phaser.Math.Vector2(
-      Number(this.cursorKeys.left.isDown || this.keys.A.isDown) * -1 + Number(this.cursorKeys.right.isDown || this.keys.D.isDown),
-      Number(this.cursorKeys.up.isDown || this.keys.W.isDown) * -1 + Number(this.cursorKeys.down.isDown || this.keys.S.isDown),
+      this.mapMovementAllowed ? 0 : Number(this.cursorKeys.left.isDown || this.keys.A.isDown) * -1 + Number(this.cursorKeys.right.isDown || this.keys.D.isDown),
+      this.mapMovementAllowed ? 0 : Number(this.cursorKeys.up.isDown || this.keys.W.isDown) * -1 + Number(this.cursorKeys.down.isDown || this.keys.S.isDown),
     );
     const hasKeyboardInput = direction.lengthSq() > 0;
     if (hasKeyboardInput || this.target) this.updatePortraitFollow();
@@ -135,15 +135,16 @@ export class GameScene extends Phaser.Scene {
       const nextY = Phaser.Math.Clamp(this.player.y + direction.y * speed * delta / 1000, FRONT_PAVEMENT_MIN_Y, OPPOSITE_PAVEMENT_MAX_Y);
       this.moveOnWalkableGround(nextX, nextY);
       this.drawPlayer();
-      this.hud.setMapPosition(this.player.x / WORLD_WIDTH);
+      this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
     }
 
     this.updateInteraction();
   }
 
-  setModalOpen(isOpen: boolean): void {
+  setModalOpen(isOpen: boolean, preserveDestination = false): void {
     this.modalOpen = isOpen;
-    if (isOpen) this.cancelTapWalk();
+    this.mapMovementAllowed = isOpen && preserveDestination;
+    if (isOpen && !preserveDestination) this.cancelTapWalk();
   }
 
   zoomBy(direction: 1 | -1): void {
@@ -189,7 +190,7 @@ export class GameScene extends Phaser.Scene {
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y).setVisible(true);
     this.drawPlayer();
     this.hud.setGameState({ coins: 0, inventoryHasPot: false, task: 'find' });
-    this.hud.setMapPosition(START_POSITION.x / WORLD_WIDTH);
+    this.hud.setMapPosition(START_POSITION.x / WORLD_WIDTH, START_POSITION.y);
     this.showToast('Prototype restarted.');
     this.updateInteraction();
   }
@@ -259,7 +260,7 @@ export class GameScene extends Phaser.Scene {
   };
 
   private readonly handleCanvasPointerUp = (event: PointerEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked || event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
     this.game.canvas.releasePointerCapture?.(event.pointerId);
   };
 
@@ -319,7 +320,8 @@ export class GameScene extends Phaser.Scene {
     this.zoomMode = mode;
     const frame = this.getCameraFrame(mode);
     const portrait = this.scale.height > this.scale.width;
-    const followOffsetX = portrait && this.portraitFollowCentered ? 0 : frame.offsetX;
+    this.portraitFollowCentered = portrait;
+    const followOffsetX = portrait ? 0 : frame.offsetX;
     this.closeFollowCentered = mode === 'close' && this.player.y >= OPPOSITE_PAVEMENT_MIN_Y;
     const followOffsetY = this.closeFollowCentered ? 0 : frame.offsetY;
     const followLerp = mode === 'close' ? 0.14 : 0.08;

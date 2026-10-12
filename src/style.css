@@ -16,7 +16,7 @@ button { font: inherit; color: inherit; }
 #app-shell {
   width: 100%;
   height: 100dvh;
-  min-height: 520px;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
@@ -45,10 +45,8 @@ button { font: inherit; color: inherit; }
   padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   gap: clamp(7px, 1.6vw, 26px);
   border-top: 3px solid #717978;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
-.hud-bottom::-webkit-scrollbar { display: none; }
 
 .hud-block { display: inline-flex; align-items: center; gap: 10px; font-size: clamp(16px, 1.6vw, 23px); font-weight: 800; min-width: 70px; }
 .hud-balance { white-space: nowrap; }
@@ -85,6 +83,8 @@ button { font: inherit; color: inherit; }
 .is-open .panel { transform: translateY(0); }
 .panel-heading { padding: 20px 20px 16px; display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; border-bottom: 2px solid #656e6d; }
 .panel-heading h2 { margin: 6px 0 0; font-size: clamp(20px, 4vw, 30px); }
+.panel-heading-actions { display: flex; align-items: center; gap: 8px; }
+.map-centre-button { min-height: 42px; padding: 6px 10px; border: 2px solid #f6f7f3; background: #1e2426; color: #f6f7f3; cursor: pointer; font-size: 10px; font-weight: 900; letter-spacing: .04em; }
 .close-button { font-size: 28px; }
 .panel-body { padding: 22px 20px 24px; }
 .panel-note, .empty-state small, .inventory-item small, .task-card small, .settings-list small { display: block; margin: 10px 0 0; color: #b9c0be; font-size: 13px; line-height: 1.5; }
@@ -99,31 +99,42 @@ button { font: inherit; color: inherit; }
 .settings-list > div { display: block; }
 .restart-button { min-height: 50px; border: 2px solid #f6f7f3; background: #1e2426; cursor: pointer; font-size: 12px; font-weight: 900; }
 
-.city-map-frame { position: relative; height: min(52dvh, 360px); min-height: 240px; overflow: auto; overscroll-behavior: contain; background: #303738; border: 3px solid #f6f7f3; cursor: grab; touch-action: none; scrollbar-width: thin; scrollbar-color: #f6f7f3 #303738; }
+.panel-backdrop.is-city-map { z-index: 80; place-items: center; padding: 24px; background: rgba(4, 6, 7, .76); }
+.panel-backdrop.is-city-map .panel { width: min(700px, 100%); max-width: 100%; max-height: min(86dvh, 780px); height: auto; display: block; border: 3px solid #f6f7f3; box-shadow: 9px 9px 0 #060708; background: #171c1e; }
+.panel-backdrop.is-city-map .panel-heading { min-height: 70px; padding: 16px 20px; align-items: center; }
+.panel-backdrop.is-city-map .panel-heading h2 { font-size: clamp(18px, 3vw, 28px); }
+.panel-backdrop.is-city-map .panel-body { padding: 0 20px 24px; display: block; overflow: auto; }
+.city-map-stage { position: relative; width: 100%; margin: clamp(24px, 5vh, 48px) auto 0; display: flex; justify-content: center; }
+.panel-backdrop.is-city-map .city-map-frame { flex: 0 0 auto; width: min(100%, calc(100dvh - 240px)); height: auto; aspect-ratio: 1; }
+.city-map-frame { position: relative; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; background: #303738; border: 3px solid #f6f7f3; cursor: grab; touch-action: none; scrollbar-width: thin; scrollbar-color: #f6f7f3 #303738; }
 .city-map-frame.is-panning { cursor: grabbing; }
-.city-map-surface { position: relative; width: 1080px; height: 560px; overflow: hidden; background: #4d5657; user-select: none; }
-.city-map-surface::before { content: ''; position: absolute; inset: 0; opacity: .34; background-image: linear-gradient(45deg, transparent 48%, #d4d9d7 49%, #d4d9d7 51%, transparent 52%), linear-gradient(-45deg, transparent 48%, #d4d9d7 49%, #d4d9d7 51%, transparent 52%); background-size: 34px 34px; }
-.city-map-road { position: absolute; z-index: 1; background: #111416; border: 2px solid #c5ccca; }
-.city-road-main { left: 0; right: 0; top: 51%; height: 42px; }
-.city-road-cross { top: 0; bottom: 0; left: 43%; width: 32px; }
-.city-road-west { left: 4%; width: 29%; top: 23%; height: 22px; transform: rotate(-8deg); }
-.city-road-east { left: 63%; width: 32%; top: 28%; height: 22px; transform: rotate(7deg); }
-.city-map-district { position: absolute; z-index: 2; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 10px; text-align: center; border: 3px solid #f6f7f3; color: #f6f7f3; background: #252b2d; }
+.city-map-layer { position: relative; flex: 0 0 auto; }
+.city-map-world { position: absolute; left: 0; top: 0; transform-origin: top left; overflow: hidden; background: #4d5657; user-select: none; }
+.city-map-world::before { content: ''; position: absolute; inset: 0; opacity: .25; background-image: linear-gradient(#cbd1cf 1px, transparent 1px), linear-gradient(90deg, #cbd1cf 1px, transparent 1px); background-size: 42px 42px; }
+.city-map-world::after { content: ''; position: absolute; inset: 12px; border: 2px solid #7c8584; opacity: .75; pointer-events: none; }
+.city-map-road { position: absolute; z-index: 1; background: #111416; border: 2px solid #c5ccca; transform-origin: center; }
+.city-map-detail { position: absolute; z-index: 2; display: grid; place-items: center; border: 2px solid #899290; color: #d7dcda; background: #5e6868; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.city-map-district { position: absolute; z-index: 3; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 10px; text-align: center; border: 3px solid #f6f7f3; color: #f6f7f3; background: #252b2d; }
 .city-map-district strong { font-size: 14px; line-height: 1.15; letter-spacing: .04em; }
 .city-map-district small { color: #c4ccca; font-size: 10px; font-weight: 900; letter-spacing: .1em; }
-.starting-district { left: 18%; top: 30%; width: 43%; height: 23%; background: #d8dddc; color: #111416; border-color: #111416; }
+.starting-district { background: #d8dddc; color: #111416; border-color: #111416; }
 .starting-district small { color: #111416; }
 .locked-district { background: #596263; border-style: dashed; }
-.willow-district { left: 3%; top: 7%; width: 22%; height: 18%; }
-.east-district { left: 66%; top: 9%; width: 25%; height: 19%; }
-.north-district { left: 78%; top: 34%; width: 20%; height: 17%; }
-.south-district { left: 8%; top: 72%; width: 86%; height: 20%; }
-.city-map-player { position: absolute; z-index: 4; top: 61%; left: 15%; width: 18px; height: 30px; transform: translate(-50%, -50%); background: #f6f7f3; border: 3px solid #111416; box-shadow: 4px 4px 0 #111416; transition: left .16s linear; }
+.city-map-player { position: absolute; z-index: 5; width: 18px; height: 30px; transform: translate(-50%, -50%); background: #f6f7f3; border: 3px solid #111416; box-shadow: 4px 4px 0 #111416; transition: left .16s linear, top .16s linear; }
 .city-map-player::after { content: 'ALEX'; position: absolute; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%); color: #f6f7f3; background: #111416; padding: 3px 5px; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
-.city-map-north { position: absolute; z-index: 5; right: 18px; top: 15px; width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #111416; background: #f6f7f3; color: #111416; font-weight: 900; }
+.city-map-north { position: absolute; z-index: 6; right: 18px; top: 15px; width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #111416; background: #f6f7f3; color: #111416; font-weight: 900; }
+.city-map-controls { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; gap: 5px; pointer-events: none; }
+.city-map-controls button { pointer-events: auto; width: 42px; height: 42px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-size: 22px; font-weight: 900; }
+.city-map-controls button:disabled { opacity: .38; cursor: not-allowed; }
+.city-map-hint { position: absolute; z-index: 8; left: 12px; bottom: 12px; display: inline-block; width: max-content; max-width: calc(100% - 24px); padding: 7px 9px; color: #111416; background: #f6f7f3; border: 2px solid #111416; font-size: 10px; font-weight: 900; pointer-events: none; }
+
+.rotate-overlay { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; background: #0b0d0e; }
+.rotate-card { width: min(360px, 100%); padding: 28px 24px; display: grid; gap: 10px; text-align: center; color: #f6f7f3; background: #171c1e; border: 3px solid #f6f7f3; box-shadow: 8px 8px 0 #060708; }
+.rotate-card strong { font-size: clamp(20px, 6vw, 30px); line-height: 1.15; }
+.rotate-card small { color: #b9c0be; font-size: 13px; line-height: 1.45; }
 
 @media (max-width: 680px) {
-  #app-shell { min-height: 480px; }
+  #app-shell { min-height: 0; }
   .hud-top { min-height: 64px; padding-left: 12px; padding-right: 12px; gap: 10px; }
   .hud-bottom { min-height: 82px; gap: 0; padding-left: 8px; padding-right: 8px; }
   .nav-button { min-width: 44px; height: 58px; padding: 2px 3px; font-size: 9px; }
@@ -133,7 +144,7 @@ button { font: inherit; color: inherit; }
   #zoom-label { display: block; min-width: 42px; font-size: 8px; }
   .interact-button { bottom: 90px; }
   .toast { top: 76px; }
-  .city-map-frame { height: min(48dvh, 300px); min-height: 220px; }
+  .panel-backdrop:not(.is-city-map) .city-map-frame { height: min(48dvh, 300px); min-height: 220px; }
   .city-map-district strong { font-size: 11px; }
   .city-map-district small { font-size: 8px; }
 }
@@ -143,9 +154,12 @@ button { font: inherit; color: inherit; }
   .hud-objective strong { font-size: 12px; }
   .hud-block { min-width: 47px; font-size: 15px; }
   .coin-mark { width: 17px; height: 17px; }
-  .nav-button { min-width: 44px; font-size: 8px; }
+  .hud-bottom { gap: 0; padding-left: 5px; padding-right: 5px; }
+  .nav-button { min-width: 36px; padding-left: 1px; padding-right: 1px; font-size: 8px; }
   .nav-icon { font-size: 17px; }
-  #zoom-label { min-width: 38px; }
+  .zoom-controls { gap: 1px; padding: 1px; }
+  .zoom-controls button { width: 34px; height: 38px; }
+  #zoom-label { min-width: 32px; font-size: 7px; }
 }
 
 @media (orientation: landscape) and (max-height: 600px) {

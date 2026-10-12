@@ -22,6 +22,14 @@
 
       <section id="game-stage" aria-label="Indoor Jungle street"></section>
 
+      <div id="rotate-overlay" class="rotate-overlay" hidden role="alert" aria-live="assertive">
+        <div class="rotate-card">
+          <span class="eyebrow">PHONE ORIENTATION</span>
+          <strong>Rotate your phone to play</strong>
+          <small>Portrait gameplay is supported in this prototype.</small>
+        </div>
+      </div>
+
       <button id="interact-button" class="interact-button" type="button" hidden>
         <span class="interact-dot" aria-hidden="true"></span>
         <span id="interact-label">INTERACT</span>
@@ -49,7 +57,10 @@
               <span class="eyebrow">INDOOR JUNGLE</span>
               <h2 id="panel-title">Bag</h2>
             </div>
-            <button id="close-panel" class="close-button" type="button" aria-label="Close panel">×</button>
+            <div class="panel-heading-actions">
+              <button id="map-centre" class="map-centre-button" type="button" hidden>⌖ CENTRE ON ALEX</button>
+              <button id="close-panel" class="close-button" type="button" aria-label="Close panel">×</button>
+            </div>
           </div>
           <div id="panel-body" class="panel-body"></div>
         </section>

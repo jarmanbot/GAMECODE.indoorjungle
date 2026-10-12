@@ -168,8 +168,8 @@ export const CITY_MAP_SIZE = CITY_DISTRICTS.reduce(
   }),
   { width: 0, height: 0 },
 );
-CITY_MAP_SIZE.width += 80;
-CITY_MAP_SIZE.height += 65;
+CITY_MAP_SIZE.width += 140;
+CITY_MAP_SIZE.height += 105;
 
 export const BUY_SELL_ENTRANCE = { x: 1055, y: 885 };
 export const POT_POSITION = { x: 785, y: 890 };
