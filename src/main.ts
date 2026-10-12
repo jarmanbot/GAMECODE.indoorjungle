@@ -11,6 +11,10 @@ hud.bindZoomControls(
   () => scene.cycleZoom(-1),
   () => scene.cycleZoom(1),
 );
+hud.bindOverviewControls(
+  () => scene.setZoom('normal'),
+  (key) => scene.selectOverviewZone(key),
+);
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,

@@ -1,5 +1,5 @@
 import type { GameScene } from '../game/GameScene';
-import type { ZoomMode } from '../game/world';
+import type { FutureZone, ZoomMode } from '../game/world';
 
 type TaskState = 'find' | 'sell' | 'complete';
 
@@ -7,12 +7,18 @@ export class HudController {
   private scene: GameScene | null = null;
   private zoomOutHandler: (() => void) | null = null;
   private zoomInHandler: (() => void) | null = null;
+  private overviewReturnHandler: (() => void) | null = null;
+  private overviewSelectHandler: ((key: string) => void) | null = null;
   private readonly coinCount = document.querySelector<HTMLElement>('#coin-count')!;
   private readonly objectiveText = document.querySelector<HTMLElement>('#objective-text')!;
   private readonly zoomLabel = document.querySelector<HTMLElement>('#zoom-label')!;
   private readonly interactButton = document.querySelector<HTMLButtonElement>('#interact-button')!;
   private readonly interactLabel = document.querySelector<HTMLElement>('#interact-label')!;
   private readonly toast = document.querySelector<HTMLElement>('#toast')!;
+  private readonly overviewOverlay = document.querySelector<HTMLElement>('#overview-overlay')!;
+  private readonly overviewSelection = document.querySelector<HTMLElement>('#overview-selection')!;
+  private readonly overviewSelectionName = document.querySelector<HTMLElement>('#overview-selection-name')!;
+  private readonly overviewSelectionCondition = document.querySelector<HTMLElement>('#overview-selection-condition')!;
   private readonly panelBackdrop = document.querySelector<HTMLElement>('#panel-backdrop')!;
   private readonly panelTitle = document.querySelector<HTMLElement>('#panel-title')!;
   private readonly panelBody = document.querySelector<HTMLElement>('#panel-body')!;
@@ -30,6 +36,10 @@ export class HudController {
     });
     document.querySelector<HTMLButtonElement>('#zoom-out')!.addEventListener('click', () => this.zoomOutHandler?.());
     document.querySelector<HTMLButtonElement>('#zoom-in')!.addEventListener('click', () => this.zoomInHandler?.());
+    document.querySelector<HTMLButtonElement>('#overview-return')!.addEventListener('click', () => this.overviewReturnHandler?.());
+    document.querySelectorAll<HTMLButtonElement>('[data-overview-zone]').forEach((button) => {
+      button.addEventListener('click', () => this.overviewSelectHandler?.(button.dataset.overviewZone ?? ''));
+    });
     this.interactButton.addEventListener('click', () => this.scene?.tryInteract());
   }
 
@@ -40,6 +50,11 @@ export class HudController {
   bindZoomControls(zoomOut: () => void, zoomIn: () => void): void {
     this.zoomOutHandler = zoomOut;
     this.zoomInHandler = zoomIn;
+  }
+
+  bindOverviewControls(onReturn: () => void, onSelect: (key: string) => void): void {
+    this.overviewReturnHandler = onReturn;
+    this.overviewSelectHandler = onSelect;
   }
 
   setGameState(state: { coins: number; inventoryHasPot: boolean; task: TaskState }): void {
@@ -63,6 +78,21 @@ export class HudController {
     this.zoomLabel.textContent = mode.toUpperCase();
   }
 
+  setOverviewMode(active: boolean): void {
+    this.overviewOverlay.hidden = !active;
+    if (!active) this.setOverviewSelection(null);
+  }
+
+  setOverviewSelection(zone: Pick<FutureZone, 'label' | 'condition'> | null): void {
+    this.overviewSelection.hidden = zone === null;
+    document.querySelectorAll<HTMLButtonElement>('[data-overview-zone]').forEach((button) => {
+      button.classList.toggle('is-selected', zone !== null && button.dataset.overviewZone === this.zoneKeyForLabel(zone.label));
+    });
+    if (!zone) return;
+    this.overviewSelectionName.textContent = zone.label;
+    this.overviewSelectionCondition.textContent = `Not accessible yet · ${zone.condition}`;
+  }
+
   setMapPosition(ratio: number): void {
     const mapPlayer = document.querySelector<HTMLElement>('#map-player');
     if (mapPlayer) mapPlayer.style.left = `${Math.round(ratio * 100)}%`;
@@ -71,6 +101,10 @@ export class HudController {
   showToast(message: string): void {
     this.toast.textContent = message;
     this.toast.classList.toggle('is-visible', Boolean(message));
+  }
+
+  private zoneKeyForLabel(label: string): string {
+    return label.toLowerCase().replace(/\s+/g, '-');
   }
 
   openPanel(kind: string): void {

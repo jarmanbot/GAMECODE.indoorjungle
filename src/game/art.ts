@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import {
   BUILDINGS,
+  BUY_SELL_ENTRANCE,
   PAVEMENT_HEIGHT,
   PAVEMENT_Y,
+  FUTURE_ZONES,
   WORLD_HEIGHT,
   WORLD_WIDTH,
   type Building,
@@ -25,10 +27,12 @@ export function drawNeighborhood(scene: Phaser.Scene): void {
 
   drawSkyline(scene);
   drawDistantRoads(scene);
-  drawVacantLot(scene, 100, 520, 650, 270, 'FUTURE DISTRICT');
-  drawVacantLot(scene, 2600, 520, 690, 270, 'NEW HOMES');
-  drawConstructionSite(scene, 3380, 485, 600, 305);
+  const [westZone, eastZone, worksZone] = FUTURE_ZONES;
+  drawVacantLot(scene, westZone.x, westZone.y, westZone.width, westZone.height, westZone.label);
+  drawVacantLot(scene, eastZone.x, eastZone.y, eastZone.width, eastZone.height, eastZone.label);
+  drawConstructionSite(scene, worksZone.x, worksZone.y, worksZone.width, worksZone.height, worksZone.label);
   drawRoadAndPavement(scene);
+  drawBuySellPavement(scene);
   drawUndevelopedPlots(scene);
 
   BUILDINGS.forEach((building) => drawBuilding(scene, building));
@@ -91,6 +95,15 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
   }
 }
 
+function drawBuySellPavement(scene: Phaser.Scene): void {
+  const g = scene.add.graphics().setDepth(-8);
+  const bayX = BUY_SELL_ENTRANCE.x - 42;
+  g.fillStyle(0x737b7c, 1).fillRect(bayX, PAVEMENT_Y, 84, PAVEMENT_HEIGHT - 8);
+  g.lineStyle(3, 0xd7dbda, 0.85).lineBetween(bayX, PAVEMENT_Y + 11, bayX + 84, PAVEMENT_Y + 11);
+  g.lineStyle(2, 0x4d5557, 0.75).lineBetween(bayX + 12, PAVEMENT_Y + 22, bayX + 12, PAVEMENT_Y + PAVEMENT_HEIGHT - 16);
+  g.lineBetween(bayX + 72, PAVEMENT_Y + 22, bayX + 72, PAVEMENT_Y + PAVEMENT_HEIGHT - 16);
+}
+
 function drawUndevelopedPlots(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(-3);
   g.fillStyle(0x3b4344, 1).fillRect(0, 1252, WORLD_WIDTH, WORLD_HEIGHT - 1252);
@@ -105,6 +118,8 @@ function drawUndevelopedPlots(scene: Phaser.Scene): void {
   drawFuturePlot(scene, g, 1050, 1284, 700, 330, 'RESERVED LOT B');
   drawFuturePlot(scene, g, 1860, 1284, 700, 330, 'RESERVED LOT C');
   drawFuturePlot(scene, g, 2780, 1284, 1240, 330, 'RESERVED LOT D');
+  drawBarrier(g, 910, 1260, 44);
+  drawBarrier(g, 2638, 1260, 44);
 
   for (const x of [170, 430, 730, 1110, 1430, 1910, 2240, 2470, 2870, 3220, 3710, 3980]) {
     drawWeed(g, x, 1710);
@@ -126,9 +141,15 @@ function drawFuturePlot(
   g.lineBetween(x, y + height * 0.58, x + width, y + height * 0.58);
   g.fillStyle(0x1a1f21, 1).fillRect(x + 18, y + 16, Math.min(width - 36, 230), 30);
   addWorldLabel(scene, x + 28, y + 31, label, WHITE, 11, false);
+  drawLockedBadge(scene, g, x + width - 82, y + 31);
+  drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
 function drawBuilding(scene: Phaser.Scene, building: Building): void {
+  if (building.kind === 'shop') {
+    drawBuySellBuilding(scene, building);
+    return;
+  }
   const g = scene.add.graphics().setDepth(5);
   const { x, y, width, height } = building;
   g.fillStyle(0x0c0e0f, 1).fillRect(x - 14, y - 14, width + 28, height + 14);
@@ -144,24 +165,54 @@ function drawBuilding(scene: Phaser.Scene, building: Building): void {
   g.fillStyle(INK, 1).fillRect(x + 18, y + 16, width - 36, 64);
   addWorldLabel(scene, x + width / 2, y + 29, building.label, WHITE, building.kind === 'apartment' ? 17 : 23, true);
 
-  if (building.kind === 'shop') drawBuySell(scene, g, building);
   if (building.kind === 'homes') drawHomes(scene, g, building);
   if (building.kind === 'plants') drawPlants(scene, g, building);
   if (building.kind === 'apartment') drawApartment(scene, g, building);
 }
 
-function drawBuySell(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
+function drawBuySellBuilding(scene: Phaser.Scene, building: Building): void {
+  const g = scene.add.graphics().setDepth(5);
   const x = building.x;
   const y = building.y;
-  g.fillStyle(0x161a1c, 1).fillRect(x + 24, y + 102, building.width - 48, 176);
-  g.lineStyle(6, WHITE, 0.9).strokeRect(x + 24, y + 102, building.width - 48, 176);
-  g.lineStyle(4, 0x8f9796, 0.9).lineBetween(x + 186, y + 126, x + 186, y + 278);
-  drawPot(g, x + 74, y + 206, 1.1);
-  drawPot(g, x + 142, y + 206, 0.9);
-  g.fillStyle(WHITE, 1).fillRect(x + 240, y + 152, 44, 126);
-  g.fillStyle(BLACK, 1).fillRect(x + 250, y + 170, 10, 12).fillRect(x + 274, y + 170, 10, 12);
-  g.fillStyle(INK, 1).fillRect(x + 261, y + 256, 4, 22);
-  addWorldLabel(scene, x + building.width / 2, y + 302, 'OPEN', WHITE, 14, true);
+  const entranceCenterX = BUY_SELL_ENTRANCE.x;
+
+  // A simple facade gives the shop a building silhouette instead of a UI card.
+  g.fillStyle(0x5e6669, 1).fillRect(x, y, building.width, building.height);
+  g.fillStyle(0x252a2d, 1).fillRect(x, y, building.width, 16);
+  g.fillStyle(0x747c7d, 1).fillRect(x + 12, y + 16, 12, building.height - 16);
+  g.fillStyle(0x747c7d, 1).fillRect(x + building.width - 24, y + 16, 12, building.height - 16);
+  g.lineStyle(4, INK, 0.95).strokeRect(x, y, building.width, building.height);
+  g.lineStyle(3, 0x858d8d, 0.9).lineBetween(x + 28, y + 89, x + building.width - 28, y + 89);
+
+  // One compact sign, kept separate from the window and entrance.
+  g.fillStyle(INK, 1).fillRect(x + 90, y + 32, 170, 38);
+  g.lineStyle(3, WHITE, 0.9).strokeRect(x + 90, y + 32, 170, 38);
+  addWorldLabel(scene, x + building.width / 2, y + 51, 'BUY / SELL', WHITE, 17, true);
+
+  // Modest display window with two small goods on one shelf.
+  const windowX = x + 30;
+  const windowY = y + 116;
+  g.fillStyle(DEEP, 1).fillRect(windowX, windowY, 116, 148);
+  g.lineStyle(3, INK, 0.95).strokeRect(windowX, windowY, 116, 148);
+  g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + 58, windowY, windowX + 58, windowY + 148);
+  g.fillStyle(0x8a9291, 1).fillRect(windowX + 10, windowY + 110, 96, 8);
+  drawPot(g, windowX + 34, windowY + 105, 0.52);
+  drawPot(g, windowX + 80, windowY + 105, 0.46);
+
+  // The door is aligned with BUY_SELL_ENTRANCE and reaches the pavement.
+  const doorX = entranceCenterX - 32;
+  const doorY = y + 108;
+  const doorHeight = building.y + building.height - doorY;
+  g.fillStyle(WHITE, 1).fillRect(doorX, doorY, 64, doorHeight);
+  g.lineStyle(3, INK, 1).strokeRect(doorX, doorY, 64, doorHeight);
+  g.fillStyle(0x9ea5a5, 1).fillRect(doorX + 12, doorY + 18, 40, 54);
+  g.lineStyle(3, INK, 1).strokeRect(doorX + 12, doorY + 18, 40, 54);
+  g.fillStyle(INK, 1).fillRect(doorX + 49, doorY + 108, 5, 5);
+  g.fillStyle(INK, 1).fillRect(doorX - 4, building.y + building.height - 5, 72, 5);
+
+  // A narrow threshold makes the door read as meeting the pavement.
+  g.fillStyle(0x6e7677, 1).fillRect(doorX - 8, building.y + building.height, 80, 8);
+  g.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 8, building.y + building.height, doorX + 72, building.y + building.height);
 }
 
 function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
@@ -232,7 +283,7 @@ function drawVacantLot(scene: Phaser.Scene, x: number, y: number, width: number,
   }
 }
 
-function drawConstructionSite(scene: Phaser.Scene, x: number, y: number, width: number, height: number): void {
+function drawConstructionSite(scene: Phaser.Scene, x: number, y: number, width: number, height: number, label: string): void {
   const g = scene.add.graphics().setDepth(-1);
   g.fillStyle(0x2c3234, 1).fillRect(x, y, width, height);
   g.lineStyle(6, 0xe2e5e2, 0.9).strokeRect(x, y, width, height);
@@ -244,9 +295,29 @@ function drawConstructionSite(scene: Phaser.Scene, x: number, y: number, width: 
   g.lineStyle(4, 0xced4d2, 0.7);
   g.lineBetween(x + width - 75, y + 55, x + width - 75, y + 240);
   g.lineBetween(x + width - 115, y + 74, x + width - 30, y + 74);
-  addWorldLabel(scene, x + width / 2, y + 25, 'CONSTRUCTION', WHITE, 15, true);
+  addWorldLabel(scene, x + width / 2, y + 25, label, WHITE, 15, true);
+  drawLockedBadge(scene, g, x + width - 82, y + 27);
+  drawBarrier(g, x + 28, y + height - 16, width - 56);
   drawWeed(g, x + 60, y + height - 25);
   drawRubbish(g, x + width - 120, y + height - 26);
+}
+
+function drawLockedBadge(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, x: number, y: number): void {
+  g.fillStyle(0x111416, 0.96).fillRect(x - 56, y - 18, 112, 36);
+  g.lineStyle(3, WHITE, 0.95).strokeRect(x - 56, y - 18, 112, 36);
+  g.lineStyle(3, WHITE, 0.95).strokeRect(x - 42, y - 7, 14, 12);
+  g.lineBetween(x - 40, y - 7, x - 40, y - 15);
+  g.lineBetween(x - 40, y - 15, x - 30, y - 15);
+  g.lineBetween(x - 30, y - 15, x - 30, y - 7);
+  addWorldLabel(scene, x + 22, y + 1, 'LOCKED', WHITE, 9, true);
+}
+
+function drawBarrier(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number): void {
+  g.lineStyle(5, WHITE, 0.95).lineBetween(x, y, x + width, y);
+  g.fillStyle(INK, 1).fillRect(x - 5, y - 13, 10, 26).fillRect(x + width - 5, y - 13, 10, 26);
+  for (let stripeX = x + 10; stripeX < x + width - 4; stripeX += 24) {
+    g.lineStyle(4, 0x696f70, 0.9).lineBetween(stripeX, y - 8, stripeX + 12, y + 8);
+  }
 }
 
 function drawStreetDetails(scene: Phaser.Scene): void {

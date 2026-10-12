@@ -62,6 +62,23 @@ button { font: inherit; color: inherit; }
 #game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 
+.overview-overlay { position: absolute; z-index: 15; inset: 0; pointer-events: none; color: #f6f7f3; }
+.overview-heading, .overview-zones, .overview-selection, .overview-return { pointer-events: auto; background: rgba(15, 19, 21, .94); border: 2px solid #f6f7f3; box-shadow: 4px 4px 0 #080a0b; }
+.overview-heading { position: absolute; left: 16px; top: 16px; width: min(330px, calc(100% - 32px)); padding: 10px 12px; display: grid; gap: 4px; }
+.overview-heading strong { font-size: 15px; letter-spacing: .06em; }
+.overview-heading small, .overview-selection small { color: #c0c7c5; font-size: 10px; line-height: 1.35; }
+.overview-kicker, .overview-zones-title { color: #c0c7c5; font-size: 9px; font-weight: 900; letter-spacing: .13em; }
+.overview-zones { position: absolute; top: 16px; right: 16px; width: min(250px, calc(100% - 32px)); padding: 9px; display: grid; gap: 6px; }
+.overview-zones-title { padding: 2px 4px 4px; }
+.overview-zone { min-height: 32px; padding: 5px 7px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 5px; border: 1px solid #7f8987; color: #f6f7f3; background: #252b2d; text-align: left; cursor: pointer; }
+.overview-zone:hover, .overview-zone.is-selected { color: #111416; background: #f6f7f3; }
+.overview-zone strong { font-size: 10px; letter-spacing: .03em; }
+.overview-zone em { font-size: 8px; font-style: normal; font-weight: 900; letter-spacing: .08em; }
+.overview-selection { position: absolute; left: 16px; bottom: 16px; width: min(300px, calc(100% - 32px)); padding: 10px 12px; display: grid; gap: 4px; }
+.overview-selection strong { font-size: 15px; letter-spacing: .05em; }
+.overview-return { position: absolute; right: 16px; bottom: 16px; min-height: 46px; padding: 8px 14px; color: #111416; background: #f6f7f3; border-color: #111416; box-shadow: 4px 4px 0 #080a0b; font-size: 11px; font-weight: 900; cursor: pointer; }
+.overview-return:hover { background: #cfd5d3; }
+
 .nav-button { min-width: 60px; height: 58px; padding: 4px 8px; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; font-weight: 800; letter-spacing: .04em; }
 .nav-icon { font-size: 24px; line-height: 22px; }
 .zoom-controls { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 2px solid #7e8785; padding: 4px; }
@@ -119,6 +136,13 @@ button { font: inherit; color: inherit; }
   #zoom-label { display: block; min-width: 42px; font-size: 8px; }
   .interact-button { bottom: 90px; }
   .toast { top: 76px; }
+  .overview-heading { left: 10px; top: 10px; width: min(250px, calc(100% - 20px)); }
+  .overview-heading strong { font-size: 12px; }
+  .overview-heading small { font-size: 9px; }
+  .overview-zones { top: auto; right: 10px; bottom: 10px; width: 190px; }
+  .overview-selection { left: 10px; bottom: 10px; width: 180px; }
+  .overview-selection strong { font-size: 12px; }
+  .overview-return { right: 10px; bottom: 162px; min-height: 40px; padding: 6px 9px; font-size: 9px; }
 }
 
 @media (max-width: 390px) {

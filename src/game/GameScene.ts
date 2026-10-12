@@ -6,12 +6,16 @@ import {
   CAMERA_FOLLOW_OFFSETS,
   CROSSING_END_X,
   CROSSING_START_X,
+  FUTURE_ZONES,
   FRONT_PAVEMENT_MAX_Y,
   FRONT_PAVEMENT_MIN_Y,
+  NORMAL_DESKTOP_FOLLOW_OFFSET,
   OPPOSITE_PAVEMENT_MAX_Y,
   OPPOSITE_PAVEMENT_MIN_Y,
   POT_POSITION,
   START_POSITION,
+  STARTING_WALKABLE_MAX_X,
+  STARTING_WALKABLE_MIN_X,
   WORLD_HEIGHT,
   WORLD_WIDTH,
   ZOOM_LEVELS,
@@ -40,6 +44,7 @@ export class GameScene extends Phaser.Scene {
   private inventoryHasPot = false;
   private saleComplete = false;
   private modalOpen = false;
+  private overviewMarker!: Phaser.GameObjects.Container;
   private toastTimer?: Phaser.Time.TimerEvent;
 
   constructor(hud: HudController) {
@@ -52,6 +57,7 @@ export class GameScene extends Phaser.Scene {
     this.createCars();
     this.createPlayer();
     this.createPot();
+    this.createOverviewMarker();
 
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
@@ -64,9 +70,13 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', this.handleWorldPointer, this);
     this.game.canvas.addEventListener('wheel', this.handleCanvasWheel, { passive: false });
     window.addEventListener('keydown', this.handleZoomKeyDown);
-    this.scale.on('resize', () => this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT));
+    this.scale.on('resize', () => {
+      this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      this.applyZoom(this.zoomMode);
+    });
 
     this.hud.setZoomMode(this.zoomMode);
+    this.hud.setOverviewMode(false);
     this.hud.setGameState({ coins: 0, inventoryHasPot: false, task: 'find' });
     this.updateInteraction();
   }
@@ -74,7 +84,8 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.updateCars(delta);
 
-    if (this.modalOpen) {
+    if (this.modalOpen || this.zoomMode === 'overview') {
+      this.target = null;
       this.updateInteraction();
       return;
     }
@@ -99,11 +110,15 @@ export class GameScene extends Phaser.Scene {
 
     if (direction.lengthSq() > 0) {
       const speed = hasKeyboardInput ? 235 : 190;
-      const nextX = Phaser.Math.Clamp(this.player.x + direction.x * speed * delta / 1000, 120, WORLD_WIDTH - 120);
+      const nextX = Phaser.Math.Clamp(
+        this.player.x + direction.x * speed * delta / 1000,
+        STARTING_WALKABLE_MIN_X,
+        STARTING_WALKABLE_MAX_X,
+      );
       const nextY = Phaser.Math.Clamp(this.player.y + direction.y * speed * delta / 1000, FRONT_PAVEMENT_MIN_Y, OPPOSITE_PAVEMENT_MAX_Y);
       this.moveOnWalkableGround(nextX, nextY);
       this.drawPlayer();
-      this.hud.setMapPosition(nextX / WORLD_WIDTH);
+      this.hud.setMapPosition(this.player.x / WORLD_WIDTH);
     }
 
     this.updateInteraction();
@@ -125,7 +140,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   tryInteract(): void {
-    if (this.modalOpen) return;
+    if (this.modalOpen || this.zoomMode === 'overview') return;
     const playerDistanceToPot = Phaser.Math.Distance.Between(this.player.x, this.player.y, POT_POSITION.x, POT_POSITION.y);
     const playerDistanceToShop = Phaser.Math.Distance.Between(this.player.x, this.player.y, BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y);
 
@@ -168,17 +183,34 @@ export class GameScene extends Phaser.Scene {
 
   private drawPlayer(): void {
     this.player.clear();
-    this.player.fillStyle(0xf5f6f2, 1).fillRect(-18, -47, 36, 68);
-    this.player.lineStyle(5, 0x111416, 1).strokeRect(-18, -47, 36, 68);
-    this.player.fillStyle(0x111416, 1).fillRect(-10, -33, 7, 8).fillRect(3, -33, 7, 8);
-    this.player.fillStyle(0xf5f6f2, 1).fillRect(-18, 21, 13, 25).fillRect(5, 21, 13, 25);
-    this.player.lineStyle(4, 0x111416, 1).lineBetween(0, 22, 0, 43);
+    this.player.fillStyle(0xf5f6f2, 1).fillRect(-14, -43, 28, 56);
+    this.player.lineStyle(3, 0x111416, 1).strokeRect(-14, -43, 28, 56);
+    this.player.fillStyle(0x111416, 1).fillRect(-8, -31, 5, 6).fillRect(3, -31, 5, 6);
+    this.player.fillStyle(0xf5f6f2, 1).fillRect(-13, 13, 10, 18).fillRect(3, 13, 10, 18);
+    this.player.lineStyle(3, 0x111416, 1).lineBetween(0, 14, 0, 29);
   }
 
   private createPot(): void {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
-    drawPot(this.pot, 0, 0, 1.15);
+    drawPot(this.pot, 0, 0, 0.75);
+  }
+
+  private createOverviewMarker(): void {
+    this.overviewMarker = this.add.container(START_POSITION.x, START_POSITION.y - 36).setDepth(45).setVisible(false);
+    const marker = this.add.graphics();
+    marker.fillStyle(0xf6f7f3, 1).fillCircle(0, 0, 22);
+    marker.lineStyle(5, 0x111416, 1).strokeCircle(0, 0, 22);
+    marker.fillStyle(0x111416, 1).fillTriangle(-10, 19, 10, 19, 0, 39);
+    const label = this.add.text(0, -48, 'YOU ARE HERE', {
+      color: '#f6f7f3',
+      fontFamily: 'monospace',
+      fontSize: '18px',
+      fontStyle: 'bold',
+      stroke: '#07090a',
+      strokeThickness: 5,
+    }).setOrigin(0.5);
+    this.overviewMarker.add([marker, label]);
   }
 
   private createCars(): void {
@@ -215,6 +247,15 @@ export class GameScene extends Phaser.Scene {
   private handleWorldPointer(pointer: Phaser.Input.Pointer): void {
     if (this.modalOpen || pointer.y < 0) return;
     const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    if (this.zoomMode === 'overview') {
+      const zone = FUTURE_ZONES.find((candidate) => Phaser.Geom.Rectangle.Contains(
+        new Phaser.Geom.Rectangle(candidate.x, candidate.y, candidate.width, candidate.height),
+        point.x,
+        point.y,
+      ));
+      if (zone) this.selectOverviewZone(zone.key);
+      return;
+    }
     this.target = this.getNearestWalkablePoint(point.x, point.y);
   }
 
@@ -237,11 +278,40 @@ export class GameScene extends Phaser.Scene {
 
   private applyZoom(mode: ZoomMode): void {
     this.zoomMode = mode;
-    const followOffset = CAMERA_FOLLOW_OFFSETS[mode];
-    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    this.cameras.main.setFollowOffset(followOffset.x, followOffset.y);
-    this.cameras.main.setZoom(ZOOM_LEVELS[mode]);
+    if (mode === 'overview') {
+      const zoom = this.getOverviewZoom();
+      const viewWidth = this.scale.width / zoom;
+      const viewHeight = this.scale.height / zoom;
+      const scrollX = (WORLD_WIDTH - viewWidth) / 2;
+      const scrollY = (WORLD_HEIGHT - viewHeight) / 2;
+      this.cameras.main.stopFollow();
+      this.cameras.main.setBounds(scrollX, scrollY, viewWidth, viewHeight);
+      this.cameras.main.setZoom(zoom);
+      this.cameras.main.setScroll(scrollX, scrollY);
+      this.overviewMarker.setPosition(this.player.x, this.player.y - 36).setScale(1 / zoom).setVisible(true);
+      this.hud.setOverviewMode(true);
+    } else {
+      const followOffset = mode === 'normal' && this.scale.width >= 900
+        ? NORMAL_DESKTOP_FOLLOW_OFFSET
+        : CAMERA_FOLLOW_OFFSETS[mode];
+      this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      this.cameras.main.setFollowOffset(followOffset.x, followOffset.y);
+      this.cameras.main.setZoom(ZOOM_LEVELS[mode]);
+      this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
+      this.overviewMarker.setVisible(false);
+      this.hud.setOverviewMode(false);
+    }
     this.hud.setZoomMode(mode);
+  }
+
+  private getOverviewZoom(): number {
+    return Math.min(this.scale.width / WORLD_WIDTH, this.scale.height / WORLD_HEIGHT) * 0.96;
+  }
+
+  selectOverviewZone(key: string): void {
+    if (this.zoomMode !== 'overview') return;
+    const zone = FUTURE_ZONES.find((candidate) => candidate.key === key);
+    if (zone) this.hud.setOverviewSelection(zone);
   }
 
   private moveOnWalkableGround(nextX: number, nextY: number): void {
@@ -260,6 +330,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isWalkablePosition(x: number, y: number): boolean {
+    const insideStartingBlock = x >= STARTING_WALKABLE_MIN_X && x <= STARTING_WALKABLE_MAX_X;
+    if (!insideStartingBlock) return false;
     const onCrossing = x >= CROSSING_START_X && x <= CROSSING_END_X
       && y >= FRONT_PAVEMENT_MIN_Y && y <= OPPOSITE_PAVEMENT_MAX_Y;
     const onFrontPavement = y >= FRONT_PAVEMENT_MIN_Y && y <= FRONT_PAVEMENT_MAX_Y;
@@ -268,7 +340,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getNearestWalkablePoint(x: number, y: number): Phaser.Math.Vector2 {
-    const targetX = Phaser.Math.Clamp(x, 120, WORLD_WIDTH - 120);
+    const targetX = Phaser.Math.Clamp(x, STARTING_WALKABLE_MIN_X, STARTING_WALKABLE_MAX_X);
     const currentOnOppositePavement = this.player.y >= OPPOSITE_PAVEMENT_MIN_Y;
     if (targetX >= CROSSING_START_X && targetX <= CROSSING_END_X) {
       return new Phaser.Math.Vector2(
@@ -283,7 +355,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateInteraction(): void {
-    if (!this.player || this.modalOpen) {
+    if (!this.player || this.modalOpen || this.zoomMode === 'overview') {
       this.hud.setAction(null);
       return;
     }
