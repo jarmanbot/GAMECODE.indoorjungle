@@ -7,13 +7,14 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
-html, body { margin: 0; min-width: 320px; min-height: 100%; background: #0b0d0e; }
-body { overflow: hidden; }
+html, body { margin: 0; width: 100%; height: 100%; min-width: 320px; min-height: 100%; background: #0b0d0e; }
+body { overflow: hidden; overscroll-behavior: none; }
 button { font: inherit; color: inherit; }
 
 #app-shell {
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
   min-height: 520px;
   display: grid;
@@ -56,33 +57,17 @@ button { font: inherit; color: inherit; }
 .eyebrow { color: #abb3b1; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
 .hud-objective strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(14px, 1.5vw, 20px); }
 
-.icon-button, .close-button { width: 48px; height: 48px; flex: 0 0 48px; border: 2px solid #f6f7f3; background: #1f2527; cursor: pointer; display: grid; place-items: center; font-size: 22px; }
+.icon-button, .close-button { width: 48px; height: 48px; flex: 0 0 48px; border: 2px solid #f6f7f3; background: #1f2527; cursor: pointer; display: grid; place-items: center; font-size: 22px; touch-action: manipulation; }
 .icon-button:hover, .close-button:hover, .nav-button:hover, .zoom-controls button:hover, .restart-button:hover { background: #f6f7f3; color: #111416; }
 
-#game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; }
-#game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+#game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; touch-action: none; }
+#game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
 
-.overview-overlay { position: absolute; z-index: 15; inset: 0; pointer-events: none; color: #f6f7f3; }
-.overview-heading, .overview-zones, .overview-selection, .overview-return { pointer-events: auto; background: rgba(15, 19, 21, .94); border: 2px solid #f6f7f3; box-shadow: 4px 4px 0 #080a0b; }
-.overview-heading { position: absolute; left: 16px; top: 16px; width: min(330px, calc(100% - 32px)); padding: 10px 12px; display: grid; gap: 4px; }
-.overview-heading strong { font-size: 15px; letter-spacing: .06em; }
-.overview-heading small, .overview-selection small { color: #c0c7c5; font-size: 10px; line-height: 1.35; }
-.overview-kicker, .overview-zones-title { color: #c0c7c5; font-size: 9px; font-weight: 900; letter-spacing: .13em; }
-.overview-zones { position: absolute; top: 16px; right: 16px; width: min(250px, calc(100% - 32px)); padding: 9px; display: grid; gap: 6px; }
-.overview-zones-title { padding: 2px 4px 4px; }
-.overview-zone { min-height: 32px; padding: 5px 7px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 5px; border: 1px solid #7f8987; color: #f6f7f3; background: #252b2d; text-align: left; cursor: pointer; }
-.overview-zone:hover, .overview-zone.is-selected { color: #111416; background: #f6f7f3; }
-.overview-zone strong { font-size: 10px; letter-spacing: .03em; }
-.overview-zone em { font-size: 8px; font-style: normal; font-weight: 900; letter-spacing: .08em; }
-.overview-selection { position: absolute; left: 16px; bottom: 16px; width: min(300px, calc(100% - 32px)); padding: 10px 12px; display: grid; gap: 4px; }
-.overview-selection strong { font-size: 15px; letter-spacing: .05em; }
-.overview-return { position: absolute; right: 16px; bottom: 16px; min-height: 46px; padding: 8px 14px; color: #111416; background: #f6f7f3; border-color: #111416; box-shadow: 4px 4px 0 #080a0b; font-size: 11px; font-weight: 900; cursor: pointer; }
-.overview-return:hover { background: #cfd5d3; }
-
-.nav-button { min-width: 60px; height: 58px; padding: 4px 8px; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.nav-button { min-width: 60px; height: 58px; padding: 4px 8px; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; font-weight: 800; letter-spacing: .04em; touch-action: manipulation; }
 .nav-icon { font-size: 24px; line-height: 22px; }
 .zoom-controls { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 2px solid #7e8785; padding: 4px; }
-.zoom-controls button { width: 44px; height: 44px; border: 2px solid #f6f7f3; background: #1d2325; cursor: pointer; display: grid; place-items: center; align-content: center; gap: 0; }
+.zoom-controls button { width: 44px; height: 44px; border: 2px solid #f6f7f3; background: #1d2325; cursor: pointer; display: grid; place-items: center; align-content: center; gap: 0; touch-action: manipulation; }
+.zoom-controls button:disabled { opacity: .36; cursor: not-allowed; color: #8a9291; background: #15191b; }
 .zoom-glyph { font-size: 23px; line-height: 18px; }
 .zoom-caption { font-size: 7px; font-weight: 900; line-height: 9px; letter-spacing: .08em; }
 #zoom-label { min-width: 70px; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
@@ -114,16 +99,28 @@ button { font: inherit; color: inherit; }
 .settings-list > div { display: block; }
 .restart-button { min-height: 50px; border: 2px solid #f6f7f3; background: #1e2426; cursor: pointer; font-size: 12px; font-weight: 900; }
 
-.mini-map { position: relative; height: 220px; overflow: hidden; background: #303738; border: 3px solid #f6f7f3; }
-.map-road { position: absolute; background: #111416; }
-.road-one { left: 0; right: 0; top: 58%; height: 34px; }
-.road-two { top: 0; bottom: 0; left: 72%; width: 26px; }
-.map-lot { position: absolute; background: #626b6b; border: 2px solid #c1c8c6; }
-.lot-one { left: 3%; top: 14%; width: 38%; height: 31%; }
-.lot-two { left: 4%; top: 70%; width: 56%; height: 23%; }
-.map-block { position: absolute; top: 33%; height: 21%; padding: 5px 4px; background: #d8dddc; color: #111416; border: 2px solid #111416; font-size: 8px; font-weight: 900; display: grid; place-items: center; text-align: center; }
-.block-one { left: 43%; width: 12%; }.block-two { left: 57%; width: 12%; }.block-three { left: 71%; width: 12%; }.block-four { left: 85%; width: 12%; }
-.map-player { position: absolute; top: 62%; left: 16%; width: 15px; height: 24px; transform: translate(-50%, -50%); background: #f6f7f3; border: 3px solid #111416; transition: left .16s linear; }
+.city-map-frame { position: relative; height: min(52dvh, 360px); min-height: 240px; overflow: auto; overscroll-behavior: contain; background: #303738; border: 3px solid #f6f7f3; cursor: grab; touch-action: none; scrollbar-width: thin; scrollbar-color: #f6f7f3 #303738; }
+.city-map-frame.is-panning { cursor: grabbing; }
+.city-map-surface { position: relative; width: 1080px; height: 560px; overflow: hidden; background: #4d5657; user-select: none; }
+.city-map-surface::before { content: ''; position: absolute; inset: 0; opacity: .34; background-image: linear-gradient(45deg, transparent 48%, #d4d9d7 49%, #d4d9d7 51%, transparent 52%), linear-gradient(-45deg, transparent 48%, #d4d9d7 49%, #d4d9d7 51%, transparent 52%); background-size: 34px 34px; }
+.city-map-road { position: absolute; z-index: 1; background: #111416; border: 2px solid #c5ccca; }
+.city-road-main { left: 0; right: 0; top: 51%; height: 42px; }
+.city-road-cross { top: 0; bottom: 0; left: 43%; width: 32px; }
+.city-road-west { left: 4%; width: 29%; top: 23%; height: 22px; transform: rotate(-8deg); }
+.city-road-east { left: 63%; width: 32%; top: 28%; height: 22px; transform: rotate(7deg); }
+.city-map-district { position: absolute; z-index: 2; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 10px; text-align: center; border: 3px solid #f6f7f3; color: #f6f7f3; background: #252b2d; }
+.city-map-district strong { font-size: 14px; line-height: 1.15; letter-spacing: .04em; }
+.city-map-district small { color: #c4ccca; font-size: 10px; font-weight: 900; letter-spacing: .1em; }
+.starting-district { left: 18%; top: 30%; width: 43%; height: 23%; background: #d8dddc; color: #111416; border-color: #111416; }
+.starting-district small { color: #111416; }
+.locked-district { background: #596263; border-style: dashed; }
+.willow-district { left: 3%; top: 7%; width: 22%; height: 18%; }
+.east-district { left: 66%; top: 9%; width: 25%; height: 19%; }
+.north-district { left: 78%; top: 34%; width: 20%; height: 17%; }
+.south-district { left: 8%; top: 72%; width: 86%; height: 20%; }
+.city-map-player { position: absolute; z-index: 4; top: 61%; left: 15%; width: 18px; height: 30px; transform: translate(-50%, -50%); background: #f6f7f3; border: 3px solid #111416; box-shadow: 4px 4px 0 #111416; transition: left .16s linear; }
+.city-map-player::after { content: 'ALEX'; position: absolute; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%); color: #f6f7f3; background: #111416; padding: 3px 5px; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.city-map-north { position: absolute; z-index: 5; right: 18px; top: 15px; width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #111416; background: #f6f7f3; color: #111416; font-weight: 900; }
 
 @media (max-width: 680px) {
   #app-shell { min-height: 480px; }
@@ -136,13 +133,9 @@ button { font: inherit; color: inherit; }
   #zoom-label { display: block; min-width: 42px; font-size: 8px; }
   .interact-button { bottom: 90px; }
   .toast { top: 76px; }
-  .overview-heading { left: 10px; top: 10px; width: min(250px, calc(100% - 20px)); }
-  .overview-heading strong { font-size: 12px; }
-  .overview-heading small { font-size: 9px; }
-  .overview-zones { top: auto; right: 10px; bottom: 10px; width: 190px; }
-  .overview-selection { left: 10px; bottom: 10px; width: 180px; }
-  .overview-selection strong { font-size: 12px; }
-  .overview-return { right: 10px; bottom: 162px; min-height: 40px; padding: 6px 9px; font-size: 9px; }
+  .city-map-frame { height: min(48dvh, 300px); min-height: 220px; }
+  .city-map-district strong { font-size: 11px; }
+  .city-map-district small { font-size: 8px; }
 }
 
 @media (max-width: 390px) {
@@ -153,4 +146,39 @@ button { font: inherit; color: inherit; }
   .nav-button { min-width: 44px; font-size: 8px; }
   .nav-icon { font-size: 17px; }
   #zoom-label { min-width: 38px; }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  #app-shell {
+    min-height: 0;
+    grid-template-rows: 54px minmax(0, 1fr) 62px;
+  }
+
+  .hud-top {
+    min-height: 54px;
+    padding: max(5px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 5px max(12px, env(safe-area-inset-left));
+    gap: 10px;
+  }
+
+  .hud-bottom {
+    min-height: 62px;
+    padding: 5px max(8px, env(safe-area-inset-right)) max(5px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    gap: 3px;
+    overflow: hidden;
+  }
+
+  .hud-block { min-width: 48px; gap: 6px; font-size: 14px; }
+  .coin-mark { width: 17px; height: 17px; border-width: 2px; }
+  .hud-objective { gap: 1px; }
+  .hud-objective .eyebrow { font-size: 8px; }
+  .hud-objective strong { font-size: 12px; }
+  .icon-button { width: 38px; height: 38px; flex-basis: 38px; font-size: 18px; }
+  .nav-button { min-width: 48px; height: 48px; padding: 2px 3px; font-size: 8px; }
+  .nav-icon { font-size: 18px; line-height: 17px; }
+  .zoom-controls { margin-left: auto; gap: 3px; padding: 2px; }
+  .zoom-controls button { width: 38px; height: 38px; }
+  #zoom-label { min-width: 46px; font-size: 8px; }
+  .zoom-glyph { font-size: 20px; }
+  .interact-button { bottom: 70px; min-height: 42px; padding: 7px 12px; font-size: 11px; }
+  .toast { top: 60px; font-size: 11px; }
 }

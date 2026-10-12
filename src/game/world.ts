@@ -10,7 +10,7 @@ export interface Building {
   height: number;
 }
 
-export type ZoomMode = 'close' | 'normal' | 'overview';
+export type ZoomMode = 'close' | 'normal';
 
 export const WORLD_WIDTH = 4200;
 export const WORLD_HEIGHT = 1800;
@@ -24,22 +24,6 @@ export const CROSSING_START_X = 1406;
 export const CROSSING_END_X = 1666;
 export const STARTING_WALKABLE_MIN_X = 540;
 export const STARTING_WALKABLE_MAX_X = 2540;
-
-export const ZOOM_LEVELS: Record<ZoomMode, number> = {
-  close: 1.48,
-  normal: 0.72,
-  overview: 0.45,
-};
-
-export const NORMAL_DESKTOP_FOLLOW_OFFSET = { x: -855, y: 150 };
-
-// Camera offsets keep the same world geometry framed differently at each level.
-// Phaser subtracts this offset from the followed target position.
-export const CAMERA_FOLLOW_OFFSETS: Record<ZoomMode, { x: number; y: number }> = {
-  close: { x: -120, y: 190 },
-  normal: { x: -70, y: 90 },
-  overview: { x: 0, y: 0 },
-};
 
 export const BUILDINGS: Building[] = [
   { key: 'buy-sell', label: 'BUY / SELL', kind: 'shop', x: 880, y: 505, width: 350, height: 325 },
@@ -96,6 +80,96 @@ export const FUTURE_ZONES: FutureZone[] = [
     height: 330,
   },
 ];
+
+export interface CityDistrict {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  unlocked: boolean;
+  roadConnections: string[];
+}
+
+export interface CityRoad {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle?: number;
+}
+
+export const CITY_DISTRICTS: CityDistrict[] = [
+  {
+    id: 'starting-neighbourhood',
+    label: 'STARTING NEIGHBOURHOOD',
+    x: 260,
+    y: 180,
+    width: 520,
+    height: 150,
+    unlocked: true,
+    roadConnections: ['main-road', 'central-avenue'],
+  },
+  {
+    id: 'willow-reserve',
+    label: 'WILLOW RESERVE',
+    x: 40,
+    y: 45,
+    width: 210,
+    height: 105,
+    unlocked: false,
+    roadConnections: ['west-road'],
+  },
+  {
+    id: 'east-gardens',
+    label: 'EAST GARDENS',
+    x: 850,
+    y: 55,
+    width: 250,
+    height: 110,
+    unlocked: false,
+    roadConnections: ['east-road'],
+  },
+  {
+    id: 'north-works',
+    label: 'NORTH WORKS',
+    x: 950,
+    y: 205,
+    width: 190,
+    height: 105,
+    unlocked: false,
+    roadConnections: ['east-road', 'main-road'],
+  },
+  {
+    id: 'south-plots',
+    label: 'SOUTH PLOTS',
+    x: 120,
+    y: 445,
+    width: 1000,
+    height: 110,
+    unlocked: false,
+    roadConnections: ['main-road'],
+  },
+];
+
+export const CITY_ROADS: CityRoad[] = [
+  { id: 'main-road', x: 0, y: 325, width: 1200, height: 44 },
+  { id: 'central-avenue', x: 540, y: 0, width: 32, height: 620 },
+  { id: 'west-road', x: 90, y: 135, width: 260, height: 22, angle: -8 },
+  { id: 'east-road', x: 760, y: 145, width: 350, height: 22, angle: 7 },
+];
+
+export const CITY_MAP_SIZE = CITY_DISTRICTS.reduce(
+  (bounds, district) => ({
+    width: Math.max(bounds.width, district.x + district.width),
+    height: Math.max(bounds.height, district.y + district.height),
+  }),
+  { width: 0, height: 0 },
+);
+CITY_MAP_SIZE.width += 80;
+CITY_MAP_SIZE.height += 65;
 
 export const BUY_SELL_ENTRANCE = { x: 1055, y: 885 };
 export const POT_POSITION = { x: 785, y: 890 };

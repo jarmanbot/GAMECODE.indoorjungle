@@ -8,12 +8,8 @@ const scene = new GameScene(hud);
 
 // Bind zoom actions before Phaser boots so HUD clicks never depend on scene timing.
 hud.bindZoomControls(
-  () => scene.cycleZoom(-1),
-  () => scene.cycleZoom(1),
-);
-hud.bindOverviewControls(
-  () => scene.setZoom('normal'),
-  (key) => scene.selectOverviewZone(key),
+  () => scene.zoomBy(-1),
+  () => scene.zoomBy(1),
 );
 
 const game = new Phaser.Game({
