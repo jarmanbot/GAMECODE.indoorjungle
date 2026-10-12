@@ -174,3 +174,10 @@ CITY_MAP_SIZE.height += 105;
 export const BUY_SELL_ENTRANCE = { x: 1055, y: 885 };
 export const POT_POSITION = { x: 785, y: 890 };
 export const START_POSITION = { x: 635, y: 890 };
+
+export const SHOP_WORLD_WIDTH = 1200;
+export const SHOP_WORLD_HEIGHT = 900;
+export const SHOP_PLAYER_START = { x: 180, y: 690 };
+export const SHOP_EXIT = { x: 135, y: 690 };
+export const SHOP_COUNTER = { x: 390, y: 500 };
+export const SHOP_COUNTER_APPROACH = { x: 390, y: 640 };

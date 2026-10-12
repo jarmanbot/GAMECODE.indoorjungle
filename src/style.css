@@ -57,6 +57,7 @@ button { font: inherit; color: inherit; }
 
 .icon-button, .close-button { width: 48px; height: 48px; flex: 0 0 48px; border: 2px solid #f6f7f3; background: #1f2527; cursor: pointer; display: grid; place-items: center; font-size: 22px; touch-action: manipulation; }
 .icon-button:hover, .close-button:hover, .nav-button:hover, .zoom-controls button:hover, .restart-button:hover { background: #f6f7f3; color: #111416; }
+.nav-button.is-highlighted { background: #f6f7f3; color: #111416; box-shadow: inset 0 -4px 0 #7e8785; }
 
 #game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; touch-action: none; }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -98,6 +99,19 @@ button { font: inherit; color: inherit; }
 .settings-list { display: grid; gap: 12px; }
 .settings-list > div { display: block; }
 .restart-button { min-height: 50px; border: 2px solid #f6f7f3; background: #1e2426; cursor: pointer; font-size: 12px; font-weight: 900; }
+.shop-balance { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #202729; border: 2px solid #697271; font-size: 12px; font-weight: 900; }
+.shop-balance strong { font-size: 22px; }
+.shop-tabs { display: flex; gap: 8px; margin: 16px 0; }
+.shop-tabs button { flex: 1; min-height: 44px; border: 2px solid #697271; background: #202729; color: #c4ccca; cursor: pointer; font-weight: 900; }
+.shop-tabs button.is-active { border-color: #f6f7f3; background: #f6f7f3; color: #111416; }
+.shop-panel-content { display: grid; gap: 12px; }
+.shop-offer { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; gap: 12px; padding: 14px; background: #202729; border: 2px solid #697271; }
+.shop-offer-copy { display: grid; gap: 5px; }
+.shop-offer-copy small { color: #b9c0be; font-size: 12px; }
+.shop-price { white-space: nowrap; font-size: 14px; }
+.shop-sell-button { grid-column: 2 / -1; min-height: 46px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-weight: 900; }
+.shop-sell-button:hover { background: #f6f7f3; color: #111416; }
+.shop-feedback { min-height: 20px; margin: 14px 0 0; color: #f6f7f3; font-size: 12px; font-weight: 900; }
 
 .panel-backdrop.is-city-map { z-index: 80; place-items: center; padding: 24px; background: rgba(4, 6, 7, .76); }
 .panel-backdrop.is-city-map .panel { width: min(700px, 100%); max-width: 100%; max-height: min(86dvh, 780px); height: auto; display: block; border: 3px solid #f6f7f3; box-shadow: 9px 9px 0 #060708; background: #171c1e; }

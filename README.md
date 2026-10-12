@@ -15,20 +15,21 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
 - Tap or click the world: walk to that point.
-- Mouse wheel, the −/+ buttons, or `,` / `.`: cycle Close, Normal, and Overview zoom (`.` zooms in, `,` zooms out).
-- Use the contextual action button to collect and sell the pot.
+- Mouse wheel, the −/+ buttons, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
+- Tap/click the loose pot or BUY / SELL entrance to walk there and interact on arrival.
+- Inside BUY / SELL, tap the counter to open the shop panel and use the exit door to return outside.
 - Open More → Restart Prototype to reset the session.
 
 ## Implemented
 
 - Strict Atari-inspired black, white, and neutral-grey art.
-- Shared neighbourhood geometry across Close, Normal, and Overview camera zooms.
+- Shared neighbourhood geometry across the Close and Normal camera views, plus a separate city map.
 - Starting order: BUY / SELL → HOMES → PLANTS → starter apartment.
 - HOMES advertises the actual nearby starter apartment as `TO LET` plus future-home cards.
 - PLANTS is shuttered and labelled `OPENING SOON`.
 - Small narrow Alex robot with movement, readable camera follow, and walkable-ground limits.
 - Responsive top/bottom HUD with coin balance, objective, settings, navigation panels, safe-area padding, and touch-sized controls.
-- One playable task: collect one loose empty pot, sell it once at BUY / SELL for provisional 5 coins, and complete the task.
+- One playable task: collect one loose empty pot, sell it once at BUY / SELL for provisional 5 coins, and complete the task. Collection and sale happen once, on arrival/explicit confirmation respectively.
 - Decorative cars, crossing, skyline, vacant lots, weeds, rubbish, construction, and future roads.
 
 ## Provisional decisions
@@ -40,4 +41,4 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 ## Known limitations
 
 - No persistence, accounts, backend, renting, plant growth, bills, or additional playable districts.
-- Screenshots and device checks are browser viewport checks rather than physical-device testing.
+- This session can verify the TypeScript/Vite build and static interaction wiring, but not physical-device input or visual layout without browser/device tooling.

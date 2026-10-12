@@ -32,6 +32,10 @@ export class HudController {
   private readonly mapCentreButton = document.querySelector<HTMLButtonElement>('#map-centre')!;
   private readonly rotateOverlay = document.querySelector<HTMLElement>('#rotate-overlay')!;
   private activeTask: TaskState = 'find';
+  private activePanelKind: string | null = null;
+  private shopTab: 'sell' | 'buy' = 'sell';
+  private shopFeedback = '';
+  private coins = 0;
   private hasPot = false;
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
   private mapPositionY = START_POSITION.y;
@@ -70,6 +74,7 @@ export class HudController {
   }
 
   setGameState(state: { coins: number; inventoryHasPot: boolean; task: TaskState }): void {
+    this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
     this.activeTask = state.task;
@@ -84,6 +89,20 @@ export class HudController {
   setAction(label: string | null): void {
     this.interactButton.hidden = label === null;
     if (label) this.interactLabel.textContent = label;
+  }
+
+  highlightBag(): void {
+    const bagButton = document.querySelector<HTMLButtonElement>('[data-panel="bag"]');
+    if (!bagButton) return;
+    bagButton.classList.add('is-highlighted');
+    window.setTimeout(() => bagButton.classList.remove('is-highlighted'), 1200);
+  }
+
+  refreshShopPanel(feedback = ''): void {
+    if (feedback) this.shopFeedback = feedback;
+    if (this.activePanelKind !== 'shop') return;
+    this.panelBody.innerHTML = this.shopPanelMarkup();
+    this.bindShopPanel();
   }
 
   setZoomMode(mode: ZoomMode): void {
@@ -137,12 +156,18 @@ export class HudController {
     this.cityMapPanCleanup?.();
     this.cityMapPanCleanup = null;
     const content = this.panelContent(kind);
+    this.activePanelKind = kind;
+    if (kind === 'shop') {
+      this.shopTab = 'sell';
+      this.shopFeedback = '';
+    }
     this.panelTitle.textContent = content.title;
     this.panelBody.innerHTML = content.body;
     if (kind === 'map') {
       this.bindCityMapPan();
       this.setMapPosition(this.mapPositionRatio);
     }
+    if (kind === 'shop') this.bindShopPanel();
     this.panelBackdrop.classList.toggle('is-city-map', kind === 'map');
     this.mapCentreButton.hidden = kind !== 'map';
     this.panelBackdrop.hidden = false;
@@ -159,6 +184,7 @@ export class HudController {
     this.cityMapPanCleanup = null;
     this.panelBackdrop.classList.remove('is-city-map');
     this.mapCentreButton.hidden = true;
+    this.activePanelKind = null;
     this.panelBackdrop.classList.remove('is-open');
     window.setTimeout(() => { this.panelBackdrop.hidden = true; }, 160);
     this.scene?.setModalOpen(false);
@@ -378,6 +404,12 @@ export class HudController {
         body: this.cityMapMarkup(),
       };
     }
+    if (kind === 'shop') {
+      return {
+        title: 'BUY / SELL',
+        body: this.shopPanelMarkup(),
+      };
+    }
     if (kind === 'tasks') {
       const complete = this.activeTask === 'complete';
       return {
@@ -401,6 +433,25 @@ export class HudController {
       title: 'More',
       body: '<div class="settings-list"><div><strong>Prototype help</strong><small>Stay on the pavement and use the contextual action button when Alex is close enough.</small></div><div><strong>Future features</strong><small>Growing plants, renting, bills, and additional districts are intentionally not implemented.</small></div><button class="restart-button" type="button" data-restart>RESTART PROTOTYPE</button></div>',
     };
+  }
+
+  private bindShopPanel(): void {
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-tab]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        this.shopTab = button.dataset.shopTab === 'buy' ? 'buy' : 'sell';
+        this.refreshShopPanel();
+      });
+    });
+    const sellButton = this.panelBody.querySelector<HTMLButtonElement>('[data-shop-sell]');
+    if (sellButton) this.bindButtonActivation(sellButton, () => this.scene?.sellOpeningPot());
+  }
+
+  private shopPanelMarkup(): string {
+    const sellContent = this.hasPot
+      ? '<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Loose empty pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell>SELL FOR 5 COINS</button></div>'
+      : '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect a loose pot before selling.</small></div>';
+    const buyContent = '<div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Buying is not available in this prototype.</small></div>';
+    return `<div class="shop-balance"><span>COINS</span><strong>${this.coins}</strong></div><div class="shop-tabs" role="tablist"><button type="button" data-shop-tab="sell" class="${this.shopTab === 'sell' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'sell'}">SELL</button><button type="button" data-shop-tab="buy" class="${this.shopTab === 'buy' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'buy'}">BUY</button></div><div class="shop-panel-content">${this.shopTab === 'sell' ? sellContent : buyContent}</div><p class="shop-feedback" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
   }
 
   private cityMapMarkup(): string {
