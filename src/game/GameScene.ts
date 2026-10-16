@@ -408,6 +408,16 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = this.inventoryPot !== null;
     this.saleComplete = this.progress.saleComplete;
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
+    // Older saves can retain the repair objective without the newer ground
+    // item flag. Restore that item from the completed window-job state rather
+    // than requiring a progress reset.
+    if (this.inventoryPot === 'broken') {
+      this.progress.brokenPotOwned = true;
+      this.progress.brokenPotAvailable = false;
+    } else if (this.progress.windowJobComplete && this.progress.task === 'repair' && !this.progress.brokenPotOwned) {
+      this.progress.brokenPotAvailable = true;
+      if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
+    }
     // Recover an interrupted/older prototype save that exposed the ground
     // item with no remaining piece count.
     if (this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && this.progress.brokenPotPiecesRemaining <= 0) {
