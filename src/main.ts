@@ -25,7 +25,9 @@ const game = new Phaser.Game({
   },
   render: {
     antialias: false,
-    roundPixels: true,
+    // Allow fractional camera/player positions for smooth joystick follow;
+    // antialiasing remains disabled and the canvas keeps pixelated scaling.
+    roundPixels: false,
   },
   scene: [scene],
 });

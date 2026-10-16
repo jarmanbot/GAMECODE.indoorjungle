@@ -429,15 +429,52 @@ export function drawPot(g: Phaser.GameObjects.Graphics, x: number, y: number, sc
 }
 
 export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0): void {
+  if (repairStage >= 10) {
+    drawPot(g, x, y, scale);
+    return;
+  }
   g.fillStyle(0x222729, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale);
   g.fillStyle(0xdfe3df, 1)
     .fillTriangle(x - 16 * scale, y - 25 * scale, x + 2 * scale, y - 25 * scale, x - 3 * scale, y + 15 * scale)
     .fillTriangle(x + 3 * scale, y - 25 * scale, x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale);
   g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 53 * scale, 8 * scale, 28 * scale);
   g.fillStyle(0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
-  if (repairStage < 3) g.lineStyle(3, 0x111416, 1).lineBetween(x - 2 * scale, y - 23 * scale, x + 4 * scale, y - 2 * scale);
-  if (repairStage < 2) g.lineStyle(3, 0x111416, 1).lineBetween(x + 4 * scale, y - 2 * scale, x - 1 * scale, y + 12 * scale);
+  // The repair interaction has ten deliberate taps. Keep the cracks legible
+  // throughout the process so the pot visibly progresses from broken to
+  // repaired instead of changing only at the last step.
+  if (repairStage < 7) g.lineStyle(3, 0x111416, 1).lineBetween(x - 2 * scale, y - 23 * scale, x + 4 * scale, y - 2 * scale);
+  if (repairStage < 4) g.lineStyle(3, 0x111416, 1).lineBetween(x + 4 * scale, y - 2 * scale, x - 1 * scale, y + 12 * scale);
   if (repairStage >= 1) g.lineStyle(3, 0x697173, 1).lineBetween(x, y - 21 * scale, x, y + 12 * scale);
+  if (repairStage >= 5) g.lineStyle(3, 0x697173, 1).lineBetween(x - 11 * scale, y - 29 * scale, x + 11 * scale, y - 29 * scale);
+  if (repairStage >= 8) g.lineStyle(2, 0xbfc5c3, 1).lineBetween(x - 12 * scale, y + 8 * scale, x + 12 * scale, y + 8 * scale);
+}
+
+export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, piecesRemaining = 3): void {
+  g.fillStyle(0x111416, 0.28).fillEllipse(x, y + 22 * scale, 88 * scale, 14 * scale);
+
+  // Three distinct chunky pieces remain on the ground until each is picked
+  // up. They sit close enough to read as one broken pot, but separate enough
+  // that collection progress is visible.
+  if (piecesRemaining >= 1) {
+    g.fillStyle(0xdfe3df, 1)
+      .fillTriangle(x - 42 * scale, y - 20 * scale, x - 7 * scale, y - 20 * scale, x - 18 * scale, y + 16 * scale);
+    g.lineStyle(5, 0x111416, 1).strokeTriangle(x - 42 * scale, y - 20 * scale, x - 7 * scale, y - 20 * scale, x - 18 * scale, y + 16 * scale);
+    g.lineStyle(3, 0x697173, 1).lineBetween(x - 11 * scale, y - 18 * scale, x - 20 * scale, y + 9 * scale);
+  }
+  if (piecesRemaining >= 2) {
+    g.fillStyle(0xdfe3df, 1)
+      .fillTriangle(x + 7 * scale, y - 20 * scale, x + 42 * scale, y - 20 * scale, x + 19 * scale, y + 16 * scale);
+    g.lineStyle(5, 0x111416, 1).strokeTriangle(x + 7 * scale, y - 20 * scale, x + 42 * scale, y - 20 * scale, x + 19 * scale, y + 16 * scale);
+    g.lineStyle(3, 0x697173, 1).lineBetween(x + 11 * scale, y - 18 * scale, x + 20 * scale, y + 9 * scale);
+  }
+  if (piecesRemaining >= 3) {
+    g.fillStyle(0x222729, 1).fillRect(x - 17 * scale, y - 29 * scale, 34 * scale, 7 * scale);
+    g.lineStyle(4, 0xf6f7f3, 1).strokeRect(x - 17 * scale, y - 29 * scale, 34 * scale, 7 * scale);
+    g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 54 * scale, 8 * scale, 27 * scale);
+    g.lineStyle(4, 0x111416, 1).strokeRect(x - 4 * scale, y - 54 * scale, 8 * scale, 27 * scale);
+    g.fillStyle(0x697173, 1).fillRect(x - 13 * scale, y - 60 * scale, 26 * scale, 7 * scale);
+    g.lineStyle(3, 0xf6f7f3, 1).strokeRect(x - 13 * scale, y - 60 * scale, 26 * scale, 7 * scale);
+  }
 }
 
 function drawWeed(g: Phaser.GameObjects.Graphics, x: number, y: number): void {

@@ -16,10 +16,10 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
 - `E` near the BUY / SELL entrance or shop counter: select entry or open the panel.
 - `Space` (or phone `A`): one visual hop. It does not move Alex’s ground position or bypass collisions.
-- `Q` (or phone `B`): use the equipped tool. Cleaner is held; repair uses one press per step.
+- `Q` (or phone `B`): use the equipped tool. Cleaner uses eight taps; repair uses ten taps beside the visible ground pot.
 - Tap or click the world: walk to that point.
 - Mouse wheel, the single IN/OUT zoom button, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
-- Tap/click the loose pot or BUY / SELL entrance to walk there and interact on arrival.
+- Tap/click the loose pot or BUY / SELL entrance to walk there and interact on arrival. Alex shows front, back, left and right poses; window cleaning requires the back-facing pose toward the HOMES display. After the window job, tap a broken-pot piece and press B to pick up each piece.
 - Inside BUY / SELL, tap the counter to open the shop panel and use the exit door to return outside.
 - Open More → Restart Prototype to reset the session.
 
@@ -38,9 +38,9 @@ Controls can swap the joystick and A/B groups; the choice is stored locally.
 - Small narrow Alex robot with movement, readable camera follow, and walkable-ground limits.
 - Responsive top/bottom HUD with coin balance, objective, settings, navigation panels, safe-area padding, and touch-sized controls.
 - Reversible portrait phone layout trial with an outside-the-world joystick, pointer capture, dead-zone handling, and shared tap/keyboard/zoom actions. Set `PHONE_HYBRID_CONTROLS` in `src/game/config.ts` to `false` to restore the previous phone layout.
-- Opening loop: collect one loose empty pot, sell it once at BUY / SELL for 5 coins, then optionally accept the opening window-cleaning job from the same counter.
-- Window job: hold the equipped cleaner while Alex is near and facing the BUY / SELL display. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
-- Repair job: collect the single broken pot after cleaning, choose Repair from Bag, press B for Align pieces / Join cracks / Finish repair, then explicitly sell the repaired pot for 10 coins.
+- Opening loop: collect one loose empty pot, then accept the opening window-cleaning job from the BUY / SELL counter. Selling the first pot remains available for 5 coins but is no longer the next required objective.
+- Opening job: collect the loose pot first, accept the job at the counter, then tap the HOMES estate-agent window and tap the equipped cleaner eight times. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
+- Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 10 coins.
 - Progress is stored in the single `indoor-jungle-progress-v1` local-storage record. Missing or older records use the original opening state; no external service is involved.
 - Decorative cars, crossing, skyline, vacant lots, weeds, rubbish, construction, and future roads.
 

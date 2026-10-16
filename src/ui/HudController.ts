@@ -49,6 +49,7 @@ export class HudController {
   private repairToolOwned = false;
   private cleanerOwned = false;
   private glueCharges = 0;
+  private brokenPotPieceSelected = false;
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
   private mapPositionY = START_POSITION.y;
   private cityMapZoom = 0.72;
@@ -133,11 +134,12 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; glueCharges?: number }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; glueCharges?: number; brokenPotPieceSelected?: boolean }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
     this.potCondition = state.inventoryPotCondition ?? (state.inventoryHasPot ? 'ordinary' : null);
+    this.brokenPotPieceSelected = state.brokenPotPieceSelected ?? false;
     this.setEquippedTool(state.equippedTool ?? null);
     this.repairToolOwned = state.repairToolOwned ?? this.repairToolOwned;
     this.cleanerOwned = state.cleanerOwned ?? this.cleanerOwned;
@@ -146,7 +148,7 @@ export class HudController {
     const labels: Record<TaskState, string> = {
       find: 'Find a loose empty pot',
       sell: 'Sell the pot at BUY / SELL',
-      clean: 'Clean the BUY / SELL display window',
+      clean: 'Clean the HOMES estate-agent window',
       repair: 'Repair the broken pot',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
@@ -159,9 +161,11 @@ export class HudController {
     const label = tool === 'cleaner' ? 'CLEANER' : tool === 'repair' ? 'REPAIR TOOL' : 'NO TOOL EQUIPPED';
     this.equippedToolName.textContent = label;
     this.equippedToolIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : '—';
-    this.arcadeBLabel.textContent = tool ? 'USE' : 'USE';
-    this.arcadeB.disabled = !tool;
-    this.arcadeB.setAttribute('aria-label', tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
+    this.arcadeBLabel.textContent = this.brokenPotPieceSelected
+      ? 'PICK UP'
+      : tool === 'cleaner' ? 'TAP 8×' : tool === 'repair' ? 'TAP 10×' : 'USE';
+    this.arcadeB.disabled = !tool && !this.brokenPotPieceSelected;
+    this.arcadeB.setAttribute('aria-label', this.brokenPotPieceSelected ? 'Pick up selected broken pot piece' : tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
   }
 
   setJoystickSide(side: 'left' | 'right'): void {
@@ -639,8 +643,8 @@ export class HudController {
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
         : '';
       const toolNote = [
-        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Equipped for B / USE.' : 'Hold B near the display window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
-        this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Equipped for B / USE.' : 'Hold B near the HOMES estate-agent window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining. Tap B 10 times beside a broken pot.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
       ].join('');
       return {
         title: 'Bag',
@@ -662,7 +666,7 @@ export class HudController {
     if (kind === 'tasks') {
       const complete = this.activeTask === 'complete';
       const taskLabel: Record<TaskState, string> = {
-        find: 'Find a loose empty pot', sell: 'Sell the pot at BUY / SELL', clean: 'Clean the BUY / SELL display window',
+        find: 'Find a loose empty pot', sell: 'Sell the pot at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
         repair: 'Repair the broken pot', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
       };
       return {
@@ -718,9 +722,10 @@ export class HudController {
         ? '<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Repaired collectible pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">10 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 10 COINS</button></div>'
         : '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
     const buyContent = '<div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Buying is not available in this prototype.</small></div>';
-    const jobContent = shop.saleComplete && !shop.windowJobAccepted && !shop.windowJobComplete
-      ? '<div class="job-card"><strong>OPENING JOB: CLEAN THE DISPLAY</strong><small>Borrow a cleaning bottle, then hold B while Alex faces the BUY / SELL window.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>' : '';
-    const activeJob = shop.windowJobAccepted ? '<div class="job-card"><strong>WINDOW JOB ACTIVE</strong><small>Cleaner equipped. Face the display window and hold B.</small></div>' : shop.windowJobComplete ? '<div class="job-card"><strong>WINDOW JOB COMPLETE</strong><small>Return to the street to find the broken collectible pot.</small></div>' : '';
+    const openingPotCollected = shop.inventoryPot === 'ordinary' || shop.saleComplete;
+    const jobContent = openingPotCollected && !shop.windowJobAccepted && !shop.windowJobComplete
+      ? '<div class="job-card"><strong>OPENING JOB: CLEAN THE HOMES WINDOW</strong><small>Borrow a cleaning bottle, tap the HOMES estate-agent display, then tap B eight times.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>' : '';
+    const activeJob = shop.windowJobAccepted ? '<div class="job-card"><strong>HOMES WINDOW JOB ACTIVE</strong><small>Tap the estate-agent display, then tap B eight times. Each spray is counted.</small></div>' : shop.windowJobComplete ? '<div class="job-card"><strong>WINDOW JOB COMPLETE</strong><small>Return to the street to find the broken collectible pot.</small></div>' : '';
     return `<div class="shop-balance"><span>COINS</span><strong>${this.coins}</strong></div><div class="shop-tabs" role="tablist"><button type="button" data-shop-tab="sell" class="${this.shopTab === 'sell' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'sell'}">SELL</button><button type="button" data-shop-tab="buy" class="${this.shopTab === 'buy' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'buy'}">BUY</button></div><div class="shop-panel-content">${this.shopTab === 'sell' ? sellContent : buyContent}${jobContent}${activeJob}</div><p class="shop-feedback" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
   }
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot, drawBrokenPot, setBuySellDoorOpen } from './art';
+import { drawNeighborhood, drawPot, drawBrokenPot, drawBrokenPotPieces, setBuySellDoorOpen } from './art';
 import { PHONE_HYBRID_CONTROLS } from './config';
 import { DEFAULT_PROGRESS, sanitizeProgress, type EquippedTool, type PotCondition, type ProgressState, type TaskState } from './progress';
 import {
@@ -39,7 +39,8 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'pickup-broken' | 'enter-shop' | 'counter' | 'exit-shop';
+type PendingInteraction = 'pickup' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop';
+type PlayerFacing = 'front' | 'back' | 'left' | 'right';
 
 export class GameScene extends Phaser.Scene {
   private readonly zoomOrder: ZoomMode[] = ['normal', 'close'];
@@ -50,6 +51,7 @@ export class GameScene extends Phaser.Scene {
   private windowDirtOverlay!: Phaser.GameObjects.Graphics;
   private sprayEffect!: Phaser.GameObjects.Graphics;
   private repairPotDisplay?: Phaser.GameObjects.Graphics;
+  private repairPickupPrompt?: Phaser.GameObjects.Text;
   private buySellDoor?: Phaser.GameObjects.Graphics;
   private cars: Car[] = [];
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -90,13 +92,18 @@ export class GameScene extends Phaser.Scene {
   private toolHeld = false;
   private toolFeedbackAt = 0;
   private lastSavedCleaningStage = 0;
+  private sprayTimer?: Phaser.Time.TimerEvent;
   private hopActive = false;
   private hopElapsed = 0;
   private readonly hopDuration = 520;
   private hopVisualOffset = 0;
-  private lastFacing = new Phaser.Math.Vector2(0, -1);
+  private lastFacing = new Phaser.Math.Vector2(0, 1);
+  private playerFacing: PlayerFacing = 'front';
+  private windowFacingLocked = false;
   private repairPresentationActive = false;
+  private repairPickupReady = false;
   private repairAnimating = false;
+  private brokenPotPieceSelected = false;
 
   constructor(hud: HudController) {
     super('game-scene');
@@ -119,7 +126,10 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
     this.applyZoom(this.zoomMode);
-    this.cameras.main.roundPixels = true;
+    // Keep camera scroll fractional so continuous joystick movement does not
+    // advance in visible one-pixel jumps. Pixel-art rendering remains crisp
+    // through the renderer and canvas CSS settings.
+    this.cameras.main.roundPixels = false;
 
     this.cursorKeys = this.input.keyboard!.createCursorKeys();
     this.keys = this.input.keyboard!.addKeys('W,A,S,D') as Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
@@ -215,26 +225,40 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (direction.lengthSq() > 0) {
+      // A stalled browser frame should not turn into a large teleport. This
+      // is especially noticeable while a captured phone pointer is steering
+      // the joystick and the camera is following Alex.
+      const movementDelta = Math.min(delta, 32);
       const speed = hasKeyboardInput || hasJoystickInput ? 235 : 190;
       const minX = this.shopInterior ? 82 : STARTING_WALKABLE_MIN_X;
       const maxX = this.shopInterior ? SHOP_WORLD_WIDTH - 82 : STARTING_WALKABLE_MAX_X;
       const minY = this.shopInterior ? 160 : FRONT_PAVEMENT_MIN_Y;
       const maxY = this.shopInterior ? SHOP_WORLD_HEIGHT - 72 : OPPOSITE_PAVEMENT_MAX_Y;
+      const previousX = this.player.x;
+      const previousY = this.player.y;
       const nextX = Phaser.Math.Clamp(
-        this.player.x + direction.x * speed * delta / 1000,
+        this.player.x + direction.x * speed * movementDelta / 1000,
         minX,
         maxX,
       );
-      const nextY = Phaser.Math.Clamp(this.player.y + direction.y * speed * delta / 1000, minY, maxY);
+      const nextY = Phaser.Math.Clamp(this.player.y + direction.y * speed * movementDelta / 1000, minY, maxY);
       this.moveOnWalkableGround(nextX, nextY);
-      this.updateFacing(direction);
+      const didMove = Math.abs(this.player.x - previousX) > 0.01 || Math.abs(this.player.y - previousY) > 0.01;
+      if (didMove) this.updateFacing(direction);
+      else if (!this.windowFacingLocked && this.playerFacing !== 'front') this.faceDirection(new Phaser.Math.Vector2(0, 1));
       this.updateRepairInterruption();
       this.drawPlayer();
       if (!this.shopInterior) this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
     }
 
+    // Alex faces the player whenever movement has ended. The window-cleaning
+    // task is the one deliberate exception: Alex must keep their back to the
+    // player while working on the HOMES display.
+    if (direction.lengthSq() === 0 && !this.windowFacingLocked && this.playerFacing !== 'front') {
+      this.faceDirection(new Phaser.Math.Vector2(0, 1));
+    }
+
     this.updateHop(delta);
-    if (this.toolHeld && this.progress.equippedTool === 'cleaner') this.updateWindowCleaning(delta);
     this.updateInteraction();
   }
 
@@ -281,6 +305,11 @@ export class GameScene extends Phaser.Scene {
       'enter-shop',
       new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
     );
+    else if (!this.shopInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
+      this.windowFacingLocked = true;
+      this.faceDirection(new Phaser.Math.Vector2(0, -1));
+      this.showToast('Face the HOMES display window, then tap B eight times.', 1700);
+    }
   }
 
   setJoystickInput(x: number, y: number, pointerHeld: boolean): void {
@@ -306,6 +335,7 @@ export class GameScene extends Phaser.Scene {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
     if (this.repairPresentationActive) this.cancelRepairPresentation();
     this.releaseTool();
+    this.stopSprayEffect();
     this.hopActive = true;
     this.hopElapsed = 0;
     this.hopVisualOffset = 0;
@@ -314,12 +344,16 @@ export class GameScene extends Phaser.Scene {
 
   pressTool(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    if (this.brokenPotPieceSelected) {
+      this.collectBrokenPotPiece();
+      return;
+    }
     if (!this.progress.equippedTool) {
       this.showToast('No tool equipped.', 1300);
       return;
     }
     if (this.progress.equippedTool === 'cleaner') {
-      this.toolHeld = true;
+      this.advanceWindowCleaningTap();
       return;
     }
     this.advanceRepairStep();
@@ -337,7 +371,6 @@ export class GameScene extends Phaser.Scene {
 
   releaseTool(): void {
     this.toolHeld = false;
-    this.sprayEffect?.setVisible(false);
   }
 
   getShopPanelState(): { inventoryPot: PotCondition | null; saleComplete: boolean; windowJobAccepted: boolean; windowJobComplete: boolean } {
@@ -359,6 +392,7 @@ export class GameScene extends Phaser.Scene {
       repairToolOwned: this.progress.repairToolOwned,
       cleanerOwned: this.progress.cleanerOwned,
       glueCharges: this.progress.glueCharges,
+      brokenPotPieceSelected: this.brokenPotPieceSelected,
     });
   }
 
@@ -373,8 +407,13 @@ export class GameScene extends Phaser.Scene {
     this.inventoryPot = this.progress.inventoryPot;
     this.inventoryHasPot = this.inventoryPot !== null;
     this.saleComplete = this.progress.saleComplete;
-    if (this.inventoryPot === 'ordinary' && this.progress.task === 'find') this.progress.task = 'sell';
-    if (this.saleComplete && this.progress.task === 'find') this.progress.task = 'clean';
+    this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
+    // Recover an interrupted/older prototype save that exposed the ground
+    // item with no remaining piece count.
+    if (this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && this.progress.brokenPotPiecesRemaining <= 0) {
+      this.progress.brokenPotPiecesRemaining = 3;
+    }
+    if (this.inventoryPot === 'ordinary' && (this.progress.task === 'find' || this.progress.task === 'sell')) this.progress.task = 'clean';
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
   }
 
@@ -388,10 +427,13 @@ export class GameScene extends Phaser.Scene {
 
   private updateProgressVisuals(): void {
     if (this.pot) this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete);
-    if (this.brokenPot) this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && !this.inventoryHasPot);
+    // The broken pieces remain visible even while the opening pot is still in
+    // the Bag. Selling is no longer the next required objective, so hiding
+    // the ground item here made the repair pickup appear to be missing.
+    if (this.brokenPot) this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
     if (this.windowDirtOverlay) {
       this.windowDirtOverlay.setVisible(this.progress.windowJobAccepted && !this.progress.windowJobComplete);
-      this.windowDirtOverlay.setAlpha(Math.max(0.18, 1 - this.progress.windowCleaningProgress / 3));
+      this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
     }
   }
 
@@ -408,11 +450,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateFacing(direction: Phaser.Math.Vector2): void {
-    if (direction.lengthSq() > 0.001) this.lastFacing.copy(direction).normalize();
+    if (direction.lengthSq() <= 0.001) return;
+    this.lastFacing.copy(direction).normalize();
+    if (Math.abs(this.lastFacing.x) > Math.abs(this.lastFacing.y)) {
+      this.playerFacing = this.lastFacing.x < 0 ? 'left' : 'right';
+    } else {
+      this.playerFacing = this.lastFacing.y < 0 ? 'back' : 'front';
+    }
+  }
+
+  private faceDirection(direction: Phaser.Math.Vector2): void {
+    this.updateFacing(direction);
+    this.drawPlayer();
   }
 
   private cancelToolUse(cancelRepair: boolean): void {
     this.releaseTool();
+    this.stopSprayEffect();
     if (cancelRepair && this.repairPresentationActive) this.cancelRepairPresentation();
   }
 
@@ -424,40 +478,80 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getWindowInteractionPoint(): Phaser.Math.Vector2 {
-    return new Phaser.Math.Vector2(968, FRONT_PAVEMENT_MIN_Y + 24);
+    // This is a walkable point directly below the HOMES estate-agent display.
+    // Selecting the window routes Alex here and explicitly turns them toward
+    // the facade, so the cleaning job never depends on guesswork.
+    return new Phaser.Math.Vector2(1440, FRONT_PAVEMENT_MIN_Y + 10);
+  }
+
+  private getWindowDisplayPoint(): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(1440, 680);
+  }
+
+  private isNearWindowApproach(): boolean {
+    const point = this.getWindowInteractionPoint();
+    return Phaser.Math.Distance.Between(this.player.x, this.player.y, point.x, point.y) <= 130;
+  }
+
+  private isWindowDisplayPoint(point: Phaser.Math.Vector2): boolean {
+    return point.x >= 1270 && point.x <= 1630 && point.y >= 580 && point.y <= 790;
   }
 
   private isFacingWindow(): boolean {
-    const point = this.getWindowInteractionPoint();
+    const point = this.getWindowDisplayPoint();
     const toward = new Phaser.Math.Vector2(point.x - this.player.x, point.y - this.player.y).normalize();
-    return this.lastFacing.dot(toward) > 0.25;
+    return this.lastFacing.dot(toward) > 0.72;
   }
 
-  private updateWindowCleaning(delta: number): void {
+  private advanceWindowCleaningTap(): void {
     if (this.hopActive || !this.progress.windowJobAccepted || this.progress.windowJobComplete || this.progress.equippedTool !== 'cleaner') return;
-    const point = this.getWindowInteractionPoint();
-    const inRange = Phaser.Math.Distance.Between(this.player.x, this.player.y, point.x, point.y) <= 150;
+    const inRange = this.isNearWindowApproach();
     if (!inRange || !this.isFacingWindow()) {
-      this.sprayEffect.setVisible(false);
       const now = performance.now();
-      if (now - this.toolFeedbackAt > 1800) {
+      if (now - this.toolFeedbackAt > 700) {
         this.toolFeedbackAt = now;
-        this.showToast(!inRange ? 'Move closer to the display window.' : 'Face the display window to spray.', 1200);
+        this.showToast(!inRange ? 'Move closer to the HOMES window.' : 'Tap the HOMES window to face it, then tap B.', 1300);
       }
       return;
     }
+
+    const approach = this.getWindowInteractionPoint();
+    const display = this.getWindowDisplayPoint();
     this.sprayEffect.clear();
-    this.sprayEffect.fillStyle(0xf6f7f3, 0.95).fillCircle(point.x - 18, point.y - 10, 6).fillCircle(point.x - 30, point.y - 22, 4).fillCircle(point.x - 42, point.y - 32, 3);
-    this.sprayEffect.lineStyle(2, 0xf6f7f3, 0.8).lineBetween(point.x - 10, point.y - 8, point.x - 48, point.y - 38);
-    this.sprayEffect.setVisible(true);
-    this.progress.windowCleaningProgress = Math.min(3, this.progress.windowCleaningProgress + delta / 1000 * 0.7);
-    this.windowDirtOverlay.setAlpha(Math.max(0.18, 1 - this.progress.windowCleaningProgress / 3));
-    const cleaningStage = Math.floor(this.progress.windowCleaningProgress);
-    if (cleaningStage !== this.lastSavedCleaningStage) {
-      this.lastSavedCleaningStage = cleaningStage;
-      this.saveProgress();
+    // Deliberately oversized, high-contrast spray burst: it is a feedback
+    // effect only and does not change Alex’s collision or ground position.
+    this.sprayEffect.fillStyle(0xf6f7f3, 0.98).fillCircle(approach.x, approach.y - 48, 13);
+    this.sprayEffect.fillStyle(0xd8dddc, 0.96);
+    for (let index = 0; index < 10; index += 1) {
+      const spread = (index - 4.5) * 15;
+      const progress = 0.25 + (index % 3) * 0.21;
+      this.sprayEffect.fillCircle(
+        approach.x + spread * progress,
+        approach.y - 70 - progress * 100,
+        5 + (index % 3),
+      );
     }
-    if (this.progress.windowCleaningProgress >= 3) this.completeWindowJob();
+    this.sprayEffect.lineStyle(5, 0xf6f7f3, 0.92)
+      .lineBetween(approach.x, approach.y - 56, display.x, display.y + 48)
+      .lineBetween(approach.x - 15, approach.y - 58, display.x - 55, display.y + 58)
+      .lineBetween(approach.x + 15, approach.y - 58, display.x + 55, display.y + 58);
+    this.sprayEffect.lineStyle(3, 0x111416, 0.95).strokeRect(display.x - 166, display.y - 84, 332, 168);
+    this.sprayEffect.setVisible(true);
+    this.sprayTimer?.remove(false);
+    this.sprayTimer = this.time.delayedCall(420, () => this.stopSprayEffect());
+
+    this.progress.windowCleaningProgress = Math.min(8, this.progress.windowCleaningProgress + 1);
+    this.lastSavedCleaningStage = this.progress.windowCleaningProgress;
+    this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
+    this.saveProgress();
+    this.showToast(`SPRAY ${this.progress.windowCleaningProgress} / 8`, 850);
+    if (this.progress.windowCleaningProgress >= 8) this.completeWindowJob();
+  }
+
+  private stopSprayEffect(): void {
+    this.sprayTimer?.remove(false);
+    this.sprayTimer = undefined;
+    this.sprayEffect?.clear().setVisible(false);
   }
 
   private completeWindowJob(): void {
@@ -469,18 +563,31 @@ export class GameScene extends Phaser.Scene {
     this.progress.glueCharges = Math.max(1, this.progress.glueCharges);
     this.progress.equippedTool = 'repair';
     this.progress.brokenPotAvailable = true;
+    this.progress.brokenPotPiecesRemaining = 3;
     this.progress.task = 'repair';
+    this.windowFacingLocked = false;
+    this.faceDirection(new Phaser.Math.Vector2(0, 1));
     this.coins += 3;
     this.progress.coins = this.coins;
     this.sprayEffect.setVisible(false);
     this.updateProgressVisuals();
     this.saveProgress();
     this.syncHudState();
-    this.showToast('Window clean. +3 coins. A repair tool and glue were added.');
+    this.showToast('HOMES window clean. +3 coins. A repair tool and glue were added.');
   }
 
   beginPortableRepair(): void {
-    if (this.shopInterior || !this.progress.repairToolOwned || this.progress.glueCharges < 1 || this.inventoryPot !== 'broken') {
+    if (this.shopInterior) {
+      this.showToast('Repair the pot outside on the street.', 1600);
+      return;
+    }
+    if (this.inventoryPot === 'broken' && (this.repairPickupReady || this.progress.repairStep >= 10)) {
+      this.repairPickupReady = true;
+      this.createRepairPickupPresentation();
+      this.showToast('The pot is repaired. Click it to put it in the Bag.', 2200);
+      return;
+    }
+    if (!this.progress.repairToolOwned || this.progress.glueCharges < 1 || this.inventoryPot !== 'broken') {
       this.showToast('Repair needs the repair tool, glue and a broken pot.', 1600);
       return;
     }
@@ -495,45 +602,97 @@ export class GameScene extends Phaser.Scene {
     }
     this.repairPotDisplay?.destroy();
     this.repairPotDisplay = this.add.graphics().setDepth(24).setPosition(candidate.x, candidate.y);
-    drawBrokenPot(this.repairPotDisplay, 0, 0, 0.95, this.progress.repairStep);
+    this.drawRepairPresentation();
     this.repairPresentationActive = true;
+    this.repairPickupReady = false;
+    this.repairPickupPrompt?.destroy();
+    this.repairPickupPrompt = undefined;
     this.progress.equippedTool = 'repair';
     this.hud.setEquippedTool('repair');
-    this.showToast('Repair: Align pieces, Join cracks, Finish repair. Press B once for each step.', 2600);
+    this.showToast('Repair: tap B 10 times while Alex is beside the pot.', 2600);
+  }
+
+  private createRepairPickupPresentation(): void {
+    if (!this.repairPotDisplay) {
+      const direction = this.lastFacing.clone().normalize();
+      const candidate = new Phaser.Math.Vector2(
+        Phaser.Math.Clamp(this.player.x + direction.x * 78, STARTING_WALKABLE_MIN_X + 28, STARTING_WALKABLE_MAX_X - 28),
+        Phaser.Math.Clamp(this.player.y + direction.y * 78, FRONT_PAVEMENT_MIN_Y + 28, FRONT_PAVEMENT_MAX_Y - 18),
+      );
+      this.repairPotDisplay = this.add.graphics().setDepth(24).setPosition(candidate.x, candidate.y);
+    }
+    this.repairPotDisplay.setVisible(true);
+    this.drawRepairPresentation();
+    this.repairPickupPrompt?.destroy();
+    this.repairPickupPrompt = this.add.text(this.repairPotDisplay.x, this.repairPotDisplay.y - 88, 'CLICK TO PUT IN BAG', {
+      color: '#f6f7f3',
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      stroke: '#111416',
+      strokeThickness: 5,
+      backgroundColor: '#111416',
+      padding: { left: 7, right: 7, top: 4, bottom: 4 },
+    }).setOrigin(0.5).setDepth(27);
+  }
+
+  private drawRepairPresentation(): void {
+    if (!this.repairPotDisplay) return;
+    const stage = Phaser.Math.Clamp(this.progress.repairStep, 0, 10);
+    const display = this.repairPotDisplay;
+    display.clear();
+
+    // Keep the repair target grounded and conspicuous without changing its
+    // collision footprint or turning it into a second collectible.
+    display.fillStyle(0x111416, 0.55).fillEllipse(0, 25, 116, 22);
+    display.lineStyle(3, 0xf6f7f3, 0.9).strokeEllipse(0, 22, 142, 38);
+    drawBrokenPot(display, 0, 0, 1.15, stage);
+
+    // Ten chunky segments make the required taps visible at a glance.
+    for (let index = 0; index < 10; index += 1) {
+      const x = -54 + index * 12;
+      display.fillStyle(index < stage ? 0xf6f7f3 : 0x3b4244, 1).fillRect(x, 43, 9, 8);
+      display.lineStyle(1, 0xbfc5c3, 0.9).strokeRect(x, 43, 9, 8);
+    }
   }
 
   private advanceRepairStep(): void {
+    if (this.repairPickupReady) {
+      this.showToast('The pot is repaired. Click it to put it in the Bag.', 1600);
+      return;
+    }
     if (!this.repairPresentationActive || this.repairAnimating || this.hopActive || this.inventoryPot !== 'broken') return;
     this.repairAnimating = true;
-    const labels = ['Align pieces', 'Join cracks', 'Finish repair'];
-    this.showToast(labels[Math.min(this.progress.repairStep, 2)], 700);
+    const labels = [
+      'Align pieces', 'Seat the rim', 'Stabilise the base', 'Join the left crack',
+      'Join the right crack', 'Seal the seam', 'Smooth the edge', 'Check the rim',
+      'Polish the repair', 'Finish repair',
+    ];
+    const stage = Phaser.Math.Clamp(this.progress.repairStep, 0, 9);
+    this.showToast(`${labels[stage]} · ${stage + 1} / 10`, 800);
     this.time.delayedCall(360, () => {
       if (!this.repairPresentationActive) {
         this.repairAnimating = false;
         return;
       }
-      this.progress.repairStep = Math.min(3, this.progress.repairStep + 1);
-      this.repairPotDisplay?.clear();
-      if (this.repairPotDisplay) drawBrokenPot(this.repairPotDisplay, 0, 0, 0.95, this.progress.repairStep);
+      this.progress.repairStep = Math.min(10, this.progress.repairStep + 1);
+      this.drawRepairPresentation();
       this.repairAnimating = false;
       this.saveProgress();
-      if (this.progress.repairStep >= 3) this.completeRepair();
+      if (this.progress.repairStep >= 10) this.completeRepair();
     });
   }
 
   private completeRepair(): void {
     if (this.inventoryPot !== 'broken' || this.progress.glueCharges < 1) return;
     this.progress.glueCharges -= 1;
-    this.inventoryPot = 'repaired';
-    this.inventoryHasPot = true;
-    this.progress.inventoryPot = 'repaired';
-    this.progress.task = 'sell-repaired';
     this.repairPresentationActive = false;
-    this.repairPotDisplay?.setVisible(false);
+    this.repairPickupReady = true;
+    this.drawRepairPresentation();
+    this.createRepairPickupPresentation();
     this.saveProgress();
     this.syncHudState();
-    this.hud.highlightBag();
-    this.showToast('Pot repaired. Sell it at BUY / SELL for 10 coins.');
+    this.showToast('Pot fully repaired. Click it to put it in the Bag.', 2400);
   }
 
   private cancelRepairPresentation(): void {
@@ -543,6 +702,11 @@ export class GameScene extends Phaser.Scene {
     this.repairPotDisplay?.setVisible(false);
     this.releaseTool();
     this.showToast('Repair paused. Completed steps were kept in the Bag.', 1500);
+  }
+
+  private setRepairPickupPresentationVisible(visible: boolean): void {
+    this.repairPotDisplay?.setVisible(visible);
+    this.repairPickupPrompt?.setVisible(visible);
   }
 
   private handleKeyboardInteraction(): void {
@@ -592,7 +756,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   acceptWindowJob(): void {
-    if (!this.shopInterior || !this.saleComplete || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
+    const openingPotCollected = this.inventoryPot === 'ordinary' || this.saleComplete;
+    if (!this.shopInterior || !openingPotCollected || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
     this.progress.cleanerOwned = true;
     this.progress.equippedTool = 'cleaner';
@@ -600,7 +765,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel('Cleaner borrowed and equipped.');
-    this.showToast('Cleaner equipped. Face the display window and hold B.');
+    this.showToast('Cleaner equipped. Tap the HOMES display window, then tap B eight times.', 5200);
   }
 
   restartPrototype(): void {
@@ -609,6 +774,11 @@ export class GameScene extends Phaser.Scene {
     this.inventoryPot = null;
     this.saleComplete = false;
     this.coins = 0;
+    this.repairPickupReady = false;
+    this.repairPotDisplay?.destroy();
+    this.repairPotDisplay = undefined;
+    this.repairPickupPrompt?.destroy();
+    this.repairPickupPrompt = undefined;
     this.saveProgress();
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
@@ -632,11 +802,30 @@ export class GameScene extends Phaser.Scene {
     this.player.clear();
     const lift = this.hopVisualOffset;
     this.player.fillStyle(0x111416, 0.65).fillEllipse(0, 32, 30, 8);
-    this.player.fillStyle(0xf5f6f2, 1).fillRect(-14, -43 - lift, 28, 56);
-    this.player.lineStyle(3, 0x111416, 1).strokeRect(-14, -43 - lift, 28, 56);
-    this.player.fillStyle(0x111416, 1).fillRect(-8, -31 - lift, 5, 6).fillRect(3, -31 - lift, 5, 6);
+    const sideFacing = this.playerFacing === 'left' || this.playerFacing === 'right';
+    const bodyX = sideFacing ? -11 : -14;
+    const bodyWidth = sideFacing ? 22 : 28;
+    this.player.fillStyle(0xf5f6f2, 1).fillRect(bodyX, -43 - lift, bodyWidth, 56);
+    this.player.lineStyle(3, 0x111416, 1).strokeRect(bodyX, -43 - lift, bodyWidth, 56);
+
+    if (this.playerFacing === 'front') {
+      this.player.fillStyle(0x111416, 1).fillRect(-8, -31 - lift, 5, 6).fillRect(3, -31 - lift, 5, 6);
+      this.player.lineStyle(3, 0x111416, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
+    } else if (this.playerFacing === 'back') {
+      this.player.fillStyle(0x3b4244, 1).fillRect(-8, -32 - lift, 16, 9);
+      this.player.lineStyle(2, 0x697173, 1).lineBetween(-4, -28 - lift, 4, -28 - lift);
+      this.player.lineStyle(3, 0x111416, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
+    } else {
+      const eyeX = this.playerFacing === 'left' ? -8 : 3;
+      this.player.fillStyle(0x111416, 1).fillRect(eyeX, -31 - lift, 5, 6);
+      this.player.lineStyle(2, 0x697173, 1).lineBetween(0, -20 - lift, 0, 9 - lift);
+      if (this.playerFacing === 'left') {
+        this.player.lineStyle(3, 0x111416, 1).lineBetween(-11, -22 - lift, -15, -15 - lift);
+      } else {
+        this.player.lineStyle(3, 0x111416, 1).lineBetween(11, -22 - lift, 15, -15 - lift);
+      }
+    }
     this.player.fillStyle(0xf5f6f2, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
-    this.player.lineStyle(3, 0x111416, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
   }
 
   private createPot(): void {
@@ -650,18 +839,21 @@ export class GameScene extends Phaser.Scene {
     this.brokenPot = this.add.graphics().setDepth(22);
     const position = this.getBrokenPotPosition();
     this.brokenPot.setPosition(position.x, position.y);
-    drawBrokenPot(this.brokenPot, 0, 0, 0.95, this.progress.repairStep);
+    const piecesRemaining = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned
+      ? Math.max(1, this.progress.brokenPotPiecesRemaining)
+      : this.progress.brokenPotPiecesRemaining;
+    drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, piecesRemaining);
     this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
   }
 
   private createWindowDirtOverlay(): void {
     this.windowDirtOverlay = this.add.graphics().setDepth(8);
-    const window = BUILDINGS.find((building) => building.key === 'buy-sell');
+    const window = BUILDINGS.find((building) => building.key === 'homes');
     if (!window) return;
-    this.windowDirtOverlay.fillStyle(0x111416, 0.42).fillRect(window.x + 38, window.y + 130, 100, 126);
+    this.windowDirtOverlay.fillStyle(0x111416, 0.32).fillRect(window.x + 22, window.y + 104, window.width - 44, 180);
     this.windowDirtOverlay.fillStyle(0x858d8d, 0.42);
-    for (let index = 0; index < 7; index += 1) {
-      this.windowDirtOverlay.fillRect(window.x + 47 + (index % 3) * 32, window.y + 143 + Math.floor(index / 3) * 39, 18, 8);
+    for (let index = 0; index < 12; index += 1) {
+      this.windowDirtOverlay.fillRect(window.x + 38 + (index % 5) * 54, window.y + 122 + Math.floor(index / 5) * 46, 26, 9);
     }
     this.windowDirtOverlay.setVisible(this.progress.windowJobAccepted && !this.progress.windowJobComplete);
   }
@@ -761,11 +953,51 @@ export class GameScene extends Phaser.Scene {
       this.handleShopWorldPoint(point.x, point.y);
       return;
     }
+    if (this.repairPickupReady && this.repairPotDisplay?.visible) {
+      const repairPosition = new Phaser.Math.Vector2(this.repairPotDisplay.x, this.repairPotDisplay.y);
+      if (this.isNearPoint(point, repairPosition, 125)) {
+        const approach = new Phaser.Math.Vector2(repairPosition.x - 72, repairPosition.y);
+        if (Phaser.Math.Distance.Between(this.player.x, this.player.y, repairPosition.x, repairPosition.y) <= 105) {
+          this.selectPendingInteraction('pickup-repaired', approach);
+        } else {
+          const tapPath = this.getTapPath(approach.x, approach.y);
+          if (!tapPath) {
+            this.cancelTapWalk();
+            this.showToast('The repaired pot cannot be reached.', 1500);
+            return;
+          }
+          this.selectPendingInteraction('pickup-repaired', approach, tapPath);
+        }
+        return;
+      }
+    }
+    if (this.progress.windowJobAccepted && this.isWindowDisplayPoint(point)) {
+      const approach = this.getWindowInteractionPoint();
+      if (this.isNearWindowApproach()) {
+        this.windowFacingLocked = true;
+        this.faceDirection(new Phaser.Math.Vector2(0, -1));
+        this.showToast('HOMES display selected. Hold B to clean.', 1500);
+      } else {
+        const tapPath = this.getTapPath(approach.x, approach.y);
+        if (!tapPath) {
+          this.cancelTapWalk();
+          this.showToast('The display cannot be reached.', 1500);
+          return;
+        }
+        this.selectPendingInteraction('window-clean', approach, tapPath);
+      }
+      return;
+    }
     const brokenPosition = this.getBrokenPotPosition();
-    if (this.isNearPoint(point, brokenPosition, 92) && this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && !this.inventoryHasPot && this.brokenPot.visible) {
+    if (this.isBrokenPotPiecePoint(point) && this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && this.brokenPot.visible) {
+      if (this.inventoryHasPot) {
+        this.cancelTapWalk();
+        this.showToast('The Bag is full. Sell the current pot before picking up these pieces.', 1900);
+        return;
+      }
       const approach = new Phaser.Math.Vector2(brokenPosition.x - 72, brokenPosition.y);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, brokenPosition.x, brokenPosition.y) <= 105) {
-        this.selectPendingInteraction('pickup-broken', approach);
+        this.selectPendingInteraction('select-broken-piece', approach);
       } else {
         const tapPath = this.getTapPath(approach.x, approach.y);
         if (!tapPath) {
@@ -773,7 +1005,7 @@ export class GameScene extends Phaser.Scene {
           this.showToast('That pot cannot be reached.', 1500);
           return;
         }
-        this.selectPendingInteraction('pickup-broken', approach, tapPath);
+        this.selectPendingInteraction('select-broken-piece', approach, tapPath);
       }
       return;
     }
@@ -820,6 +1052,18 @@ export class GameScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(point.x, point.y, target.x, target.y) <= radius;
   }
 
+  private isBrokenPotPiecePoint(point: Phaser.Math.Vector2): boolean {
+    const position = this.getBrokenPotPosition();
+    const dx = point.x - position.x;
+    const dy = point.y - position.y;
+    const hit = (x: number, y: number, width: number, height: number): boolean =>
+      Math.abs(dx - x) <= width / 2 && Math.abs(dy - y) <= height / 2;
+    const remaining = this.progress.brokenPotPiecesRemaining;
+    return (remaining >= 1 && hit(-24, -2, 58, 58))
+      || (remaining >= 2 && hit(24, -2, 58, 58))
+      || (remaining >= 3 && hit(0, -42, 46, 42));
+  }
+
   private isNearBuySellDoor(point: Phaser.Math.Vector2): boolean {
     // The hit area follows the visible door, while the approach point remains
     // at pavement level so Alex never has to enter the building geometry.
@@ -843,6 +1087,7 @@ export class GameScene extends Phaser.Scene {
 
   private selectWalkPath(path: Phaser.Math.Vector2[]): void {
     this.pendingInteraction = null;
+    this.windowFacingLocked = false;
     this.clearInteractionHighlight();
     this.target = path.shift() ?? null;
     this.targetQueue = path;
@@ -920,6 +1165,8 @@ export class GameScene extends Phaser.Scene {
       );
     } else if (interaction === 'exit-shop') {
       this.interactionHighlight.strokeRect(point.x - 58, point.y - 62, 116, 70);
+    } else if (interaction === 'window-clean') {
+      this.interactionHighlight.strokeRect(1274, 596, 332, 188);
     } else {
       this.interactionHighlight.strokeCircle(point.x, point.y, 42);
     }
@@ -937,7 +1184,13 @@ export class GameScene extends Phaser.Scene {
     this.pendingInteraction = null;
     this.clearInteractionHighlight();
     if (interaction === 'pickup') this.collectPot();
-    if (interaction === 'pickup-broken') this.collectBrokenPot();
+    if (interaction === 'select-broken-piece') this.selectBrokenPotPiece();
+    if (interaction === 'pickup-repaired') this.collectRepairedPot();
+    if (interaction === 'window-clean') {
+      this.windowFacingLocked = true;
+      this.faceDirection(new Phaser.Math.Vector2(0, -1));
+      this.showToast('HOMES display selected. Hold B to clean.', 1500);
+    }
     if (interaction === 'enter-shop') this.enterShop();
     if (interaction === 'counter') this.openShopPanel();
     if (interaction === 'exit-shop') this.exitShop();
@@ -950,17 +1203,44 @@ export class GameScene extends Phaser.Scene {
     this.inventoryPot = 'ordinary';
     this.pot.setVisible(false);
     this.progress.inventoryPot = 'ordinary';
-    this.progress.task = 'sell';
+    // Collecting the first pot unlocks the opening job. Selling remains an
+    // available transaction, but it is no longer the next required objective.
+    this.progress.task = 'clean';
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Pot collected. Take it to BUY / SELL.');
+    this.showToast('Pot collected. Visit BUY / SELL to accept the window job.');
   }
 
-  private collectBrokenPot(): void {
+  private selectBrokenPotPiece(): void {
     const position = this.getBrokenPotPosition();
-    if (this.shopInterior || this.inventoryHasPot || !this.brokenPot.visible) return;
+    if (this.shopInterior || this.inventoryHasPot || !this.brokenPot.visible || this.progress.brokenPotPiecesRemaining <= 0) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) return;
+    this.brokenPotPieceSelected = true;
+    this.syncHudState();
+    this.showToast(`Broken piece selected. Press B to pick it up (${this.progress.brokenPotPiecesRemaining} left).`, 1700);
+  }
+
+  private collectBrokenPotPiece(): void {
+    const position = this.getBrokenPotPosition();
+    if (this.shopInterior || !this.brokenPotPieceSelected || this.inventoryHasPot || !this.brokenPot.visible) return;
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) {
+      this.showToast('Move closer to the broken piece first.', 1400);
+      return;
+    }
+
+    this.brokenPotPieceSelected = false;
+    this.progress.brokenPotPiecesRemaining = Math.max(0, this.progress.brokenPotPiecesRemaining - 1);
+    this.brokenPot.clear();
+    drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, this.progress.brokenPotPiecesRemaining);
+
+    if (this.progress.brokenPotPiecesRemaining > 0) {
+      this.saveProgress();
+      this.syncHudState();
+      this.showToast(`Piece picked up. Click another piece, then press B (${this.progress.brokenPotPiecesRemaining} left).`, 1700);
+      return;
+    }
+
     this.inventoryHasPot = true;
     this.inventoryPot = 'broken';
     this.progress.inventoryPot = 'broken';
@@ -971,7 +1251,23 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Broken pot collected. Repair it from the Bag.');
+    this.showToast('All pieces collected. Repair the pot from the Bag.');
+  }
+
+  private collectRepairedPot(): void {
+    if (this.shopInterior || !this.repairPickupReady || !this.repairPotDisplay?.visible || this.inventoryPot !== 'broken') return;
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.repairPotDisplay.x, this.repairPotDisplay.y) > 110) return;
+    this.inventoryHasPot = true;
+    this.inventoryPot = 'repaired';
+    this.progress.inventoryPot = 'repaired';
+    this.progress.task = 'sell-repaired';
+    this.repairPickupReady = false;
+    this.repairPotDisplay.setVisible(false);
+    this.repairPickupPrompt?.setVisible(false);
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.highlightBag();
+    this.showToast('Repaired pot added to the Bag. Sell it at BUY / SELL for 10 coins.');
   }
 
   private openShopPanel(): void {
@@ -985,6 +1281,7 @@ export class GameScene extends Phaser.Scene {
     this.shopTransitioning = true;
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
+    this.setRepairPickupPresentationVisible(false);
     this.cancelTapWalk();
     this.streetPosition.set(this.player.x, this.player.y);
     this.streetZoomMode = this.zoomMode;
@@ -1041,6 +1338,7 @@ export class GameScene extends Phaser.Scene {
     setBuySellDoorOpen(this.buySellDoor!, false);
     this.setObjectsVisible(this.streetObjects, true);
     this.player.setPosition(BUY_SELL_ENTRANCE.x - 82, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
+    this.setRepairPickupPresentationVisible(this.repairPickupReady);
     this.updateProgressVisuals();
     this.destinationMarker.setVisible(false);
     this.clearInteractionHighlight();
@@ -1156,7 +1454,7 @@ export class GameScene extends Phaser.Scene {
     const followOffsetX = portrait ? 0 : frame.offsetX;
     this.closeFollowCentered = mode === 'close' && this.player.y >= OPPOSITE_PAVEMENT_MIN_Y;
     const followOffsetY = this.closeFollowCentered ? 0 : frame.offsetY;
-    const followLerp = mode === 'close' ? 0.14 : 0.08;
+    const followLerp = mode === 'close' ? 0.2 : 0.12;
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.setZoom(frame.zoom);
     this.cameras.main.startFollow(this.player, true, followLerp, followLerp, followOffsetX, followOffsetY);
@@ -1172,7 +1470,7 @@ export class GameScene extends Phaser.Scene {
     this.portraitFollowCentered = true;
     const frame = this.getCameraFrame(this.zoomMode);
     const followOffsetY = this.zoomMode === 'close' && this.closeFollowCentered ? 0 : frame.offsetY;
-    const followLerp = this.zoomMode === 'close' ? 0.14 : 0.08;
+    const followLerp = this.zoomMode === 'close' ? 0.2 : 0.12;
     this.cameras.main.startFollow(this.player, true, followLerp, followLerp, 0, followOffsetY);
     this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
   }
@@ -1186,7 +1484,7 @@ export class GameScene extends Phaser.Scene {
     const frame = this.getCameraFrame('close');
     const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
     const followOffsetX = portrait && this.portraitFollowCentered ? 0 : frame.offsetX;
-    const followLerp = 0.14;
+    const followLerp = 0.2;
     // Change the target offset in place so Phaser keeps the current scroll
     // position and eases into the new composition instead of snapping.
     this.cameras.main.setFollowOffset(followOffsetX, shouldCenter ? 0 : frame.offsetY);
@@ -1195,6 +1493,11 @@ export class GameScene extends Phaser.Scene {
 
   private getHorizontalDeadzone(): number {
     const viewportWidth = Math.max(1, this.scale.width);
+    const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
+    // The phone viewport is narrow enough that a desktop-sized deadzone lets
+    // Alex drift toward an edge before the camera responds. A small, scaled
+    // deadzone keeps the follow centered without changing world geometry.
+    if (portrait) return Math.max(20, Math.min(viewportWidth * 0.08, 42));
     return Math.max(96, Math.min(viewportWidth * 0.34, 420));
   }
 
@@ -1327,7 +1630,12 @@ export class GameScene extends Phaser.Scene {
     this.targetQueue = [];
     if (this.destinationMarker) this.destinationMarker.setVisible(false);
     this.pendingInteraction = null;
+    this.windowFacingLocked = false;
     this.clearInteractionHighlight();
+    if (this.brokenPotPieceSelected) {
+      this.brokenPotPieceSelected = false;
+      this.syncHudState();
+    }
   }
 
   private moveOnWalkableGround(nextX: number, nextY: number): void {
@@ -1393,6 +1701,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateInteraction(): void {
+    if (!this.modalOpen && !this.shopInterior && this.brokenPotPieceSelected) {
+      this.hud.setAction('PRESS B TO PICK UP PIECE');
+      return;
+    }
+    if (!this.modalOpen && !this.shopInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
+      this.hud.setAction('FACE HOMES WINDOW');
+      return;
+    }
     this.hud.setAction(null);
   }
 

@@ -137,8 +137,9 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .shop-price { white-space: nowrap; font-size: 14px; }
 .shop-sell-button { grid-column: 2 / -1; min-height: 46px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-weight: 900; }
 .shop-sell-button:hover { background: #f6f7f3; color: #111416; }
-.job-card { display: grid; gap: 9px; padding: 14px; background: #2b3234; border: 2px solid #f6f7f3; }
-.job-card small { color: #c4ccca; font-size: 12px; line-height: 1.45; }
+.job-card { display: grid; align-content: start; gap: 12px; min-height: 148px; padding: 18px; background: #2b3234; border: 2px solid #f6f7f3; }
+.job-card strong { line-height: 1.3; }
+.job-card small { min-height: 42px; color: #c4ccca; font-size: 12px; line-height: 1.55; }
 .job-card .shop-sell-button { grid-column: auto; }
 .shop-feedback { min-height: 20px; margin: 14px 0 0; color: #f6f7f3; font-size: 12px; font-weight: 900; }
 
