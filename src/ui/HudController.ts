@@ -11,8 +11,7 @@ import {
   WORLD_WIDTH,
   type ZoomMode,
 } from '../game/world';
-
-type TaskState = 'find' | 'sell' | 'complete';
+import type { PotCondition, TaskState, EquippedTool } from '../game/progress';
 
 export class HudController {
   private scene: GameScene | null = null;
@@ -33,12 +32,23 @@ export class HudController {
   private readonly rotateOverlay = document.querySelector<HTMLElement>('#rotate-overlay')!;
   private readonly joystick = document.querySelector<HTMLElement>('#joystick')!;
   private readonly joystickKnob = document.querySelector<HTMLElement>('#joystick-knob')!;
+  private readonly controlPanel = document.querySelector<HTMLElement>('#phone-control-panel')!;
+  private readonly arcadeA = document.querySelector<HTMLButtonElement>('#arcade-a')!;
+  private readonly arcadeB = document.querySelector<HTMLButtonElement>('#arcade-b')!;
+  private readonly equippedToolIcon = document.querySelector<HTMLElement>('#equipped-tool-icon')!;
+  private readonly equippedToolName = document.querySelector<HTMLElement>('#equipped-tool-name')!;
+  private readonly arcadeBLabel = document.querySelector<HTMLElement>('#arcade-b-label')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' = 'sell';
   private shopFeedback = '';
   private coins = 0;
   private hasPot = false;
+  private potCondition: PotCondition | null = null;
+  private equippedTool: EquippedTool = null;
+  private repairToolOwned = false;
+  private cleanerOwned = false;
+  private glueCharges = 0;
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
   private mapPositionY = START_POSITION.y;
   private cityMapZoom = 0.72;
@@ -46,6 +56,8 @@ export class HudController {
   private joystickPointerId: number | null = null;
   private phoneHybridLayout = false;
   private zoomMode: ZoomMode = 'normal';
+  private toolPointerId: number | null = null;
+  private joystickSide: 'left' | 'right' = this.loadJoystickSide();
 
   constructor() {
     document.querySelectorAll<HTMLButtonElement>('[data-panel]').forEach((button) => {
@@ -61,6 +73,8 @@ export class HudController {
     this.bindButtonActivation(this.zoomToggleButton, () => this.toggleZoom());
     this.bindButtonActivation(this.interactButton, () => this.scene?.tryInteract());
     this.bindJoystickControls();
+    this.bindArcadeControls();
+    this.applyJoystickSide();
     window.addEventListener('resize', () => {
       this.refreshCityMapLayout();
       this.refreshPhoneLayout();
@@ -70,12 +84,12 @@ export class HudController {
       this.refreshPhoneLayout();
     });
     window.addEventListener('orientationchange', () => {
-      this.resetJoystick();
+      this.resetHeldInputs();
       this.refreshPhoneLayout();
     });
-    window.addEventListener('blur', () => this.resetJoystick());
+    window.addEventListener('blur', () => this.resetHeldInputs());
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.resetJoystick();
+      if (document.hidden) this.resetHeldInputs();
     });
   }
 
@@ -88,7 +102,7 @@ export class HudController {
     if (this.phoneHybridLayout !== enabled) {
       this.phoneHybridLayout = enabled;
       document.documentElement.classList.toggle('phone-hybrid', enabled);
-      if (!enabled) this.resetJoystick();
+      if (!enabled) this.resetHeldInputs();
     }
     this.refreshPhoneLayout();
   }
@@ -101,6 +115,15 @@ export class HudController {
     this.scene?.setJoystickInput(0, 0, false);
   }
 
+  resetHeldInputs(): void {
+    this.resetJoystick();
+    const pointerId = this.toolPointerId;
+    this.toolPointerId = null;
+    if (pointerId !== null) this.arcadeB.releasePointerCapture?.(pointerId);
+    this.arcadeB.classList.remove('is-held');
+    this.scene?.releaseTool();
+  }
+
   setPhoneOrientationBlocked(blocked: boolean): void {
     this.rotateOverlay.hidden = !blocked;
   }
@@ -110,17 +133,45 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; task: TaskState }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; glueCharges?: number }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
+    this.potCondition = state.inventoryPotCondition ?? (state.inventoryHasPot ? 'ordinary' : null);
+    this.setEquippedTool(state.equippedTool ?? null);
+    this.repairToolOwned = state.repairToolOwned ?? this.repairToolOwned;
+    this.cleanerOwned = state.cleanerOwned ?? this.cleanerOwned;
+    this.glueCharges = state.glueCharges ?? this.glueCharges;
     this.activeTask = state.task;
     const labels: Record<TaskState, string> = {
       find: 'Find a loose empty pot',
       sell: 'Sell the pot at BUY / SELL',
+      clean: 'Clean the BUY / SELL display window',
+      repair: 'Repair the broken pot',
+      'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
     };
     this.objectiveText.textContent = labels[state.task];
+  }
+
+  setEquippedTool(tool: EquippedTool): void {
+    this.equippedTool = tool;
+    const label = tool === 'cleaner' ? 'CLEANER' : tool === 'repair' ? 'REPAIR TOOL' : 'NO TOOL EQUIPPED';
+    this.equippedToolName.textContent = label;
+    this.equippedToolIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : '—';
+    this.arcadeBLabel.textContent = tool ? 'USE' : 'USE';
+    this.arcadeB.disabled = !tool;
+    this.arcadeB.setAttribute('aria-label', tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
+  }
+
+  setJoystickSide(side: 'left' | 'right'): void {
+    this.joystickSide = side;
+    this.applyJoystickSide();
+    this.resetHeldInputs();
+    try { localStorage.setItem('indoor-jungle-controls', JSON.stringify({ joystickSide: side })); } catch { /* storage can be unavailable */ }
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-joystick-side]').forEach((button) => {
+      button.classList.toggle('is-selected', button.dataset.joystickSide === side);
+    });
   }
 
   setAction(label: string | null): void {
@@ -193,6 +244,66 @@ export class HudController {
   private toggleZoom(): void {
     if (this.zoomMode === 'normal') this.zoomInHandler?.();
     else this.zoomOutHandler?.();
+  }
+
+  private loadJoystickSide(): 'left' | 'right' {
+    try {
+      const raw = localStorage.getItem('indoor-jungle-controls');
+      const value = raw ? JSON.parse(raw) as { joystickSide?: string } : {};
+      return value.joystickSide === 'right' ? 'right' : 'left';
+    } catch {
+      return 'left';
+    }
+  }
+
+  private applyJoystickSide(): void {
+    this.controlPanel.classList.toggle('is-joystick-right', this.joystickSide === 'right');
+  }
+
+  private bindArcadeControls(): void {
+    let aPointerId: number | null = null;
+    const pressA = (event: PointerEvent): void => {
+      if (aPointerId !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      aPointerId = event.pointerId;
+      this.arcadeA.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+      this.scene?.pressHop();
+    };
+    const releaseA = (event: PointerEvent): void => {
+      if (aPointerId !== event.pointerId) return;
+      aPointerId = null;
+      this.arcadeA.releasePointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    this.arcadeA.addEventListener('pointerdown', pressA, { passive: false });
+    this.arcadeA.addEventListener('pointerup', releaseA, { passive: false });
+    this.arcadeA.addEventListener('pointercancel', releaseA, { passive: false });
+    this.arcadeA.addEventListener('lostpointercapture', releaseA, { passive: false });
+
+    const pressB = (event: PointerEvent): void => {
+      if (this.toolPointerId !== null || this.arcadeB.disabled || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      this.toolPointerId = event.pointerId;
+      this.arcadeB.setPointerCapture?.(event.pointerId);
+      this.arcadeB.classList.add('is-held');
+      event.preventDefault();
+      event.stopPropagation();
+      this.scene?.pressTool();
+    };
+    const releaseB = (event: PointerEvent): void => {
+      if (this.toolPointerId !== event.pointerId) return;
+      this.toolPointerId = null;
+      this.arcadeB.releasePointerCapture?.(event.pointerId);
+      this.arcadeB.classList.remove('is-held');
+      event.preventDefault();
+      event.stopPropagation();
+      this.scene?.releaseTool();
+    };
+    this.arcadeB.addEventListener('pointerdown', pressB, { passive: false });
+    this.arcadeB.addEventListener('pointerup', releaseB, { passive: false });
+    this.arcadeB.addEventListener('pointercancel', releaseB, { passive: false });
+    this.arcadeB.addEventListener('lostpointercapture', releaseB, { passive: false });
   }
 
   private bindJoystickControls(): void {
@@ -284,6 +395,17 @@ export class HudController {
       this.setMapPosition(this.mapPositionRatio);
     }
     if (kind === 'shop') this.bindShopPanel();
+    if (kind === 'settings') this.bindSettingsPanel();
+    if (kind === 'bag') {
+      const repairButton = this.panelBody.querySelector<HTMLButtonElement>('[data-repair-pot]');
+      if (repairButton) this.bindButtonActivation(repairButton, () => {
+        this.closePanel();
+        this.scene?.beginPortableRepair();
+      });
+      this.panelBody.querySelectorAll<HTMLButtonElement>('[data-equip-tool]').forEach((button) => {
+        this.bindButtonActivation(button, () => this.scene?.equipTool(button.dataset.equipTool === 'repair' ? 'repair' : 'cleaner'));
+      });
+    }
     this.panelBackdrop.classList.toggle('is-city-map', kind === 'map');
     this.mapCentreButton.hidden = kind !== 'map';
     this.panelBackdrop.hidden = false;
@@ -507,11 +629,22 @@ export class HudController {
 
   private panelContent(kind: string): { title: string; body: string } {
     if (kind === 'bag') {
+      const potLabel = this.potCondition === 'broken' ? 'Broken collectible pot' : this.potCondition === 'repaired' ? 'Repaired collectible pot' : 'Loose empty pot';
+      const potNote = this.potCondition === 'broken'
+        ? 'Intact examples are valuable. Buy/Sell accepts repaired examples.'
+        : this.potCondition === 'repaired'
+          ? 'Ready to sell at BUY / SELL for 10 coins.'
+          : 'Ready to sell at BUY / SELL for 5 coins.';
+      const repairButton = this.potCondition === 'broken'
+        ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
+        : '';
+      const toolNote = [
+        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Equipped for B / USE.' : 'Hold B near the display window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+      ].join('');
       return {
         title: 'Bag',
-        body: this.hasPot
-          ? '<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Loose empty pot</strong><small>Ready to sell at BUY / SELL</small></div></div>'
-          : '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Collect the loose pot near BUY / SELL.</small></div>',
+        body: `${this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}</div>` : '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Collect the loose pot near BUY / SELL.</small></div>'}${toolNote}`,
       };
     }
     if (kind === 'map') {
@@ -528,9 +661,13 @@ export class HudController {
     }
     if (kind === 'tasks') {
       const complete = this.activeTask === 'complete';
+      const taskLabel: Record<TaskState, string> = {
+        find: 'Find a loose empty pot', sell: 'Sell the pot at BUY / SELL', clean: 'Clean the BUY / SELL display window',
+        repair: 'Repair the broken pot', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
+      };
       return {
         title: 'Tasks',
-        body: `<div class="task-card ${complete ? 'is-complete' : ''}"><span class="task-check">${complete ? '✓' : '○'}</span><div><strong>${complete ? 'Prototype task complete' : this.activeTask === 'sell' ? 'Sell the pot at BUY / SELL' : 'Find a loose empty pot'}</strong><small>${complete ? 'The pot was sold once for 5 coins.' : 'One small action for this prototype.'}</small></div></div>`,
+        body: `<div class="task-card ${complete ? 'is-complete' : ''}"><span class="task-check">${complete ? '✓' : '○'}</span><div><strong>${taskLabel[this.activeTask]}</strong><small>${complete ? 'The opening jobs are complete.' : 'The next objective updates as Alex works.'}</small></div></div>`,
       };
     }
     if (kind === 'home') {
@@ -542,7 +679,7 @@ export class HudController {
     if (kind === 'settings') {
       return {
         title: 'Settings',
-        body: '<div class="settings-list"><div><strong>Controls</strong><small>WASD / arrows to walk · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div></div>',
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div></div>`,
       };
     }
     return {
@@ -559,15 +696,32 @@ export class HudController {
       });
     });
     const sellButton = this.panelBody.querySelector<HTMLButtonElement>('[data-shop-sell]');
-    if (sellButton) this.bindButtonActivation(sellButton, () => this.scene?.sellOpeningPot());
+    if (sellButton) this.bindButtonActivation(sellButton, () => {
+      if (sellButton.dataset.shopSell === 'repaired') this.scene?.sellRepairedPot();
+      else this.scene?.sellOpeningPot();
+    });
+    const acceptJob = this.panelBody.querySelector<HTMLButtonElement>('[data-accept-window-job]');
+    if (acceptJob) this.bindButtonActivation(acceptJob, () => this.scene?.acceptWindowJob());
+  }
+
+  private bindSettingsPanel(): void {
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-joystick-side]').forEach((button) => {
+      this.bindButtonActivation(button, () => this.setJoystickSide(button.dataset.joystickSide === 'right' ? 'right' : 'left'));
+    });
   }
 
   private shopPanelMarkup(): string {
-    const sellContent = this.hasPot
-      ? '<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Loose empty pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell>SELL FOR 5 COINS</button></div>'
-      : '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect a loose pot before selling.</small></div>';
+    const shop = this.scene?.getShopPanelState() ?? { inventoryPot: this.potCondition, saleComplete: false, windowJobAccepted: false, windowJobComplete: false };
+    const sellContent = shop.inventoryPot === 'ordinary'
+      ? '<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Loose empty pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
+      : shop.inventoryPot === 'repaired'
+        ? '<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Repaired collectible pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">10 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 10 COINS</button></div>'
+        : '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
     const buyContent = '<div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Buying is not available in this prototype.</small></div>';
-    return `<div class="shop-balance"><span>COINS</span><strong>${this.coins}</strong></div><div class="shop-tabs" role="tablist"><button type="button" data-shop-tab="sell" class="${this.shopTab === 'sell' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'sell'}">SELL</button><button type="button" data-shop-tab="buy" class="${this.shopTab === 'buy' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'buy'}">BUY</button></div><div class="shop-panel-content">${this.shopTab === 'sell' ? sellContent : buyContent}</div><p class="shop-feedback" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
+    const jobContent = shop.saleComplete && !shop.windowJobAccepted && !shop.windowJobComplete
+      ? '<div class="job-card"><strong>OPENING JOB: CLEAN THE DISPLAY</strong><small>Borrow a cleaning bottle, then hold B while Alex faces the BUY / SELL window.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>' : '';
+    const activeJob = shop.windowJobAccepted ? '<div class="job-card"><strong>WINDOW JOB ACTIVE</strong><small>Cleaner equipped. Face the display window and hold B.</small></div>' : shop.windowJobComplete ? '<div class="job-card"><strong>WINDOW JOB COMPLETE</strong><small>Return to the street to find the broken collectible pot.</small></div>' : '';
+    return `<div class="shop-balance"><span>COINS</span><strong>${this.coins}</strong></div><div class="shop-tabs" role="tablist"><button type="button" data-shop-tab="sell" class="${this.shopTab === 'sell' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'sell'}">SELL</button><button type="button" data-shop-tab="buy" class="${this.shopTab === 'buy' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'buy'}">BUY</button></div><div class="shop-panel-content">${this.shopTab === 'sell' ? sellContent : buyContent}${jobContent}${activeJob}</div><p class="shop-feedback" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
   }
 
   private cityMapMarkup(): string {

@@ -428,6 +428,18 @@ export function drawPot(g: Phaser.GameObjects.Graphics, x: number, y: number, sc
   g.fillStyle(0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
 }
 
+export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0): void {
+  g.fillStyle(0x222729, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale);
+  g.fillStyle(0xdfe3df, 1)
+    .fillTriangle(x - 16 * scale, y - 25 * scale, x + 2 * scale, y - 25 * scale, x - 3 * scale, y + 15 * scale)
+    .fillTriangle(x + 3 * scale, y - 25 * scale, x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale);
+  g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 53 * scale, 8 * scale, 28 * scale);
+  g.fillStyle(0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
+  if (repairStage < 3) g.lineStyle(3, 0x111416, 1).lineBetween(x - 2 * scale, y - 23 * scale, x + 4 * scale, y - 2 * scale);
+  if (repairStage < 2) g.lineStyle(3, 0x111416, 1).lineBetween(x + 4 * scale, y - 2 * scale, x - 1 * scale, y + 12 * scale);
+  if (repairStage >= 1) g.lineStyle(3, 0x697173, 1).lineBetween(x, y - 21 * scale, x, y + 12 * scale);
+}
+
 function drawWeed(g: Phaser.GameObjects.Graphics, x: number, y: number): void {
   g.lineStyle(4, 0x222729, 1);
   g.lineBetween(x, y, x - 11, y - 32);

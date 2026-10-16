@@ -62,10 +62,19 @@ button { font: inherit; color: inherit; }
 #game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; touch-action: none; }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
 
-.phone-control-panel { display: none; position: relative; z-index: 20; min-height: 86px; align-items: center; justify-content: flex-start; gap: 16px; padding: 7px max(12px, env(safe-area-inset-right)) 7px max(12px, env(safe-area-inset-left)); background: #0f1315; border-top: 2px solid #717978; border-bottom: 2px solid #717978; touch-action: none; user-select: none; -webkit-user-select: none; }
+.phone-control-panel { display: none; position: relative; z-index: 20; min-height: 86px; align-items: center; justify-content: space-between; gap: 16px; padding: 7px max(12px, env(safe-area-inset-right)) 7px max(12px, env(safe-area-inset-left)); background: #0f1315; border-top: 2px solid #717978; border-bottom: 2px solid #717978; touch-action: none; user-select: none; -webkit-user-select: none; }
 .joystick { position: relative; flex: 0 0 74px; width: 74px; height: 74px; border: 2px solid #697271; border-radius: 50%; background: #202729; touch-action: none; }
 .joystick-ring { position: absolute; inset: 11px; border: 2px dashed #858d8d; border-radius: 50%; opacity: .85; pointer-events: none; }
 .joystick-knob { position: absolute; left: 50%; top: 50%; width: 31px; height: 31px; transform: translate(-50%, -50%); border: 3px solid #111416; border-radius: 50%; background: #f6f7f3; box-shadow: 3px 3px 0 #060708; pointer-events: none; }
+.arcade-controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.equipped-tool { min-width: 70px; max-width: 104px; display: grid; justify-items: center; gap: 2px; color: #b9c0be; font-size: 7px; line-height: 1.05; font-weight: 900; text-align: center; }
+.equipped-tool span:first-child { width: 24px; height: 24px; display: grid; place-items: center; border: 2px solid #697271; color: #f6f7f3; font-size: 15px; }
+.arcade-button { width: 54px; height: 64px; display: grid; place-items: center; align-content: center; gap: 2px; border: 3px solid #f6f7f3; background: #202729; box-shadow: 3px 3px 0 #060708; cursor: pointer; touch-action: none; user-select: none; }
+.arcade-button strong { font-size: 22px; line-height: 20px; }
+.arcade-button small { font-size: 7px; font-weight: 900; }
+.arcade-button:active, .arcade-button.is-held { background: #f6f7f3; color: #111416; transform: translate(2px, 2px); box-shadow: 1px 1px 0 #060708; }
+.arcade-button:disabled { opacity: .4; cursor: not-allowed; }
+html.phone-hybrid .phone-control-panel.is-joystick-right { flex-direction: row-reverse; }
 
 html.phone-hybrid #app-shell { grid-template-rows: auto auto auto auto; align-content: start; }
 html.phone-hybrid #game-stage { width: min(100%, calc(100dvh - 230px)); height: auto; aspect-ratio: 1; justify-self: center; }
@@ -104,10 +113,17 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .empty-mark { font-size: 36px; }
 .home-outline { font-size: 44px; }
 .inventory-art { font-size: 35px; border: 2px solid #f6f7f3; width: 54px; height: 54px; display: grid; place-items: center; }
+.inventory-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.inventory-action { min-height: 40px; padding: 7px 10px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-size: 10px; font-weight: 900; }
+.inventory-action:hover { background: #f6f7f3; color: #111416; }
 .task-card.is-complete { border-color: #f6f7f3; }
 .task-check { width: 32px; height: 32px; border: 2px solid #f6f7f3; display: grid; place-items: center; font-size: 19px; }
 .settings-list { display: grid; gap: 12px; }
 .settings-list > div { display: block; }
+.settings-choice { display: grid !important; gap: 12px; }
+.settings-choice-row { display: flex; gap: 8px; }
+.settings-choice-row button { flex: 1; min-height: 42px; border: 2px solid #697271; background: #1e2426; cursor: pointer; font-size: 10px; font-weight: 900; }
+.settings-choice-row button.is-selected { border-color: #f6f7f3; background: #f6f7f3; color: #111416; }
 .restart-button { min-height: 50px; border: 2px solid #f6f7f3; background: #1e2426; cursor: pointer; font-size: 12px; font-weight: 900; }
 .shop-balance { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #202729; border: 2px solid #697271; font-size: 12px; font-weight: 900; }
 .shop-balance strong { font-size: 22px; }
@@ -121,6 +137,9 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .shop-price { white-space: nowrap; font-size: 14px; }
 .shop-sell-button { grid-column: 2 / -1; min-height: 46px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-weight: 900; }
 .shop-sell-button:hover { background: #f6f7f3; color: #111416; }
+.job-card { display: grid; gap: 9px; padding: 14px; background: #2b3234; border: 2px solid #f6f7f3; }
+.job-card small { color: #c4ccca; font-size: 12px; line-height: 1.45; }
+.job-card .shop-sell-button { grid-column: auto; }
 .shop-feedback { min-height: 20px; margin: 14px 0 0; color: #f6f7f3; font-size: 12px; font-weight: 900; }
 
 .panel-backdrop.is-city-map { z-index: 80; place-items: center; padding: 24px; background: rgba(4, 6, 7, .76); }
@@ -169,6 +188,9 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
   .toast { top: 76px; }
   .phone-control-panel { min-height: 82px; }
   .joystick { flex-basis: 70px; width: 70px; height: 70px; }
+  .arcade-controls { gap: 5px; }
+  .arcade-button { width: 48px; height: 60px; }
+  .equipped-tool { min-width: 56px; max-width: 72px; font-size: 6px; }
   .panel-backdrop:not(.is-city-map) .city-map-frame { height: min(48dvh, 300px); min-height: 220px; }
   .city-map-district strong { font-size: 11px; }
   .city-map-district small { font-size: 8px; }
