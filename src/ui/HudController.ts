@@ -20,9 +20,9 @@ export class HudController {
   private zoomInHandler: (() => void) | null = null;
   private readonly coinCount = document.querySelector<HTMLElement>('#coin-count')!;
   private readonly objectiveText = document.querySelector<HTMLElement>('#objective-text')!;
-  private readonly zoomLabel = document.querySelector<HTMLElement>('#zoom-label')!;
-  private readonly zoomOutButton = document.querySelector<HTMLButtonElement>('#zoom-out')!;
-  private readonly zoomInButton = document.querySelector<HTMLButtonElement>('#zoom-in')!;
+  private readonly zoomToggleButton = document.querySelector<HTMLButtonElement>('#zoom-toggle')!;
+  private readonly zoomGlyph = document.querySelector<HTMLElement>('#zoom-glyph')!;
+  private readonly zoomCaption = document.querySelector<HTMLElement>('#zoom-caption')!;
   private readonly interactButton = document.querySelector<HTMLButtonElement>('#interact-button')!;
   private readonly interactLabel = document.querySelector<HTMLElement>('#interact-label')!;
   private readonly toast = document.querySelector<HTMLElement>('#toast')!;
@@ -31,6 +31,8 @@ export class HudController {
   private readonly panelBody = document.querySelector<HTMLElement>('#panel-body')!;
   private readonly mapCentreButton = document.querySelector<HTMLButtonElement>('#map-centre')!;
   private readonly rotateOverlay = document.querySelector<HTMLElement>('#rotate-overlay')!;
+  private readonly joystick = document.querySelector<HTMLElement>('#joystick')!;
+  private readonly joystickKnob = document.querySelector<HTMLElement>('#joystick-knob')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' = 'sell';
@@ -41,6 +43,9 @@ export class HudController {
   private mapPositionY = START_POSITION.y;
   private cityMapZoom = 0.72;
   private cityMapPanCleanup: (() => void) | null = null;
+  private joystickPointerId: number | null = null;
+  private phoneHybridLayout = false;
+  private zoomMode: ZoomMode = 'normal';
 
   constructor() {
     document.querySelectorAll<HTMLButtonElement>('[data-panel]').forEach((button) => {
@@ -53,15 +58,47 @@ export class HudController {
       event.stopPropagation();
       if (event.target === this.panelBackdrop) this.closePanel();
     });
-    this.bindButtonActivation(this.zoomOutButton, () => this.zoomOutHandler?.());
-    this.bindButtonActivation(this.zoomInButton, () => this.zoomInHandler?.());
+    this.bindButtonActivation(this.zoomToggleButton, () => this.toggleZoom());
     this.bindButtonActivation(this.interactButton, () => this.scene?.tryInteract());
-    window.addEventListener('resize', () => this.refreshCityMapLayout());
-    window.visualViewport?.addEventListener('resize', () => this.refreshCityMapLayout());
+    this.bindJoystickControls();
+    window.addEventListener('resize', () => {
+      this.refreshCityMapLayout();
+      this.refreshPhoneLayout();
+    });
+    window.visualViewport?.addEventListener('resize', () => {
+      this.refreshCityMapLayout();
+      this.refreshPhoneLayout();
+    });
+    window.addEventListener('orientationchange', () => {
+      this.resetJoystick();
+      this.refreshPhoneLayout();
+    });
+    window.addEventListener('blur', () => this.resetJoystick());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.resetJoystick();
+    });
   }
 
   bindScene(scene: GameScene): void {
     this.scene = scene;
+    this.refreshPhoneLayout();
+  }
+
+  setPhoneHybridLayout(enabled: boolean): void {
+    if (this.phoneHybridLayout !== enabled) {
+      this.phoneHybridLayout = enabled;
+      document.documentElement.classList.toggle('phone-hybrid', enabled);
+      if (!enabled) this.resetJoystick();
+    }
+    this.refreshPhoneLayout();
+  }
+
+  resetJoystick(): void {
+    const pointerId = this.joystickPointerId;
+    this.joystickPointerId = null;
+    if (pointerId !== null) this.joystick.releasePointerCapture?.(pointerId);
+    this.joystickKnob.style.transform = 'translate(-50%, -50%)';
+    this.scene?.setJoystickInput(0, 0, false);
   }
 
   setPhoneOrientationBlocked(blocked: boolean): void {
@@ -106,13 +143,14 @@ export class HudController {
   }
 
   setZoomMode(mode: ZoomMode): void {
-    this.zoomLabel.textContent = mode.toUpperCase();
-    const atMinimum = mode === 'normal';
-    const atMaximum = mode === 'close';
-    this.zoomOutButton.disabled = atMinimum;
-    this.zoomInButton.disabled = atMaximum;
-    this.zoomOutButton.setAttribute('aria-disabled', String(atMinimum));
-    this.zoomInButton.setAttribute('aria-disabled', String(atMaximum));
+    this.zoomMode = mode;
+    const zoomingIn = mode === 'normal';
+    const glyph = zoomingIn ? '＋' : '−';
+    const caption = zoomingIn ? 'IN' : 'OUT';
+    const label = zoomingIn ? 'Zoom in (period key)' : 'Zoom out (comma key)';
+    this.zoomGlyph.textContent = glyph;
+    this.zoomCaption.textContent = caption;
+    this.zoomToggleButton.setAttribute('aria-label', label);
   }
 
   setMapPosition(ratio: number, worldY = this.mapPositionY): void {
@@ -150,6 +188,84 @@ export class HudController {
     };
     button.addEventListener('pointerdown', (event) => event.stopPropagation());
     button.addEventListener('click', activate);
+  }
+
+  private toggleZoom(): void {
+    if (this.zoomMode === 'normal') this.zoomInHandler?.();
+    else this.zoomOutHandler?.();
+  }
+
+  private bindJoystickControls(): void {
+    const updateJoystick = (event: PointerEvent): void => {
+      if (this.joystickPointerId !== event.pointerId) return;
+      const rect = this.joystick.getBoundingClientRect();
+      const centreX = rect.left + rect.width / 2;
+      const centreY = rect.top + rect.height / 2;
+      const dx = event.clientX - centreX;
+      const dy = event.clientY - centreY;
+      const distance = Math.hypot(dx, dy);
+      const radius = Math.max(1, rect.width / 2 - 17);
+      const deadZone = radius * 0.2;
+      const active = distance > deadZone;
+      const visualDistance = Math.min(distance, radius);
+      const visualX = active ? dx / distance * visualDistance : 0;
+      const visualY = active ? dy / distance * visualDistance : 0;
+      this.joystickKnob.style.transform = `translate(calc(-50% + ${visualX}px), calc(-50% + ${visualY}px))`;
+      this.scene?.setJoystickInput(active ? dx / distance : 0, active ? dy / distance : 0, true);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const endJoystick = (event: PointerEvent): void => {
+      if (this.joystickPointerId !== event.pointerId) return;
+      this.resetJoystick();
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    this.joystick.addEventListener('pointerdown', (event) => {
+      const pointerEvent = event as PointerEvent;
+      if (pointerEvent.pointerType === 'mouse' && pointerEvent.button !== 0) return;
+      if (this.joystickPointerId !== null) {
+        pointerEvent.preventDefault();
+        pointerEvent.stopPropagation();
+        return;
+      }
+      this.joystickPointerId = pointerEvent.pointerId;
+      this.joystick.setPointerCapture?.(pointerEvent.pointerId);
+      updateJoystick(pointerEvent);
+    }, { passive: false });
+    this.joystick.addEventListener('pointermove', (event) => updateJoystick(event as PointerEvent), { passive: false });
+    this.joystick.addEventListener('pointerup', (event) => endJoystick(event as PointerEvent), { passive: false });
+    this.joystick.addEventListener('pointercancel', (event) => endJoystick(event as PointerEvent), { passive: false });
+    this.joystick.addEventListener('lostpointercapture', (event) => endJoystick(event as PointerEvent), { passive: false });
+  }
+
+  private refreshPhoneLayout(): void {
+    const shell = document.querySelector<HTMLElement>('#app-shell');
+    const stage = document.querySelector<HTMLElement>('#game-stage');
+    if (!shell || !stage) return;
+    if (!this.phoneHybridLayout) {
+      stage.style.removeProperty('width');
+      stage.style.removeProperty('height');
+      requestAnimationFrame(() => this.scene?.resizeViewportToStage());
+      return;
+    }
+
+    const topHud = document.querySelector<HTMLElement>('.hud-top');
+    const controlPanel = document.querySelector<HTMLElement>('#phone-control-panel');
+    const bottomHud = document.querySelector<HTMLElement>('.hud-bottom');
+    const viewportHeight = Math.min(
+      shell.getBoundingClientRect().height,
+      window.visualViewport?.height ?? window.innerHeight,
+    );
+    const reservedHeight = (topHud?.getBoundingClientRect().height ?? 0)
+      + (controlPanel?.getBoundingClientRect().height ?? 0)
+      + (bottomHud?.getBoundingClientRect().height ?? 0);
+    const availableHeight = Math.max(1, viewportHeight - reservedHeight);
+    const size = Math.max(1, Math.min(shell.getBoundingClientRect().width, availableHeight));
+    stage.style.width = `${Math.round(size)}px`;
+    stage.style.height = `${Math.round(size)}px`;
+    requestAnimationFrame(() => this.scene?.resizeViewportToStage());
   }
 
   openPanel(kind: string): void {

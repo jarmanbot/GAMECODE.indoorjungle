@@ -61,16 +61,18 @@ function drawSkyline(scene: Phaser.Scene): void {
     [3470, 204, 210, 172], [3800, 135, 260, 245],
   ];
   far.fillStyle(0x303638, 0.68);
-  farBuildings.forEach(([x, y, width, height]) => {
+  farBuildings.forEach(([x, y, width, height], index) => {
     far.fillRect(x, y, width, height);
+    if (index % 4 === 1) far.fillRect(x + width / 2 - 3, y - 18, 6, 18);
   });
   far.lineStyle(3, 0x565e60, 0.32);
-  for (const [x, y, width, height] of farBuildings) {
-    for (let windowY = y + 38; windowY < y + height - 26; windowY += 46) {
+  farBuildings.forEach(([x, y, width, height], index) => {
+    if (index % 3 === 1) return;
+    for (let windowY = y + 44; windowY < y + height - 28; windowY += 60) {
       far.strokeRect(x + 24, windowY, 12, 9);
-      if (width > 160) far.strokeRect(x + width - 38, windowY, 12, 9);
+      if (width > 180 && index % 2 === 0) far.strokeRect(x + width - 38, windowY, 12, 9);
     }
-  }
+  });
 
   const g = scene.add.graphics().setDepth(-80);
   const skyline = [
@@ -82,13 +84,36 @@ function drawSkyline(scene: Phaser.Scene): void {
   ];
   skyline.forEach(([x, y, width, height], index) => {
     g.fillStyle(index % 3 === 0 ? 0x1d2224 : 0x252a2d, 1).fillRect(x, y, width, height);
-    g.lineStyle(4, 0x555e60, 0.55);
-    for (let windowY = y + 28; windowY < y + height - 20; windowY += 34) {
+    g.lineStyle(3, 0x555e60, 0.38);
+    if (index % 3 === 1) return;
+    for (let windowY = y + 46; windowY < y + height - 28; windowY += 58) {
       g.strokeRect(x + 22, windowY, 16, 12);
-      if (width > 150) g.strokeRect(x + width - 42, windowY, 16, 12);
+      if (width > 170 && index % 2 === 0) g.strokeRect(x + width - 42, windowY, 16, 12);
     }
   });
   g.fillStyle(0x111416, 0.7).fillRect(0, 405, WORLD_WIDTH, 34);
+
+  // A quiet, low-rise layer closes the visual gap above the playable shops.
+  // It stays behind the street buildings and uses fewer details than the
+  // nearer skyline so the sign and Alex remain the strongest focal points.
+  const horizon = scene.add.graphics().setDepth(-75);
+  const lowRise = [
+    [0, 446, 220, 72], [250, 424, 170, 94], [455, 454, 240, 64],
+    [740, 430, 188, 88], [978, 448, 244, 70], [1270, 418, 160, 100],
+    [1480, 452, 230, 66], [1745, 426, 182, 92], [1960, 446, 260, 72],
+    [2260, 420, 190, 98], [2500, 450, 240, 68], [2780, 430, 170, 88],
+    [3000, 448, 250, 70], [3290, 416, 190, 102], [3540, 450, 260, 68],
+    [3840, 430, 220, 88],
+  ];
+  horizon.fillStyle(0x343b3d, 0.72);
+  lowRise.forEach(([x, y, width, height], index) => {
+    horizon.fillRect(x, y, width, height);
+    if (index % 3 === 0) horizon.fillRect(x + 18, y - 8, width - 36, 8);
+  });
+  horizon.lineStyle(2, 0x697271, 0.24);
+  lowRise.forEach(([x, y, width], index) => {
+    if (index % 3 === 2) horizon.strokeRect(x + 28, y + 22, 12, 8);
+  });
 }
 
 function drawDistantRoads(scene: Phaser.Scene): void {
@@ -212,8 +237,10 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.Ga
   g.lineStyle(4, INK, 0.95).strokeRect(x + 8, y + 8, building.width - 16, building.height - 8);
 
   const brickPatches = [
-    [x + 22, y + 91, 54, 12], [x + 88, y + 92, 36, 12], [x + 274, y + 91, 42, 12],
-    [x + 18, y + 286, 68, 13], [x + 286, y + 270, 34, 13], [x + 238, y + 300, 42, 12],
+    [x + 20, y + 91, 42, 11], [x + 64, y + 103, 28, 10],
+    [x + 276, y + 91, 38, 11], [x + 250, y + 103, 22, 10],
+    [x + 18, y + 286, 48, 12], [x + 70, y + 298, 30, 10],
+    [x + 286, y + 270, 34, 11], [x + 242, y + 300, 42, 10],
   ];
   g.fillStyle(0x747c7d, 0.7);
   brickPatches.forEach(([patchX, patchY, patchWidth, patchHeight]) => {
@@ -229,12 +256,15 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.Ga
   const windowX = x + 30;
   const windowY = y + 116;
   g.fillStyle(DEEP, 1).fillRect(windowX, windowY, 116, 148);
-  g.lineStyle(4, INK, 0.95).strokeRect(windowX, windowY, 116, 148);
+  g.lineStyle(4, WHITE, 0.9).strokeRect(windowX, windowY, 116, 148);
   g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + 58, windowY + 8, windowX + 58, windowY + 136);
   g.lineStyle(3, 0x8b9392, 0.55).lineBetween(windowX + 14, windowY + 22, windowX + 42, windowY + 4);
   g.lineBetween(windowX + 74, windowY + 44, windowX + 104, windowY + 22);
   g.fillStyle(0x8a9291, 1).fillRect(windowX + 10, windowY + 110, 96, 8);
   drawPot(g, windowX + 34, windowY + 105, 0.52);
+  g.fillStyle(0x9ea5a5, 1).fillRect(windowX + 50, windowY + 88, 18, 20);
+  g.lineStyle(2, INK, 1).strokeRect(windowX + 50, windowY + 88, 18, 20);
+  g.fillStyle(INK, 1).fillRect(windowX + 54, windowY + 94, 3, 3).fillRect(windowX + 61, windowY + 94, 3, 3);
   drawPot(g, windowX + 80, windowY + 105, 0.46);
 
   // Keep the dark opening and frame behind Alex so the entrance animation can
@@ -265,7 +295,7 @@ function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean): void {
     g.lineStyle(3, INK, 1).strokeRect(doorX + 12, BUY_SELL_DOOR_TOP + 14, BUY_SELL_DOOR_WIDTH - 24, 42);
     g.fillStyle(INK, 1).fillRect(doorX + BUY_SELL_DOOR_WIDTH - 15, BUY_SELL_DOOR_TOP + 72, 5, 5);
   }
-  g.lineStyle(4, WHITE, 1).strokeRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
+  g.lineStyle(4, open ? WHITE : INK, 1).strokeRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
 }
 
 export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {

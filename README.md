@@ -16,10 +16,14 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
 - `E` near the BUY / SELL entrance or shop counter: select entry or open the panel.
 - Tap or click the world: walk to that point.
-- Mouse wheel, the −/+ buttons, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
+- Mouse wheel, the single IN/OUT zoom button, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
 - Tap/click the loose pot or BUY / SELL entrance to walk there and interact on arrival.
 - Inside BUY / SELL, tap the counter to open the shop panel and use the exit door to return outside.
 - Open More → Restart Prototype to reset the session.
+
+On portrait phones, the hybrid-control trial adds a fixed joystick below the world
+viewport. Drag it to steer Alex; releasing it stops movement. The single IN/OUT
+zoom toggle sits in the bottom navigation beside the Bag–More controls.
 
 ## Implemented
 
@@ -30,6 +34,7 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 - PLANTS is shuttered and labelled `OPENING SOON`.
 - Small narrow Alex robot with movement, readable camera follow, and walkable-ground limits.
 - Responsive top/bottom HUD with coin balance, objective, settings, navigation panels, safe-area padding, and touch-sized controls.
+- Reversible portrait phone layout trial with an outside-the-world joystick, pointer capture, dead-zone handling, and shared tap/keyboard/zoom actions. Set `PHONE_HYBRID_CONTROLS` in `src/game/config.ts` to `false` to restore the previous phone layout.
 - One playable task: collect one loose empty pot, sell it once at BUY / SELL for provisional 5 coins, and complete the task. Collection and sale happen once, on arrival/explicit confirmation respectively.
 - Decorative cars, crossing, skyline, vacant lots, weeds, rubbish, construction, and future roads.
 

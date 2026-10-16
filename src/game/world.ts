@@ -176,8 +176,8 @@ export const BUY_SELL_DOOR_HEIGHT = 104;
 export const BUY_SELL_DOOR_TOP = 726;
 export const BUY_SELL_DOOR_BOTTOM = 830;
 export const BUY_SELL_ENTRANCE = { x: 1055, y: 864 };
-export const POT_POSITION = { x: 785, y: 890 };
-export const START_POSITION = { x: 635, y: 890 };
+export const POT_POSITION = { x: 1648, y: 910 };
+export const START_POSITION = { x: STARTING_WALKABLE_MIN_X + 20, y: 890 };
 
 export const SHOP_WORLD_WIDTH = 1200;
 export const SHOP_WORLD_HEIGHT = 900;

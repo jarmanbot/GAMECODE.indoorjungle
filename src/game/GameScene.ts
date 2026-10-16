@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { drawNeighborhood, drawPot, setBuySellDoorOpen } from './art';
+import { PHONE_HYBRID_CONTROLS } from './config';
 import {
   BUILDINGS,
   BUY_SELL_DOOR_BOTTOM,
@@ -51,7 +52,10 @@ export class GameScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key;
   private target: Phaser.Math.Vector2 | null = null;
   private targetQueue: Phaser.Math.Vector2[] = [];
-  private zoomMode: ZoomMode = 'normal';
+  private joystickInput = new Phaser.Math.Vector2();
+  private joystickPointerHeld = false;
+  private joystickSteering = false;
+  private zoomMode: ZoomMode = 'close';
   private inventoryHasPot = false;
   private saleComplete = false;
   private coins = 0;
@@ -59,7 +63,7 @@ export class GameScene extends Phaser.Scene {
   private mapMovementAllowed = false;
   private shopInterior = false;
   private shopTransitioning = false;
-  private streetZoomMode: ZoomMode = 'normal';
+  private streetZoomMode: ZoomMode = 'close';
   private pendingInteraction: PendingInteraction | null = null;
   private streetPosition = new Phaser.Math.Vector2(START_POSITION.x, START_POSITION.y);
   private destinationMarker!: Phaser.GameObjects.Graphics;
@@ -71,6 +75,7 @@ export class GameScene extends Phaser.Scene {
   private portraitFollowCentered = false;
   private closeFollowCentered = false;
   private phoneLandscapeBlocked = false;
+  private phoneOrientation: 'portrait' | 'landscape' | 'other' | null = null;
 
   constructor(hud: HudController) {
     super('game-scene');
@@ -146,9 +151,13 @@ export class GameScene extends Phaser.Scene {
       this.mapMovementAllowed ? 0 : Number(this.cursorKeys.up.isDown || this.keys.W.isDown) * -1 + Number(this.cursorKeys.down.isDown || this.keys.S.isDown),
     );
     const hasKeyboardInput = direction.lengthSq() > 0;
-    if (!this.shopInterior && (hasKeyboardInput || this.target)) this.updatePortraitFollow();
+    const hasJoystickInput = this.joystickSteering;
+    if (!this.shopInterior && (hasKeyboardInput || hasJoystickInput || this.target)) this.updatePortraitFollow();
     if (hasKeyboardInput) {
       direction.normalize();
+      this.cancelTapWalk();
+    } else if (hasJoystickInput) {
+      direction.copy(this.joystickInput);
       this.cancelTapWalk();
     } else if (this.target) {
       direction.set(this.target.x - this.player.x, this.target.y - this.player.y);
@@ -168,7 +177,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (direction.lengthSq() > 0) {
-      const speed = hasKeyboardInput ? 235 : 190;
+      const speed = hasKeyboardInput || hasJoystickInput ? 235 : 190;
       const minX = this.shopInterior ? 82 : STARTING_WALKABLE_MIN_X;
       const maxX = this.shopInterior ? SHOP_WORLD_WIDTH - 82 : STARTING_WALKABLE_MAX_X;
       const minY = this.shopInterior ? 160 : FRONT_PAVEMENT_MIN_Y;
@@ -189,8 +198,24 @@ export class GameScene extends Phaser.Scene {
 
   setModalOpen(isOpen: boolean, preserveDestination = false): void {
     this.modalOpen = isOpen;
-    this.mapMovementAllowed = isOpen && preserveDestination;
+    // Map panels may preserve a pending destination for after close, but no
+    // modal is allowed to keep Alex moving while it is open.
+    this.mapMovementAllowed = false;
+    this.hud.resetJoystick();
     if (isOpen && !preserveDestination) this.cancelTapWalk();
+  }
+
+  resizeViewportToStage(): void {
+    const canvas = this.game?.canvas;
+    if (!canvas) return;
+    const stage = canvas.parentElement;
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const width = Math.round(rect.width);
+    const height = Math.round(rect.height);
+    if (width > 0 && height > 0 && (this.scale.width !== width || this.scale.height !== height)) {
+      this.scale.resize(width, height);
+    }
   }
 
   zoomBy(direction: 1 | -1): void {
@@ -213,6 +238,24 @@ export class GameScene extends Phaser.Scene {
       'enter-shop',
       new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
     );
+  }
+
+  setJoystickInput(x: number, y: number, pointerHeld: boolean): void {
+    this.joystickPointerHeld = pointerHeld;
+    if (!pointerHeld) {
+      this.joystickInput.set(0, 0);
+      this.joystickSteering = false;
+      return;
+    }
+    const magnitude = Math.hypot(x, y);
+    if (magnitude <= 0.0001) {
+      this.joystickInput.set(0, 0);
+      this.joystickSteering = false;
+      return;
+    }
+    this.joystickInput.set(x, y).normalize();
+    if (!this.joystickSteering) this.cancelTapWalk();
+    this.joystickSteering = true;
   }
 
   private handleKeyboardInteraction(): void {
@@ -245,6 +288,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = false;
     this.saleComplete = false;
     this.coins = 0;
+    this.hud.resetJoystick();
     this.cancelTapWalk();
     this.player.setPosition(START_POSITION.x, START_POSITION.y);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y).setVisible(true);
@@ -273,7 +317,7 @@ export class GameScene extends Phaser.Scene {
   private createPot(): void {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
-    drawPot(this.pot, 0, 0, 0.75);
+    drawPot(this.pot, 0, 0, 0.9);
   }
 
   private createDestinationMarker(): void {
@@ -318,7 +362,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readonly handleCanvasPointerDown = (event: PointerEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked || event.pointerType === 'mouse' && event.button !== 0) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     this.game.canvas.setPointerCapture?.(event.pointerId);
     this.handleCanvasClientPoint(event.clientX, event.clientY);
   };
@@ -333,7 +381,11 @@ export class GameScene extends Phaser.Scene {
   };
 
   private readonly handleCanvasClick = (event: MouseEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     this.handleCanvasClientPoint(event.clientX, event.clientY);
   };
 
@@ -349,7 +401,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleWorldPoint(screenX: number, screenY: number): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld) return;
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
     if (this.shopInterior) {
       this.handleShopWorldPoint(point.x, point.y);
@@ -539,6 +591,7 @@ export class GameScene extends Phaser.Scene {
   private enterShop(): void {
     if (this.shopInterior || this.shopTransitioning) return;
     this.shopTransitioning = true;
+    this.hud.resetJoystick();
     this.cancelTapWalk();
     this.streetPosition.set(this.player.x, this.player.y);
     this.streetZoomMode = this.zoomMode;
@@ -581,6 +634,7 @@ export class GameScene extends Phaser.Scene {
   private exitShop(): void {
     if (!this.shopInterior || this.shopTransitioning) return;
     this.shopTransitioning = true;
+    this.hud.resetJoystick();
     this.cancelTapWalk();
     this.cameras.main.fadeOut(120, 7, 9, 10);
     this.time.delayedCall(120, () => this.exitShopNow());
@@ -613,7 +667,7 @@ export class GameScene extends Phaser.Scene {
     // that made the interior text render at only a few pixels high. The camera
     // still follows Alex and the room remains bounded, but the readable play
     // area is larger on phones than the desktop-fit room.
-    const portraitPhone = this.scale.height > this.scale.width && this.scale.width <= 680;
+    const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
     const zoom = portraitPhone ? Math.max(0.58, fittedZoom) : Math.max(0.25, fittedZoom);
     this.cameras.main.setBounds(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
     this.cameras.main.setZoom(zoom);
@@ -699,7 +753,7 @@ export class GameScene extends Phaser.Scene {
   private applyZoom(mode: ZoomMode): void {
     this.zoomMode = mode;
     const frame = this.getCameraFrame(mode);
-    const portrait = this.scale.height > this.scale.width;
+    const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
     this.portraitFollowCentered = portrait;
     const followOffsetX = portrait ? 0 : frame.offsetX;
     this.closeFollowCentered = mode === 'close' && this.player.y >= OPPOSITE_PAVEMENT_MIN_Y;
@@ -714,7 +768,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePortraitFollow(): void {
-    if (this.scale.height <= this.scale.width || this.portraitFollowCentered) return;
+    const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
+    if (!portrait || this.portraitFollowCentered) return;
 
     this.portraitFollowCentered = true;
     const frame = this.getCameraFrame(this.zoomMode);
@@ -731,7 +786,7 @@ export class GameScene extends Phaser.Scene {
 
     this.closeFollowCentered = shouldCenter;
     const frame = this.getCameraFrame('close');
-    const portrait = this.scale.height > this.scale.width;
+    const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
     const followOffsetX = portrait && this.portraitFollowCentered ? 0 : frame.offsetX;
     const followLerp = 0.14;
     // Change the target offset in place so Phaser keeps the current scroll
@@ -751,10 +806,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePhoneOrientationState(): void {
-    const phoneLandscape = this.isPhoneDevice() && this.scale.width > this.scale.height;
+    const viewport = this.getDeviceViewport();
+    const phoneLandscape = this.isPhoneDevice() && viewport.width > viewport.height;
+    const phonePortrait = this.isPhoneDevice() && viewport.height > viewport.width;
+    const nextOrientation: 'portrait' | 'landscape' | 'other' = phonePortrait
+      ? 'portrait'
+      : phoneLandscape
+        ? 'landscape'
+        : 'other';
+    if (this.phoneOrientation !== null && this.phoneOrientation !== nextOrientation) {
+      this.hud.resetJoystick();
+    }
+    this.phoneOrientation = nextOrientation;
+    this.hud.setPhoneHybridLayout(PHONE_HYBRID_CONTROLS && phonePortrait);
     if (phoneLandscape === this.phoneLandscapeBlocked) return;
     this.phoneLandscapeBlocked = phoneLandscape;
     this.hud.setPhoneOrientationBlocked(phoneLandscape);
+    if (phoneLandscape) this.hud.resetJoystick();
     this.updateInteraction();
   }
 
@@ -762,10 +830,25 @@ export class GameScene extends Phaser.Scene {
     return /Android|iPhone|iPod/i.test(navigator.userAgent) && !/Windows Phone/i.test(navigator.userAgent);
   }
 
+  private isPortraitPhoneViewport(): boolean {
+    const viewport = this.getDeviceViewport();
+    return PHONE_HYBRID_CONTROLS
+      && this.isPhoneDevice()
+      && viewport.height > viewport.width;
+  }
+
+  private getDeviceViewport(): { width: number; height: number } {
+    const viewport = window.visualViewport;
+    return {
+      width: viewport?.width ?? window.innerWidth,
+      height: viewport?.height ?? window.innerHeight,
+    };
+  }
+
   private getCameraFrame(mode: 'close' | 'normal'): { zoom: number; offsetX: number; offsetY: number } {
     const viewportWidth = Math.max(1, this.scale.width);
     const viewportHeight = Math.max(1, this.scale.height);
-    const portrait = viewportHeight > viewportWidth;
+    const portrait = this.isPortraitPhoneViewport() || viewportHeight > viewportWidth;
     const compactLandscape = !portrait && viewportHeight < 600;
     const desktop = viewportWidth >= 900 && viewportHeight >= 600;
 
@@ -775,7 +858,21 @@ export class GameScene extends Phaser.Scene {
       const right = Math.max(this.player.x + 20, building.x + building.width);
       const top = building.kind === 'apartment' ? building.y - 76 : building.y - 18;
       const bottom = FRONT_PAVEMENT_MAX_Y + 16;
-      const zoom = this.fitZoom(viewportWidth, viewportHeight, right - left, bottom - top, 0.94);
+      // Close is one camera level. Do not derive its magnification from the
+      // nearest storefront: different building widths otherwise create an
+      // apparent third zoom while Alex walks along the street.
+      const referenceBuilding = BUILDINGS.find((candidate) => candidate.key === 'buy-sell') ?? BUILDINGS[0];
+      const referenceLeft = Math.min(START_POSITION.x - 20, referenceBuilding.x);
+      const referenceRight = Math.max(START_POSITION.x + 20, referenceBuilding.x + referenceBuilding.width);
+      const referenceTop = referenceBuilding.y - 18;
+      const referenceBottom = FRONT_PAVEMENT_MAX_Y + 16;
+      const zoom = this.fitZoom(
+        viewportWidth,
+        viewportHeight,
+        referenceRight - referenceLeft,
+        referenceBottom - referenceTop,
+        1.45,
+      );
       return {
         zoom,
         offsetX: this.limitFollowOffset(this.player.x - (left + right) / 2, viewportWidth, zoom),

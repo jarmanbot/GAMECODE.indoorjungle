@@ -62,6 +62,17 @@ button { font: inherit; color: inherit; }
 #game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; touch-action: none; }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
 
+.phone-control-panel { display: none; position: relative; z-index: 20; min-height: 86px; align-items: center; justify-content: flex-start; gap: 16px; padding: 7px max(12px, env(safe-area-inset-right)) 7px max(12px, env(safe-area-inset-left)); background: #0f1315; border-top: 2px solid #717978; border-bottom: 2px solid #717978; touch-action: none; user-select: none; -webkit-user-select: none; }
+.joystick { position: relative; flex: 0 0 74px; width: 74px; height: 74px; border: 2px solid #697271; border-radius: 50%; background: #202729; touch-action: none; }
+.joystick-ring { position: absolute; inset: 11px; border: 2px dashed #858d8d; border-radius: 50%; opacity: .85; pointer-events: none; }
+.joystick-knob { position: absolute; left: 50%; top: 50%; width: 31px; height: 31px; transform: translate(-50%, -50%); border: 3px solid #111416; border-radius: 50%; background: #f6f7f3; box-shadow: 3px 3px 0 #060708; pointer-events: none; }
+
+html.phone-hybrid #app-shell { grid-template-rows: auto auto auto auto; align-content: start; }
+html.phone-hybrid #game-stage { width: min(100%, calc(100dvh - 230px)); height: auto; aspect-ratio: 1; justify-self: center; }
+html.phone-hybrid .phone-control-panel { display: flex; }
+html.phone-hybrid .hud-bottom { width: 100%; }
+html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; margin-left: auto; margin-right: 0; }
+
 .nav-button { min-width: 60px; height: 58px; padding: 4px 8px; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; font-weight: 800; letter-spacing: .04em; touch-action: manipulation; }
 .nav-icon { font-size: 24px; line-height: 22px; }
 .zoom-controls { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 2px solid #7e8785; padding: 4px; }
@@ -69,7 +80,6 @@ button { font: inherit; color: inherit; }
 .zoom-controls button:disabled { opacity: .36; cursor: not-allowed; color: #8a9291; background: #15191b; }
 .zoom-glyph { font-size: 23px; line-height: 18px; }
 .zoom-caption { font-size: 7px; font-weight: 900; line-height: 9px; letter-spacing: .08em; }
-#zoom-label { min-width: 70px; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
 
 .interact-button { position: absolute; z-index: 30; left: 50%; bottom: 96px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; min-height: 50px; padding: 10px 18px; border: 3px solid #111416; background: #f6f7f3; color: #111416; box-shadow: 5px 5px 0 #111416; font-size: 13px; font-weight: 900; cursor: pointer; }
 .interact-button:hover { background: #cfd5d3; }
@@ -155,9 +165,10 @@ button { font: inherit; color: inherit; }
   .nav-icon { font-size: 19px; }
   .zoom-controls { flex: 0 0 auto; margin-left: 4px; gap: 2px; padding: 2px; }
   .zoom-controls button { width: 44px; height: 44px; }
-  #zoom-label { display: block; min-width: 42px; font-size: 8px; }
   .interact-button { bottom: 90px; }
   .toast { top: 76px; }
+  .phone-control-panel { min-height: 82px; }
+  .joystick { flex-basis: 70px; width: 70px; height: 70px; }
   .panel-backdrop:not(.is-city-map) .city-map-frame { height: min(48dvh, 300px); min-height: 220px; }
   .city-map-district strong { font-size: 11px; }
   .city-map-district small { font-size: 8px; }
@@ -173,7 +184,6 @@ button { font: inherit; color: inherit; }
   .nav-icon { font-size: 17px; }
   .zoom-controls { gap: 1px; padding: 1px; }
   .zoom-controls button { width: 34px; height: 38px; }
-  #zoom-label { min-width: 32px; font-size: 7px; }
 }
 
 @media (orientation: landscape) and (max-height: 600px) {
@@ -205,7 +215,6 @@ button { font: inherit; color: inherit; }
   .nav-icon { font-size: 18px; line-height: 17px; }
   .zoom-controls { margin-left: auto; gap: 3px; padding: 2px; }
   .zoom-controls button { width: 38px; height: 38px; }
-  #zoom-label { min-width: 46px; font-size: 8px; }
   .zoom-glyph { font-size: 20px; }
   .interact-button { bottom: 70px; min-height: 42px; padding: 7px 12px; font-size: 11px; }
   .toast { top: 60px; font-size: 11px; }
