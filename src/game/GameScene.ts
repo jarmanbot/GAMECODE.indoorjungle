@@ -414,7 +414,11 @@ export class GameScene extends Phaser.Scene {
     if (this.inventoryPot === 'broken') {
       this.progress.brokenPotOwned = true;
       this.progress.brokenPotAvailable = false;
-    } else if (this.progress.windowJobComplete && this.progress.task === 'repair' && !this.progress.brokenPotOwned) {
+    } else if ((this.progress.task === 'repair' || this.progress.windowJobComplete)
+      && this.inventoryPot !== 'repaired' && !this.progress.brokenPotOwned) {
+      // Repair is the authoritative objective state for the ground item. It
+      // also repairs saves created before brokenPotAvailable was persisted.
+      this.progress.brokenPotOwned = false;
       this.progress.brokenPotAvailable = true;
       if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
     }
@@ -440,7 +444,16 @@ export class GameScene extends Phaser.Scene {
     // The broken pieces remain visible even while the opening pot is still in
     // the Bag. Selling is no longer the next required objective, so hiding
     // the ground item here made the repair pickup appear to be missing.
-    if (this.brokenPot) this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
+    if (this.brokenPot) {
+      const shouldShowBrokenPot = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned;
+      if (shouldShowBrokenPot) {
+        if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
+        const piecesRemaining = this.progress.brokenPotPiecesRemaining;
+        this.brokenPot.clear();
+        drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, piecesRemaining);
+      }
+      this.brokenPot.setVisible(shouldShowBrokenPot);
+    }
     if (this.windowDirtOverlay) {
       this.windowDirtOverlay.setVisible(this.progress.windowJobAccepted && !this.progress.windowJobComplete);
       this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
@@ -601,13 +614,9 @@ export class GameScene extends Phaser.Scene {
       this.showToast('Repair needs the repair tool, glue and a broken pot.', 1600);
       return;
     }
-    const direction = this.lastFacing.clone().normalize();
-    const candidate = new Phaser.Math.Vector2(
-      Phaser.Math.Clamp(this.player.x + direction.x * 78, STARTING_WALKABLE_MIN_X + 28, STARTING_WALKABLE_MAX_X - 28),
-      Phaser.Math.Clamp(this.player.y + direction.y * 78, FRONT_PAVEMENT_MIN_Y + 28, FRONT_PAVEMENT_MAX_Y - 18),
-    );
-    if (!this.isWalkablePosition(candidate.x, candidate.y) || this.isNearBuySellDoor(new Phaser.Math.Vector2(candidate.x, candidate.y))) {
-      this.showToast('There is no clear ground directly ahead to repair the pot.', 1800);
+    const candidate = this.getRepairPlacement();
+    if (!candidate) {
+      this.showToast('There is no clear ground beside Alex to repair the pot.', 1800);
       return;
     }
     this.repairPotDisplay?.destroy();
@@ -624,11 +633,8 @@ export class GameScene extends Phaser.Scene {
 
   private createRepairPickupPresentation(): void {
     if (!this.repairPotDisplay) {
-      const direction = this.lastFacing.clone().normalize();
-      const candidate = new Phaser.Math.Vector2(
-        Phaser.Math.Clamp(this.player.x + direction.x * 78, STARTING_WALKABLE_MIN_X + 28, STARTING_WALKABLE_MAX_X - 28),
-        Phaser.Math.Clamp(this.player.y + direction.y * 78, FRONT_PAVEMENT_MIN_Y + 28, FRONT_PAVEMENT_MAX_Y - 18),
-      );
+      const candidate = this.getRepairPlacement();
+      if (!candidate) return;
       this.repairPotDisplay = this.add.graphics().setDepth(24).setPosition(candidate.x, candidate.y);
     }
     this.repairPotDisplay.setVisible(true);
@@ -672,6 +678,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (!this.repairPresentationActive || this.repairAnimating || this.hopActive || this.inventoryPot !== 'broken') return;
+    if (!this.repairPotDisplay || Phaser.Math.Distance.Between(this.player.x, this.player.y, this.repairPotDisplay.x, this.repairPotDisplay.y) > 125) {
+      this.showToast('Stand beside the pot before repairing it.', 1600);
+      return;
+    }
     this.repairAnimating = true;
     const labels = [
       'Align pieces', 'Seat the rim', 'Stabilise the base', 'Join the left crack',
@@ -712,6 +722,26 @@ export class GameScene extends Phaser.Scene {
     this.repairPotDisplay?.setVisible(false);
     this.releaseTool();
     this.showToast('Repair paused. Completed steps were kept in the Bag.', 1500);
+  }
+
+  private getRepairPlacement(): Phaser.Math.Vector2 | null {
+    const facing = this.lastFacing.clone().normalize();
+    const side = new Phaser.Math.Vector2(-facing.y, facing.x);
+    const candidates = [side, side.clone().scale(-1)];
+    for (const offset of candidates) {
+      const candidate = new Phaser.Math.Vector2(
+        Phaser.Math.Clamp(this.player.x + offset.x * 92, STARTING_WALKABLE_MIN_X + 34, STARTING_WALKABLE_MAX_X - 34),
+        Phaser.Math.Clamp(this.player.y + offset.y * 92, FRONT_PAVEMENT_MIN_Y + 28, OPPOSITE_PAVEMENT_MAX_Y - 18),
+      );
+      if (
+        Phaser.Math.Distance.Between(this.player.x, this.player.y, candidate.x, candidate.y) >= 64
+        && this.isWalkablePosition(candidate.x, candidate.y)
+        && !this.isNearBuySellDoor(candidate)
+      ) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   private setRepairPickupPresentationVisible(visible: boolean): void {
