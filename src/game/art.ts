@@ -1,7 +1,11 @@
 import Phaser from 'phaser';
 import {
   BUILDINGS,
+  BUY_SELL_DOOR_BOTTOM,
+  BUY_SELL_DOOR_HEIGHT,
+  BUY_SELL_DOOR_TOP,
   BUY_SELL_ENTRANCE,
+  BUY_SELL_DOOR_WIDTH,
   PAVEMENT_HEIGHT,
   PAVEMENT_Y,
   FUTURE_ZONES,
@@ -17,7 +21,7 @@ const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
 
-export function drawNeighborhood(scene: Phaser.Scene): void {
+export function drawNeighborhood(scene: Phaser.Scene): Phaser.GameObjects.Graphics | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -35,14 +39,39 @@ export function drawNeighborhood(scene: Phaser.Scene): void {
   drawBuySellPavement(scene);
   drawUndevelopedPlots(scene);
 
-  BUILDINGS.forEach((building) => drawBuilding(scene, building));
+  let buySellDoor: Phaser.GameObjects.Graphics | undefined;
+  BUILDINGS.forEach((building) => {
+    const door = drawBuilding(scene, building);
+    if (door) buySellDoor = door;
+  });
   drawStreetDetails(scene);
 
   addWorldLabel(scene, 156, 1120, 'ROADS CONTINUE →', 0xced4d2, 18);
   addWorldLabel(scene, 3290, 1120, '← FUTURE NEIGHBOURHOODS', 0xced4d2, 18);
+  return buySellDoor;
 }
 
 function drawSkyline(scene: Phaser.Scene): void {
+  const far = scene.add.graphics().setDepth(-90);
+  const farBuildings = [
+    [20, 205, 170, 170], [250, 150, 120, 225], [470, 212, 210, 163],
+    [820, 138, 150, 237], [1040, 198, 190, 177], [1320, 125, 170, 250],
+    [1610, 190, 220, 185], [1940, 142, 160, 233], [2200, 205, 210, 170],
+    [2530, 130, 175, 245], [2820, 188, 225, 187], [3160, 150, 180, 225],
+    [3470, 204, 210, 172], [3800, 135, 260, 245],
+  ];
+  far.fillStyle(0x303638, 0.68);
+  farBuildings.forEach(([x, y, width, height]) => {
+    far.fillRect(x, y, width, height);
+  });
+  far.lineStyle(3, 0x565e60, 0.32);
+  for (const [x, y, width, height] of farBuildings) {
+    for (let windowY = y + 38; windowY < y + height - 26; windowY += 46) {
+      far.strokeRect(x + 24, windowY, 12, 9);
+      if (width > 160) far.strokeRect(x + width - 38, windowY, 12, 9);
+    }
+  }
+
   const g = scene.add.graphics().setDepth(-80);
   const skyline = [
     [50, 120, 130, 290], [210, 180, 110, 230], [350, 92, 190, 320], [575, 155, 100, 257],
@@ -145,10 +174,9 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building): void {
+function drawBuilding(scene: Phaser.Scene, building: Building): Phaser.GameObjects.Graphics | undefined {
   if (building.kind === 'shop') {
-    drawBuySellBuilding(scene, building);
-    return;
+    return drawBuySellBuilding(scene, building);
   }
   const g = scene.add.graphics().setDepth(5);
   const { x, y, width, height } = building;
@@ -170,49 +198,78 @@ function drawBuilding(scene: Phaser.Scene, building: Building): void {
   if (building.kind === 'apartment') drawApartment(scene, g, building);
 }
 
-function drawBuySellBuilding(scene: Phaser.Scene, building: Building): void {
+function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.GameObjects.Graphics {
   const g = scene.add.graphics().setDepth(5);
   const x = building.x;
   const y = building.y;
   const entranceCenterX = BUY_SELL_ENTRANCE.x;
 
-  // A simple facade gives the shop a building silhouette instead of a UI card.
-  g.fillStyle(0x5e6669, 1).fillRect(x, y, building.width, building.height);
-  g.fillStyle(0x252a2d, 1).fillRect(x, y, building.width, 16);
-  g.fillStyle(0x747c7d, 1).fillRect(x + 12, y + 16, 12, building.height - 16);
-  g.fillStyle(0x747c7d, 1).fillRect(x + building.width - 24, y + 16, 12, building.height - 16);
-  g.lineStyle(4, INK, 0.95).strokeRect(x, y, building.width, building.height);
-  g.lineStyle(3, 0x858d8d, 0.9).lineBetween(x + 28, y + 89, x + building.width - 28, y + 89);
+  // A shallow roof cap and sparse masonry keep the shop legible as a
+  // building without turning the facade into a dense UI-like border.
+  g.fillStyle(0x5e6669, 1).fillRect(x + 8, y + 8, building.width - 16, building.height - 8);
+  g.fillStyle(0x252a2d, 1).fillRect(x - 8, y - 8, building.width + 16, 18);
+  g.fillStyle(0x858d8d, 1).fillRect(x + 4, y + 10, building.width - 8, 8);
+  g.lineStyle(4, INK, 0.95).strokeRect(x + 8, y + 8, building.width - 16, building.height - 8);
+
+  const brickPatches = [
+    [x + 22, y + 91, 54, 12], [x + 88, y + 92, 36, 12], [x + 274, y + 91, 42, 12],
+    [x + 18, y + 286, 68, 13], [x + 286, y + 270, 34, 13], [x + 238, y + 300, 42, 12],
+  ];
+  g.fillStyle(0x747c7d, 0.7);
+  brickPatches.forEach(([patchX, patchY, patchWidth, patchHeight]) => {
+    g.fillRect(patchX, patchY, patchWidth, patchHeight);
+  });
 
   // One compact sign, kept separate from the window and entrance.
   g.fillStyle(INK, 1).fillRect(x + 90, y + 32, 170, 38);
   g.lineStyle(3, WHITE, 0.9).strokeRect(x + 90, y + 32, 170, 38);
   addWorldLabel(scene, x + building.width / 2, y + 51, 'BUY / SELL', WHITE, 17, true);
 
-  // Modest display window with two small goods on one shelf.
+  // Modest display window with a few decorative, non-collectible goods.
   const windowX = x + 30;
   const windowY = y + 116;
   g.fillStyle(DEEP, 1).fillRect(windowX, windowY, 116, 148);
-  g.lineStyle(3, INK, 0.95).strokeRect(windowX, windowY, 116, 148);
-  g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + 58, windowY, windowX + 58, windowY + 148);
+  g.lineStyle(4, INK, 0.95).strokeRect(windowX, windowY, 116, 148);
+  g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + 58, windowY + 8, windowX + 58, windowY + 136);
+  g.lineStyle(3, 0x8b9392, 0.55).lineBetween(windowX + 14, windowY + 22, windowX + 42, windowY + 4);
+  g.lineBetween(windowX + 74, windowY + 44, windowX + 104, windowY + 22);
   g.fillStyle(0x8a9291, 1).fillRect(windowX + 10, windowY + 110, 96, 8);
   drawPot(g, windowX + 34, windowY + 105, 0.52);
   drawPot(g, windowX + 80, windowY + 105, 0.46);
 
-  // The door is aligned with BUY_SELL_ENTRANCE and reaches the pavement.
-  const doorX = entranceCenterX - 32;
-  const doorY = y + 108;
-  const doorHeight = building.y + building.height - doorY;
-  g.fillStyle(WHITE, 1).fillRect(doorX, doorY, 64, doorHeight);
-  g.lineStyle(3, INK, 1).strokeRect(doorX, doorY, 64, doorHeight);
-  g.fillStyle(0x9ea5a5, 1).fillRect(doorX + 12, doorY + 18, 40, 54);
-  g.lineStyle(3, INK, 1).strokeRect(doorX + 12, doorY + 18, 40, 54);
-  g.fillStyle(INK, 1).fillRect(doorX + 49, doorY + 108, 5, 5);
-  g.fillStyle(INK, 1).fillRect(doorX - 4, building.y + building.height - 5, 72, 5);
+  // Keep the dark opening and frame behind Alex so the entrance animation can
+  // show him stepping into the doorway before he fades out.
+  const door = scene.add.graphics().setDepth(29);
+  drawBuySellDoor(door, false);
 
-  // A narrow threshold makes the door read as meeting the pavement.
-  g.fillStyle(0x6e7677, 1).fillRect(doorX - 8, building.y + building.height, 80, 8);
-  g.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 8, building.y + building.height, doorX + 72, building.y + building.height);
+  // Two shallow steps meet the pavement; there is no deep rectangle below the
+  // door for input or decoration to accidentally read as an entrance.
+  const doorX = entranceCenterX - BUY_SELL_DOOR_WIDTH / 2;
+  g.fillStyle(0x6e7677, 1).fillRect(doorX - 10, BUY_SELL_DOOR_BOTTOM, BUY_SELL_DOOR_WIDTH + 20, 8);
+  g.fillStyle(0x858d8d, 1).fillRect(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, BUY_SELL_DOOR_WIDTH + 12, 8);
+  g.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 10, BUY_SELL_DOOR_BOTTOM, doorX + BUY_SELL_DOOR_WIDTH + 10, BUY_SELL_DOOR_BOTTOM);
+  g.lineBetween(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, doorX + BUY_SELL_DOOR_WIDTH + 6, BUY_SELL_DOOR_BOTTOM + 8);
+  return door;
+}
+
+function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean): void {
+  const doorX = BUY_SELL_ENTRANCE.x - BUY_SELL_DOOR_WIDTH / 2;
+  g.clear();
+  if (open) {
+    g.fillStyle(0x07090a, 1).fillRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
+    g.fillStyle(0x252a2d, 1).fillRect(doorX + 8, BUY_SELL_DOOR_TOP + 8, BUY_SELL_DOOR_WIDTH - 16, BUY_SELL_DOOR_HEIGHT - 8);
+    g.fillStyle(0x111416, 1).fillRect(doorX + 12, BUY_SELL_DOOR_TOP + 68, BUY_SELL_DOOR_WIDTH - 24, 28);
+  } else {
+    g.fillStyle(WHITE, 1).fillRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
+    g.fillStyle(0x9ea5a5, 1).fillRect(doorX + 12, BUY_SELL_DOOR_TOP + 14, BUY_SELL_DOOR_WIDTH - 24, 42);
+    g.lineStyle(3, INK, 1).strokeRect(doorX + 12, BUY_SELL_DOOR_TOP + 14, BUY_SELL_DOOR_WIDTH - 24, 42);
+    g.fillStyle(INK, 1).fillRect(doorX + BUY_SELL_DOOR_WIDTH - 15, BUY_SELL_DOOR_TOP + 72, 5, 5);
+  }
+  g.lineStyle(4, WHITE, 1).strokeRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
+}
+
+export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
+  drawBuySellDoor(door, open);
 }
 
 function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {

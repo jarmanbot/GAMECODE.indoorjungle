@@ -14,6 +14,7 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 ## Controls
 
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
+- `E` near the BUY / SELL entrance or shop counter: select entry or open the panel.
 - Tap or click the world: walk to that point.
 - Mouse wheel, the −/+ buttons, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
 - Tap/click the loose pot or BUY / SELL entrance to walk there and interact on arrival.

@@ -1,7 +1,11 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot } from './art';
+import { drawNeighborhood, drawPot, setBuySellDoorOpen } from './art';
 import {
   BUILDINGS,
+  BUY_SELL_DOOR_BOTTOM,
+  BUY_SELL_DOOR_HEIGHT,
+  BUY_SELL_DOOR_TOP,
+  BUY_SELL_DOOR_WIDTH,
   BUY_SELL_ENTRANCE,
   CROSSING_END_X,
   CROSSING_START_X,
@@ -40,9 +44,11 @@ export class GameScene extends Phaser.Scene {
   private readonly hud: HudController;
   private player!: Phaser.GameObjects.Graphics;
   private pot!: Phaser.GameObjects.Graphics;
+  private buySellDoor?: Phaser.GameObjects.Graphics;
   private cars: Car[] = [];
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
+  private interactKey!: Phaser.Input.Keyboard.Key;
   private target: Phaser.Math.Vector2 | null = null;
   private targetQueue: Phaser.Math.Vector2[] = [];
   private zoomMode: ZoomMode = 'normal';
@@ -72,7 +78,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    drawNeighborhood(this);
+    this.buySellDoor = drawNeighborhood(this);
     this.createCars();
     this.createPlayer();
     this.createPot();
@@ -87,6 +93,7 @@ export class GameScene extends Phaser.Scene {
 
     this.cursorKeys = this.input.keyboard!.createCursorKeys();
     this.keys = this.input.keyboard!.addKeys('W,A,S,D') as Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
+    this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
 
     this.game.canvas.addEventListener('pointerdown', this.handleCanvasPointerDown, { passive: false, capture: true });
     this.game.canvas.addEventListener('pointerup', this.handleCanvasPointerUp, { passive: false, capture: true });
@@ -124,6 +131,13 @@ export class GameScene extends Phaser.Scene {
     if (this.shopTransitioning) {
       this.updateInteraction();
       return;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      this.handleKeyboardInteraction();
+      if (this.modalOpen) {
+        this.updateInteraction();
+        return;
+      }
     }
     if (!this.shopInterior) this.updateCloseVerticalFollow();
 
@@ -180,14 +194,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   zoomBy(direction: 1 | -1): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.shopTransitioning) return;
     const index = this.zoomOrder.indexOf(this.zoomMode);
     const nextIndex = Phaser.Math.Clamp(index + direction, 0, this.zoomOrder.length - 1);
     this.applyZoom(this.zoomOrder[nextIndex]);
   }
 
   setZoom(mode: ZoomMode): void {
-    if (this.phoneLandscapeBlocked || this.shopInterior) return;
+    if (this.phoneLandscapeBlocked || this.shopInterior || this.shopTransitioning) return;
     this.applyZoom(mode);
   }
 
@@ -195,6 +209,24 @@ export class GameScene extends Phaser.Scene {
     if (this.modalOpen || this.phoneLandscapeBlocked) return;
     if (this.pendingInteraction && !this.target) this.completePendingInteraction();
     else if (this.shopInterior && this.isWithinShopCounterRange()) this.openShopPanel();
+    else if (!this.shopInterior && this.isPlayerNearBuySellEntrance()) this.selectPendingInteraction(
+      'enter-shop',
+      new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
+    );
+  }
+
+  private handleKeyboardInteraction(): void {
+    if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.shopInterior && this.isWithinShopCounterRange()) {
+      this.openShopPanel();
+      return;
+    }
+    if (!this.shopInterior && this.isPlayerNearBuySellEntrance()) {
+      this.selectPendingInteraction(
+        'enter-shop',
+        new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
+      );
+    }
   }
 
   sellOpeningPot(): void {
@@ -369,9 +401,18 @@ export class GameScene extends Phaser.Scene {
   private isNearBuySellDoor(point: Phaser.Math.Vector2): boolean {
     // The hit area follows the visible door, while the approach point remains
     // at pavement level so Alex never has to enter the building geometry.
-    return Math.abs(point.x - BUY_SELL_ENTRANCE.x) <= 92
-      && point.y >= 600
-      && point.y <= FRONT_PAVEMENT_MAX_Y + 38;
+    return Math.abs(point.x - BUY_SELL_ENTRANCE.x) <= BUY_SELL_DOOR_WIDTH / 2 + 18
+      && point.y >= BUY_SELL_DOOR_TOP - 18
+      && point.y <= BUY_SELL_DOOR_BOTTOM + 14;
+  }
+
+  private isPlayerNearBuySellEntrance(): boolean {
+    return Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      BUY_SELL_ENTRANCE.x,
+      BUY_SELL_ENTRANCE.y,
+    ) <= 120;
   }
 
   private getPotApproachPoint(): Phaser.Math.Vector2 {
@@ -448,7 +489,14 @@ export class GameScene extends Phaser.Scene {
   private showInteractionHighlight(interaction: PendingInteraction, point: Phaser.Math.Vector2): void {
     this.interactionHighlight.clear();
     this.interactionHighlight.lineStyle(4, 0xf6f7f3, 0.95);
-    if (interaction === 'enter-shop' || interaction === 'exit-shop') {
+    if (interaction === 'enter-shop') {
+      this.interactionHighlight.strokeRect(
+        BUY_SELL_ENTRANCE.x - BUY_SELL_DOOR_WIDTH / 2 - 10,
+        BUY_SELL_DOOR_TOP - 10,
+        BUY_SELL_DOOR_WIDTH + 20,
+        BUY_SELL_DOOR_HEIGHT + 20,
+      );
+    } else if (interaction === 'exit-shop') {
       this.interactionHighlight.strokeRect(point.x - 58, point.y - 62, 116, 70);
     } else {
       this.interactionHighlight.strokeCircle(point.x, point.y, 42);
@@ -494,8 +542,27 @@ export class GameScene extends Phaser.Scene {
     this.cancelTapWalk();
     this.streetPosition.set(this.player.x, this.player.y);
     this.streetZoomMode = this.zoomMode;
-    this.cameras.main.fadeOut(120, 7, 9, 10);
-    this.time.delayedCall(120, () => this.enterShopNow());
+    setBuySellDoorOpen(this.buySellDoor!, true);
+    this.player.setAlpha(1);
+    this.tweens.add({
+      targets: this.player,
+      x: BUY_SELL_ENTRANCE.x,
+      y: BUY_SELL_DOOR_BOTTOM - 18,
+      duration: 360,
+      ease: 'Sine.inOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.player,
+          alpha: 0,
+          duration: 220,
+          ease: 'Quad.in',
+          onComplete: () => {
+            this.cameras.main.fadeOut(180, 7, 9, 10);
+            this.time.delayedCall(180, () => this.enterShopNow());
+          },
+        });
+      },
+    });
   }
 
   private enterShopNow(): void {
@@ -503,7 +570,7 @@ export class GameScene extends Phaser.Scene {
     this.setObjectsVisible(this.streetObjects, false);
     this.shopObjects = [];
     this.drawShopInterior();
-    this.player.setPosition(SHOP_PLAYER_START.x, SHOP_PLAYER_START.y).setVisible(true);
+    this.player.setPosition(SHOP_PLAYER_START.x, SHOP_PLAYER_START.y).setAlpha(1).setVisible(true);
     this.destinationMarker.setVisible(false);
     this.clearInteractionHighlight();
     this.setShopCamera();
@@ -523,8 +590,9 @@ export class GameScene extends Phaser.Scene {
     this.shopObjects.forEach((object) => object.destroy());
     this.shopObjects = [];
     this.shopInterior = false;
+    setBuySellDoorOpen(this.buySellDoor!, false);
     this.setObjectsVisible(this.streetObjects, true);
-    this.player.setPosition(BUY_SELL_ENTRANCE.x - 70, FRONT_PAVEMENT_MAX_Y - 18).setVisible(true);
+    this.player.setPosition(BUY_SELL_ENTRANCE.x - 82, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete);
     this.destinationMarker.setVisible(false);
     this.clearInteractionHighlight();
@@ -612,13 +680,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readonly handleCanvasWheel = (event: WheelEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
       event.preventDefault();
     this.zoomBy(event.deltaY > 0 ? -1 : 1);
   };
 
   private readonly handleZoomKeyDown = (event: KeyboardEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
     if (event.key === ',' || event.code === 'Comma') {
       event.preventDefault();
       this.zoomBy(-1);
