@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot, drawBrokenPot, drawBrokenPotPieces, setBuySellDoorOpen } from './art';
+import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, setBuySellDoorOpen } from './art';
+import { AudioController } from './AudioController';
 import { PHONE_HYBRID_CONTROLS } from './config';
-import { DEFAULT_PROGRESS, sanitizeProgress, type EquippedTool, type PotCondition, type ProgressState, type TaskState } from './progress';
+import { DEFAULT_PROGRESS, sanitizeProgress, type EquippedTool, type InventoryItem, type PotCondition, type ProgressState, type TaskState } from './progress';
 import {
   BUILDINGS,
   BUY_SELL_DOOR_BOTTOM,
@@ -9,6 +10,7 @@ import {
   BUY_SELL_DOOR_TOP,
   BUY_SELL_DOOR_WIDTH,
   BUY_SELL_ENTRANCE,
+  BUY_SELL_WINDOW,
   CROSSING_END_X,
   CROSSING_START_X,
   FRONT_PAVEMENT_MAX_Y,
@@ -45,6 +47,7 @@ type PlayerFacing = 'front' | 'back' | 'left' | 'right';
 export class GameScene extends Phaser.Scene {
   private readonly zoomOrder: ZoomMode[] = ['normal', 'close'];
   private readonly hud: HudController;
+  private readonly audio: AudioController;
   private player!: Phaser.GameObjects.Graphics;
   private pot!: Phaser.GameObjects.Graphics;
   private brokenPot!: Phaser.GameObjects.Graphics;
@@ -93,6 +96,10 @@ export class GameScene extends Phaser.Scene {
   private toolFeedbackAt = 0;
   private lastSavedCleaningStage = 0;
   private sprayTimer?: Phaser.Time.TimerEvent;
+  private wantedSignBackdrop?: Phaser.GameObjects.Graphics;
+  private wantedSignText?: Phaser.GameObjects.Text;
+  private wantedSignPulse?: Phaser.Tweens.Tween;
+  private shopGoldenPothosDisplay: Phaser.GameObjects.GameObject[] = [];
   private hopActive = false;
   private hopElapsed = 0;
   private readonly hopDuration = 520;
@@ -105,14 +112,16 @@ export class GameScene extends Phaser.Scene {
   private repairAnimating = false;
   private brokenPotPieceSelected = false;
 
-  constructor(hud: HudController) {
+  constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
     this.hud = hud;
+    this.audio = audio;
   }
 
   create(): void {
     this.loadProgress();
     this.buySellDoor = drawNeighborhood(this);
+    this.createWantedSign();
     this.createWindowDirtOverlay();
     this.createCars();
     this.createPlayer();
@@ -333,6 +342,8 @@ export class GameScene extends Phaser.Scene {
 
   pressHop(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    this.audio.unlock();
+    this.audio.playJump();
     if (this.repairPresentationActive) this.cancelRepairPresentation();
     this.releaseTool();
     this.stopSprayEffect();
@@ -344,6 +355,7 @@ export class GameScene extends Phaser.Scene {
 
   pressTool(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    this.audio.unlock();
     if (this.brokenPotPieceSelected) {
       this.collectBrokenPotPiece();
       return;
@@ -373,9 +385,10 @@ export class GameScene extends Phaser.Scene {
     this.toolHeld = false;
   }
 
-  getShopPanelState(): { inventoryPot: PotCondition | null; saleComplete: boolean; windowJobAccepted: boolean; windowJobComplete: boolean } {
+  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowJobComplete: boolean } {
     return {
       inventoryPot: this.inventoryPot,
+      inventoryItem: this.progress.inventoryItem,
       saleComplete: this.saleComplete,
       windowJobAccepted: this.progress.windowJobAccepted,
       windowJobComplete: this.progress.windowJobComplete,
@@ -387,6 +400,7 @@ export class GameScene extends Phaser.Scene {
       coins: this.coins,
       inventoryHasPot: this.inventoryHasPot,
       inventoryPotCondition: this.inventoryPot,
+      inventoryItem: this.progress.inventoryItem,
       task: this.progress.task,
       equippedTool: this.progress.equippedTool,
       repairToolOwned: this.progress.repairToolOwned,
@@ -434,6 +448,9 @@ export class GameScene extends Phaser.Scene {
   private saveProgress(): void {
     this.progress.coins = this.coins;
     this.progress.inventoryPot = this.inventoryPot;
+    this.progress.inventoryItem = this.inventoryPot === 'ordinary'
+      ? 'small-golden-pothos'
+      : this.inventoryPot ? 'special-repair-pot' : null;
     this.progress.saleComplete = this.saleComplete;
     this.progress.brokenPotOwned = this.inventoryPot === 'broken' || this.progress.brokenPotOwned;
     try { localStorage.setItem(this.progressKey, JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
@@ -538,6 +555,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.audio.playToolUse();
     const approach = this.getWindowInteractionPoint();
     const display = this.getWindowDisplayPoint();
     this.sprayEffect.clear();
@@ -682,6 +700,7 @@ export class GameScene extends Phaser.Scene {
       this.showToast('Stand beside the pot before repairing it.', 1600);
       return;
     }
+    this.audio.playToolUse();
     this.repairAnimating = true;
     const labels = [
       'Align pieces', 'Seat the rim', 'Stabilise the base', 'Join the left crack',
@@ -772,19 +791,24 @@ export class GameScene extends Phaser.Scene {
     this.saleComplete = true;
     this.coins += 5;
     this.progress.inventoryPot = null;
+    this.progress.inventoryItem = null;
     this.progress.coins = this.coins;
     this.progress.saleComplete = true;
+    this.progress.shopGoldenPothosStock = true;
     this.progress.task = 'clean';
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel('Pot sold for 5 coins.');
-    this.showToast('Pot sold for 5 coins.');
+    this.refreshWantedSign();
+    this.createShopGoldenPothosDisplay();
+    this.hud.refreshShopPanel('Small Golden Pothos delivered. +5 coins.');
+    this.showToast('Small Golden Pothos sold for 5 coins.');
   }
 
   sellRepairedPot(): void {
     if (!this.shopInterior || this.inventoryPot !== 'repaired') return;
     this.inventoryHasPot = false;
     this.inventoryPot = null;
+    this.progress.inventoryItem = null;
     this.coins += 10;
     this.progress.inventoryPot = null;
     this.progress.coins = this.coins;
@@ -819,6 +843,7 @@ export class GameScene extends Phaser.Scene {
     this.repairPotDisplay = undefined;
     this.repairPickupPrompt?.destroy();
     this.repairPickupPrompt = undefined;
+    this.shopGoldenPothosDisplay = [];
     this.saveProgress();
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
@@ -826,6 +851,7 @@ export class GameScene extends Phaser.Scene {
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y).setVisible(true);
     this.drawPlayer();
     this.updateProgressVisuals();
+    this.refreshWantedSign();
     this.syncHudState();
     this.hud.setMapPosition(START_POSITION.x / WORLD_WIDTH, START_POSITION.y);
     this.showToast('Prototype restarted.');
@@ -859,11 +885,6 @@ export class GameScene extends Phaser.Scene {
       const eyeX = this.playerFacing === 'left' ? -8 : 3;
       this.player.fillStyle(0x111416, 1).fillRect(eyeX, -31 - lift, 5, 6);
       this.player.lineStyle(2, 0x697173, 1).lineBetween(0, -20 - lift, 0, 9 - lift);
-      if (this.playerFacing === 'left') {
-        this.player.lineStyle(3, 0x111416, 1).lineBetween(-11, -22 - lift, -15, -15 - lift);
-      } else {
-        this.player.lineStyle(3, 0x111416, 1).lineBetween(11, -22 - lift, 15, -15 - lift);
-      }
     }
     this.player.fillStyle(0xf5f6f2, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
   }
@@ -871,7 +892,7 @@ export class GameScene extends Phaser.Scene {
   private createPot(): void {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
-    drawPot(this.pot, 0, 0, 0.9);
+    drawGoldenPothos(this.pot, 0, 0, 0.9);
     this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete);
   }
 
@@ -953,6 +974,7 @@ export class GameScene extends Phaser.Scene {
       event.stopPropagation();
       return;
     }
+    this.audio.unlock();
     this.game.canvas.setPointerCapture?.(event.pointerId);
     this.handleCanvasClientPoint(event.clientX, event.clientY);
   };
@@ -1243,13 +1265,14 @@ export class GameScene extends Phaser.Scene {
     this.inventoryPot = 'ordinary';
     this.pot.setVisible(false);
     this.progress.inventoryPot = 'ordinary';
+    this.progress.inventoryItem = 'small-golden-pothos';
     // Collecting the first pot unlocks the opening job. Selling remains an
     // available transaction, but it is no longer the next required objective.
     this.progress.task = 'clean';
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Pot collected. Visit BUY / SELL to accept the window job.');
+    this.showToast('Found a Small Golden Pothos. Visit BUY / SELL to accept the window job.');
   }
 
   private selectBrokenPotPiece(): void {
@@ -1269,6 +1292,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.audio.playToolUse();
     this.brokenPotPieceSelected = false;
     this.progress.brokenPotPiecesRemaining = Math.max(0, this.progress.brokenPotPiecesRemaining - 1);
     this.brokenPot.clear();
@@ -1284,6 +1308,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = true;
     this.inventoryPot = 'broken';
     this.progress.inventoryPot = 'broken';
+    this.progress.inventoryItem = 'special-repair-pot';
     this.progress.brokenPotOwned = true;
     this.progress.brokenPotAvailable = false;
     this.progress.task = 'repair';
@@ -1300,6 +1325,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = true;
     this.inventoryPot = 'repaired';
     this.progress.inventoryPot = 'repaired';
+    this.progress.inventoryItem = 'special-repair-pot';
     this.progress.task = 'sell-repaired';
     this.repairPickupReady = false;
     this.repairPotDisplay.setVisible(false);
@@ -1352,6 +1378,7 @@ export class GameScene extends Phaser.Scene {
     this.shopInterior = true;
     this.setObjectsVisible(this.streetObjects, false);
     this.shopObjects = [];
+    this.shopGoldenPothosDisplay = [];
     this.drawShopInterior();
     this.player.setPosition(SHOP_PLAYER_START.x, SHOP_PLAYER_START.y).setAlpha(1).setVisible(true);
     this.destinationMarker.setVisible(false);
@@ -1374,6 +1401,7 @@ export class GameScene extends Phaser.Scene {
   private exitShopNow(): void {
     this.shopObjects.forEach((object) => object.destroy());
     this.shopObjects = [];
+    this.shopGoldenPothosDisplay = [];
     this.shopInterior = false;
     setBuySellDoorOpen(this.buySellDoor!, false);
     this.setObjectsVisible(this.streetObjects, true);
@@ -1434,6 +1462,8 @@ export class GameScene extends Phaser.Scene {
       for (const shelfY of [275, 350, 425]) shelves.lineBetween(shelfX + 12, shelfY, shelfX + 168, shelfY);
     }
     this.shopObjects.push(shelves);
+    this.createShopFutureDisplayItems();
+    this.createShopGoldenPothosDisplay();
 
     const counter = this.add.graphics().setDepth(5);
     counter.fillStyle(0x111416, 1).fillRect(SHOP_COUNTER.x - 180, SHOP_COUNTER.y - 62, 360, 112);
@@ -1463,6 +1493,115 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setDepth(7);
       this.shopObjects.push(label);
     });
+  }
+
+  private createWantedSign(): void {
+    this.wantedSignBackdrop = this.add.graphics().setDepth(20);
+    const signX = BUY_SELL_WINDOW.x + 18;
+    const signY = BUY_SELL_WINDOW.y + 32;
+    const signWidth = BUY_SELL_WINDOW.width - 36;
+    const signHeight = 112;
+    this.wantedSignText = this.add.text(BUY_SELL_WINDOW.x + BUY_SELL_WINDOW.width / 2, signY + signHeight / 2, '', {
+      color: '#f6f7f3',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+      fontSize: '15px',
+      fontStyle: 'bold',
+      align: 'center',
+      lineSpacing: 4,
+    }).setOrigin(0.5).setDepth(21);
+    this.refreshWantedSign();
+  }
+
+  private refreshWantedSign(): void {
+    if (!this.wantedSignBackdrop || !this.wantedSignText) return;
+    const requestOutstanding = !this.progress.saleComplete;
+    const message = requestOutstanding
+      ? 'WANTED\nGOLDEN POTHOS\nCASH PAID'
+      : 'NO DELIVERIES\nWANTED';
+    this.wantedSignBackdrop.clear();
+    const signX = BUY_SELL_WINDOW.x + 18;
+    const signY = BUY_SELL_WINDOW.y + 32;
+    const signWidth = BUY_SELL_WINDOW.width - 36;
+    const signHeight = 112;
+    this.wantedSignBackdrop.fillStyle(0x111416, 0.98).fillRect(signX, signY, signWidth, signHeight);
+    this.wantedSignBackdrop.lineStyle(4, 0xf6f7f3, 0.98).strokeRect(signX, signY, signWidth, signHeight);
+    this.wantedSignText.setText(message);
+
+    this.wantedSignPulse?.stop();
+    this.wantedSignPulse?.remove();
+    this.wantedSignPulse = undefined;
+    this.wantedSignBackdrop.setAlpha(1);
+    this.wantedSignText.setAlpha(1);
+    if (requestOutstanding) {
+      this.wantedSignPulse = this.tweens.add({
+        targets: [this.wantedSignBackdrop, this.wantedSignText],
+        alpha: 0.58,
+        duration: 850,
+        hold: 900,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.inOut',
+      });
+    }
+  }
+
+  private createShopFutureDisplayItems(): void {
+    this.createPremiumDisplayItem(140, 260, 'B&W', 0xdfe3df, 0x3b4244, 0x697173);
+    this.createPremiumDisplayItem(220, 335, 'NES', 0xc95b52, 0x3a78a8, 0x72a653);
+    this.createPremiumDisplayItem(930, 260, 'PS', 0x4b3b66, 0xb7a6d8, 0x6c8bd1);
+  }
+
+  private createPremiumDisplayItem(
+    x: number,
+    y: number,
+    label: string,
+    potColor: number,
+    leafColor: number,
+    accentColor: number,
+  ): void {
+    const item = this.add.graphics().setDepth(4);
+    item.fillStyle(0x111416, 1).fillRect(x - 22, y - 18, 44, 8);
+    item.fillStyle(potColor, 1)
+      .fillTriangle(x - 16, y - 10, x + 16, y - 10, x + 11, y + 17)
+      .fillTriangle(x - 16, y - 10, x + 11, y + 17, x - 11, y + 17);
+    item.lineStyle(3, 0x111416, 1).strokeRect(x - 16, y - 10, 32, 27);
+    item.fillStyle(leafColor, 1)
+      .fillTriangle(x, y - 18, x - 19, y - 38, x - 5, y - 43)
+      .fillTriangle(x + 2, y - 18, x + 20, y - 37, x + 7, y - 43);
+    item.lineStyle(2, accentColor, 0.95).lineBetween(x, y - 17, x - 13, y - 35).lineBetween(x + 2, y - 17, x + 14, y - 34);
+    const name = this.add.text(x, y + 29, `${label} · DISPLAY`, {
+      color: '#f6f7f3',
+      fontFamily: 'monospace',
+      fontSize: '8px',
+      fontStyle: 'bold',
+      backgroundColor: '#111416',
+      padding: { left: 3, right: 3, top: 2, bottom: 2 },
+    }).setOrigin(0.5).setDepth(7);
+    this.shopObjects.push(item, name);
+  }
+
+  private createShopGoldenPothosDisplay(): void {
+    if (!this.shopInterior || !this.progress.shopGoldenPothosStock || this.shopGoldenPothosDisplay.length > 0) return;
+    const item = this.add.graphics().setDepth(4);
+    drawGoldenPothos(item, 180, 405, 0.55);
+    const stockLabel = this.add.text(180, 376, 'SHOP STOCK', {
+      color: '#f6f7f3',
+      fontFamily: 'monospace',
+      fontSize: '8px',
+      fontStyle: 'bold',
+      backgroundColor: '#111416',
+      padding: { left: 3, right: 3, top: 2, bottom: 2 },
+    }).setOrigin(0.5).setDepth(7);
+    const priceTag = this.add.text(180, 454, '7 COINS', {
+      color: '#111416',
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      backgroundColor: '#f6f7f3',
+      padding: { left: 5, right: 5, top: 3, bottom: 3 },
+    }).setOrigin(0.5).setDepth(7);
+    this.shopGoldenPothosDisplay = [item, stockLabel, priceTag];
+    this.shopObjects.push(...this.shopGoldenPothosDisplay);
   }
 
   private readonly handleCanvasWheel = (event: WheelEvent): void => {

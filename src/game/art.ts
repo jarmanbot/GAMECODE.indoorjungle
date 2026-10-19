@@ -6,6 +6,7 @@ import {
   BUY_SELL_DOOR_TOP,
   BUY_SELL_ENTRANCE,
   BUY_SELL_DOOR_WIDTH,
+  BUY_SELL_WINDOW,
   PAVEMENT_HEIGHT,
   PAVEMENT_Y,
   FUTURE_ZONES,
@@ -252,20 +253,23 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.Ga
   g.lineStyle(3, WHITE, 0.9).strokeRect(x + 90, y + 32, 170, 38);
   addWorldLabel(scene, x + building.width / 2, y + 51, 'BUY / SELL', WHITE, 17, true);
 
-  // Modest display window with a few decorative, non-collectible goods.
-  const windowX = x + 30;
-  const windowY = y + 116;
-  g.fillStyle(DEEP, 1).fillRect(windowX, windowY, 116, 148);
-  g.lineStyle(4, WHITE, 0.9).strokeRect(windowX, windowY, 116, 148);
-  g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + 58, windowY + 8, windowX + 58, windowY + 136);
-  g.lineStyle(3, 0x8b9392, 0.55).lineBetween(windowX + 14, windowY + 22, windowX + 42, windowY + 4);
-  g.lineBetween(windowX + 74, windowY + 44, windowX + 104, windowY + 22);
-  g.fillStyle(0x8a9291, 1).fillRect(windowX + 10, windowY + 110, 96, 8);
-  drawPot(g, windowX + 34, windowY + 105, 0.52);
-  g.fillStyle(0x9ea5a5, 1).fillRect(windowX + 50, windowY + 88, 18, 20);
-  g.lineStyle(2, INK, 1).strokeRect(windowX + 50, windowY + 88, 18, 20);
-  g.fillStyle(INK, 1).fillRect(windowX + 54, windowY + 94, 3, 3).fillRect(windowX + 61, windowY + 94, 3, 3);
-  drawPot(g, windowX + 80, windowY + 105, 0.46);
+  // The display is now the dominant facade feature. It stays decorative and
+  // non-collectible, while the entrance sits clearly beside it on the right.
+  const windowX = BUY_SELL_WINDOW.x;
+  const windowY = BUY_SELL_WINDOW.y;
+  const windowWidth = BUY_SELL_WINDOW.width;
+  const windowHeight = BUY_SELL_WINDOW.height;
+  g.fillStyle(DEEP, 1).fillRect(windowX, windowY, windowWidth, windowHeight);
+  g.lineStyle(6, WHITE, 0.95).strokeRect(windowX, windowY, windowWidth, windowHeight);
+  g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + windowWidth / 2, windowY + 10, windowX + windowWidth / 2, windowY + windowHeight - 12);
+  g.lineStyle(3, 0x8b9392, 0.55).lineBetween(windowX + 18, windowY + 30, windowX + 62, windowY + 6);
+  g.lineBetween(windowX + windowWidth - 70, windowY + 56, windowX + windowWidth - 22, windowY + 24);
+  g.fillStyle(0x8a9291, 1).fillRect(windowX + 14, windowY + windowHeight - 34, windowWidth - 28, 10);
+  drawPot(g, windowX + 48, windowY + windowHeight - 30, 0.62);
+  g.fillStyle(0x9ea5a5, 1).fillRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
+  g.lineStyle(2, INK, 1).strokeRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
+  g.fillStyle(INK, 1).fillRect(windowX + windowWidth / 2 - 6, windowY + windowHeight - 49, 3, 3).fillRect(windowX + windowWidth / 2 + 1, windowY + windowHeight - 49, 3, 3);
+  drawPot(g, windowX + windowWidth - 50, windowY + windowHeight - 30, 0.56);
 
   // Keep the dark opening and frame behind Alex so the entrance animation can
   // show him stepping into the doorway before he fades out.
@@ -428,17 +432,38 @@ export function drawPot(g: Phaser.GameObjects.Graphics, x: number, y: number, sc
   g.fillStyle(0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
 }
 
+export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1): void {
+  drawPot(g, x, y, scale);
+
+  // Keep the existing pot silhouette and footprint, adding only three chunky
+  // leaves so the opening collectible reads as a Small Golden Pothos.
+  g.lineStyle(2, INK, 1)
+    .lineBetween(x, y - 48 * scale, x - 14 * scale, y - 70 * scale)
+    .lineBetween(x, y - 48 * scale, x + 14 * scale, y - 70 * scale)
+    .lineBetween(x, y - 50 * scale, x + 4 * scale, y - 82 * scale);
+  g.fillStyle(0xbfc5c3, 1)
+    .fillTriangle(x - 2 * scale, y - 53 * scale, x - 31 * scale, y - 68 * scale, x - 11 * scale, y - 79 * scale)
+    .fillTriangle(x + 2 * scale, y - 54 * scale, x + 30 * scale, y - 68 * scale, x + 11 * scale, y - 79 * scale)
+    .fillTriangle(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale, x + 19 * scale, y - 72 * scale);
+  g.lineStyle(2, INK, 0.9)
+    .lineBetween(x - 2 * scale, y - 53 * scale, x - 31 * scale, y - 68 * scale)
+    .lineBetween(x + 2 * scale, y - 54 * scale, x + 30 * scale, y - 68 * scale)
+    .lineBetween(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale);
+}
+
 export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0): void {
-  if (repairStage >= 10) {
-    drawPot(g, x, y, scale);
-    return;
-  }
   g.fillStyle(0x222729, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale);
   g.fillStyle(0xdfe3df, 1)
     .fillTriangle(x - 16 * scale, y - 25 * scale, x + 2 * scale, y - 25 * scale, x - 3 * scale, y + 15 * scale)
     .fillTriangle(x + 3 * scale, y - 25 * scale, x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale);
-  g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 53 * scale, 8 * scale, 28 * scale);
-  g.fillStyle(0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
+  // The special repair pot has a dark empty opening and a small diamond
+  // ornament. It never receives leaves or a stem, including when repaired.
+  g.fillStyle(0x3b4244, 1).fillRect(x - 14 * scale, y - 32 * scale, 28 * scale, 5 * scale);
+  g.lineStyle(2, 0xbfc5c3, 0.9)
+    .lineBetween(x, y - 18 * scale, x + 7 * scale, y - 7 * scale)
+    .lineBetween(x + 7 * scale, y - 7 * scale, x, y + 4 * scale)
+    .lineBetween(x, y + 4 * scale, x - 7 * scale, y - 7 * scale)
+    .lineBetween(x - 7 * scale, y - 7 * scale, x, y - 18 * scale);
   // The repair interaction has ten deliberate taps. Keep the cracks legible
   // throughout the process so the pot visibly progresses from broken to
   // repaired instead of changing only at the last step.

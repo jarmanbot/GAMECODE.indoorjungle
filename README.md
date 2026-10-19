@@ -19,9 +19,10 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 - `Q` (or phone `B`): use the equipped tool. Cleaner uses eight taps; repair uses ten taps beside the visible ground pot.
 - Tap or click the world: walk to that point.
 - Mouse wheel, the single IN/OUT zoom button, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
-- Tap/click the loose pot or BUY / SELL entrance to walk there and interact on arrival. Alex shows front, back, left and right poses; window cleaning requires the back-facing pose toward the HOMES display. After the window job, tap a broken-pot piece and press B to pick up each piece.
+- Tap/click the Small Golden Pothos or BUY / SELL entrance to walk there and interact on arrival. Alex shows front, back, left and right poses; window cleaning requires the back-facing pose toward the HOMES display. After the window job, tap a broken-pot piece and press B to pick up each piece.
 - Inside BUY / SELL, tap the counter to open the shop panel and use the exit door to return outside.
 - Open More → Restart Prototype to reset the session.
+- Settings → Music and Sound effects toggles control the procedural arcade soundtrack and jump/tool-use sounds. Preferences are stored locally.
 
 On portrait phones, the hybrid-control trial adds a fixed joystick below the world
 viewport. Drag it to steer Alex; releasing it stops movement. The single IN/OUT
@@ -37,10 +38,12 @@ Controls can swap the joystick and A/B groups; the choice is stored locally.
 - PLANTS is shuttered and labelled `OPENING SOON`.
 - Small narrow Alex robot with movement, readable camera follow, and walkable-ground limits.
 - Responsive top/bottom HUD with coin balance, objective, settings, navigation panels, safe-area padding, and touch-sized controls.
+- Dependency-free procedural arcade music plus jump and tool-use sound effects, unlocked on the first user interaction for browser autoplay compatibility.
 - Reversible portrait phone layout trial with an outside-the-world joystick, pointer capture, dead-zone handling, and shared tap/keyboard/zoom actions. Set `PHONE_HYBRID_CONTROLS` in `src/game/config.ts` to `false` to restore the previous phone layout.
-- Opening loop: collect one loose empty pot, then accept the opening window-cleaning job from the BUY / SELL counter. Selling the first pot remains available for 5 coins but is no longer the next required objective.
-- Opening job: collect the loose pot first, accept the job at the counter, then tap the HOMES estate-agent window and tap the equipped cleaner eight times. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
+- Opening loop: find and collect one Small Golden Pothos, then accept the opening window-cleaning job from the BUY / SELL counter. Selling the first delivery remains available for 5 coins but is no longer the next required objective.
+- Opening job: collect the Small Golden Pothos first, accept the job at the counter, then tap the HOMES estate-agent window and tap the equipped cleaner eight times. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
 - Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 10 coins.
+- BUY / SELL shows the outstanding Golden Pothos request in its street window. After the opening delivery is sold, the shop keeps one display-only Small Golden Pothos with a 7-coin resale tag; the sparse B&W, NES-style, and polished PlayStation-style shelf previews are also display-only.
 - Progress is stored in the single `indoor-jungle-progress-v1` local-storage record. Missing or older records use the original opening state; no external service is involved.
 - Decorative cars, crossing, skyline, vacant lots, weeds, rubbish, construction, and future roads.
 

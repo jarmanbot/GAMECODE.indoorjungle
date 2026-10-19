@@ -1,4 +1,5 @@
 import type { GameScene } from '../game/GameScene';
+import type { AudioController } from '../game/AudioController';
 import {
   CITY_DISTRICTS,
   CITY_MAP_SIZE,
@@ -11,10 +12,11 @@ import {
   WORLD_WIDTH,
   type ZoomMode,
 } from '../game/world';
-import type { PotCondition, TaskState, EquippedTool } from '../game/progress';
+import type { InventoryItem, PotCondition, TaskState, EquippedTool } from '../game/progress';
 
 export class HudController {
   private scene: GameScene | null = null;
+  private readonly audio: AudioController;
   private zoomOutHandler: (() => void) | null = null;
   private zoomInHandler: (() => void) | null = null;
   private readonly coinCount = document.querySelector<HTMLElement>('#coin-count')!;
@@ -44,6 +46,7 @@ export class HudController {
   private shopFeedback = '';
   private coins = 0;
   private hasPot = false;
+  private inventoryItem: InventoryItem | null = null;
   private potCondition: PotCondition | null = null;
   private equippedTool: EquippedTool = null;
   private repairToolOwned = false;
@@ -60,7 +63,8 @@ export class HudController {
   private toolPointerId: number | null = null;
   private joystickSide: 'left' | 'right' = this.loadJoystickSide();
 
-  constructor() {
+  constructor(audio: AudioController) {
+    this.audio = audio;
     document.querySelectorAll<HTMLButtonElement>('[data-panel]').forEach((button) => {
       this.bindButtonActivation(button, () => this.openPanel(button.dataset.panel ?? 'more'));
     });
@@ -134,11 +138,12 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; glueCharges?: number; brokenPotPieceSelected?: boolean }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; glueCharges?: number; brokenPotPieceSelected?: boolean }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
     this.potCondition = state.inventoryPotCondition ?? (state.inventoryHasPot ? 'ordinary' : null);
+    this.inventoryItem = state.inventoryItem ?? (this.potCondition === 'ordinary' ? 'small-golden-pothos' : this.potCondition ? 'special-repair-pot' : null);
     this.brokenPotPieceSelected = state.brokenPotPieceSelected ?? false;
     this.setEquippedTool(state.equippedTool ?? null);
     this.repairToolOwned = state.repairToolOwned ?? this.repairToolOwned;
@@ -146,8 +151,8 @@ export class HudController {
     this.glueCharges = state.glueCharges ?? this.glueCharges;
     this.activeTask = state.task;
     const labels: Record<TaskState, string> = {
-      find: 'Find a loose empty pot',
-      sell: 'Sell the pot at BUY / SELL',
+      find: 'Find a Small Golden Pothos',
+      sell: 'Sell the Small Golden Pothos at BUY / SELL',
       clean: 'Clean the HOMES estate-agent window',
       repair: 'Repair the broken pot',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
@@ -239,6 +244,7 @@ export class HudController {
       lastActivationAt = now;
       event.preventDefault();
       event.stopPropagation();
+      this.audio.unlock();
       action();
     };
     button.addEventListener('pointerdown', (event) => event.stopPropagation());
@@ -346,6 +352,7 @@ export class HudController {
         return;
       }
       this.joystickPointerId = pointerEvent.pointerId;
+      this.audio.unlock();
       this.joystick.setPointerCapture?.(pointerEvent.pointerId);
       updateJoystick(pointerEvent);
     }, { passive: false });
@@ -633,12 +640,12 @@ export class HudController {
 
   private panelContent(kind: string): { title: string; body: string } {
     if (kind === 'bag') {
-      const potLabel = this.potCondition === 'broken' ? 'Broken collectible pot' : this.potCondition === 'repaired' ? 'Repaired collectible pot' : 'Loose empty pot';
+      const potLabel = this.potCondition === 'broken' ? 'Broken special collectible pot' : this.potCondition === 'repaired' ? 'Repaired special collectible pot' : 'Small Golden Pothos';
       const potNote = this.potCondition === 'broken'
-        ? 'Intact examples are valuable. Buy/Sell accepts repaired examples.'
+        ? 'Collect the pieces, then repair this special empty pot.'
         : this.potCondition === 'repaired'
-          ? 'Ready to sell at BUY / SELL for 10 coins.'
-          : 'Ready to sell at BUY / SELL for 5 coins.';
+          ? 'Empty and ready to sell at BUY / SELL for 10 coins.'
+          : 'Opening delivery. Sell it at BUY / SELL for 5 coins.';
       const repairButton = this.potCondition === 'broken'
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
         : '';
@@ -648,7 +655,7 @@ export class HudController {
       ].join('');
       return {
         title: 'Bag',
-        body: `${this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}</div>` : '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Collect the loose pot near BUY / SELL.</small></div>'}${toolNote}`,
+        body: `${this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}</div>` : '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Find the Small Golden Pothos near BUY / SELL.</small></div>'}${toolNote}`,
       };
     }
     if (kind === 'map') {
@@ -666,7 +673,7 @@ export class HudController {
     if (kind === 'tasks') {
       const complete = this.activeTask === 'complete';
       const taskLabel: Record<TaskState, string> = {
-        find: 'Find a loose empty pot', sell: 'Sell the pot at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
+        find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
         repair: 'Repair the broken pot', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
       };
       return {
@@ -681,9 +688,11 @@ export class HudController {
       };
     }
     if (kind === 'settings') {
+      const musicOn = this.audio.musicEnabled;
+      const sfxOn = this.audio.sfxEnabled;
       return {
         title: 'Settings',
-        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div></div>`,
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div><div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div></div>`,
       };
     }
     return {
@@ -712,16 +721,35 @@ export class HudController {
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-joystick-side]').forEach((button) => {
       this.bindButtonActivation(button, () => this.setJoystickSide(button.dataset.joystickSide === 'right' ? 'right' : 'left'));
     });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-audio]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        const setting = button.dataset.audio;
+        if (setting === 'music-on' || setting === 'music-off') this.audio.setMusicEnabled(setting === 'music-on');
+        if (setting === 'sfx-on' || setting === 'sfx-off') this.audio.setSfxEnabled(setting === 'sfx-on');
+        this.refreshAudioSettingsButtons();
+      });
+    });
+  }
+
+  private refreshAudioSettingsButtons(): void {
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-audio]').forEach((button) => {
+      const setting = button.dataset.audio;
+      const selected = setting === 'music-on' ? this.audio.musicEnabled
+        : setting === 'music-off' ? !this.audio.musicEnabled
+          : setting === 'sfx-on' ? this.audio.sfxEnabled
+            : !this.audio.sfxEnabled;
+      button.classList.toggle('is-selected', selected);
+    });
   }
 
   private shopPanelMarkup(): string {
-    const shop = this.scene?.getShopPanelState() ?? { inventoryPot: this.potCondition, saleComplete: false, windowJobAccepted: false, windowJobComplete: false };
+    const shop = this.scene?.getShopPanelState() ?? { inventoryPot: this.potCondition, inventoryItem: this.inventoryItem, saleComplete: false, windowJobAccepted: false, windowJobComplete: false };
     const sellContent = shop.inventoryPot === 'ordinary'
-      ? '<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Loose empty pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
+      ? '<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Opening delivery in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
       : shop.inventoryPot === 'repaired'
         ? '<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Repaired collectible pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">10 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 10 COINS</button></div>'
         : '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
-    const buyContent = '<div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Buying is not available in this prototype.</small></div>';
+    const buyContent = '<div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Shop displays are previews only; buying is not available.</small></div>';
     const openingPotCollected = shop.inventoryPot === 'ordinary' || shop.saleComplete;
     const jobContent = openingPotCollected && !shop.windowJobAccepted && !shop.windowJobComplete
       ? '<div class="job-card"><strong>OPENING JOB: CLEAN THE HOMES WINDOW</strong><small>Borrow a cleaning bottle, tap the HOMES estate-agent display, then tap B eight times.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>' : '';

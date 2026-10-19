@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
+import { AudioController } from './game/AudioController';
 import { GameScene } from './game/GameScene';
 import { HudController } from './ui/HudController';
 import './style.css';
 
-const hud = new HudController();
-const scene = new GameScene(hud);
+const audio = new AudioController();
+const hud = new HudController(audio);
+const scene = new GameScene(hud, audio);
 
 // Bind zoom actions before Phaser boots so HUD clicks never depend on scene timing.
 hud.bindZoomControls(
@@ -33,5 +35,7 @@ const game = new Phaser.Game({
 });
 
 hud.bindScene(scene);
+
+window.addEventListener('keydown', () => audio.unlock(), { capture: true });
 
 window.addEventListener('beforeunload', () => game.destroy(true));
