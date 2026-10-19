@@ -182,7 +182,7 @@ export const START_POSITION = { x: STARTING_WALKABLE_MIN_X + 20, y: 890 };
 
 export const SHOP_WORLD_WIDTH = 1200;
 export const SHOP_WORLD_HEIGHT = 900;
-export const SHOP_PLAYER_START = { x: 180, y: 690 };
+export const SHOP_PLAYER_START = { x: 260, y: 690 };
 export const SHOP_EXIT = { x: 135, y: 690 };
 export const SHOP_COUNTER = { x: 390, y: 500 };
 export const SHOP_COUNTER_APPROACH = { x: 390, y: 640 };

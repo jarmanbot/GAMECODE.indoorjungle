@@ -79,6 +79,7 @@ export class GameScene extends Phaser.Scene {
   private mapMovementAllowed = false;
   private shopInterior = false;
   private shopTransitioning = false;
+  private movementReleaseRequired = false;
   private streetZoomMode: ZoomMode = 'close';
   private pendingInteraction: PendingInteraction | null = null;
   private streetPosition = new Phaser.Math.Vector2(START_POSITION.x, START_POSITION.y);
@@ -184,6 +185,17 @@ export class GameScene extends Phaser.Scene {
       this.updateInteraction();
       return;
     }
+    if (this.movementReleaseRequired) {
+      const movementHeld = this.joystickPointerHeld || this.joystickSteering
+        || this.cursorKeys.left.isDown || this.cursorKeys.right.isDown
+        || this.cursorKeys.up.isDown || this.cursorKeys.down.isDown
+        || this.keys.W.isDown || this.keys.A.isDown || this.keys.S.isDown || this.keys.D.isDown;
+      if (movementHeld) {
+        this.updateInteraction();
+        return;
+      }
+      this.movementReleaseRequired = false;
+    }
     if (Phaser.Input.Keyboard.JustDown(this.hopKey)) this.pressHop();
     if (Phaser.Input.Keyboard.JustDown(this.toolKey)) {
       this.toolKeyHeld = true;
@@ -252,6 +264,10 @@ export class GameScene extends Phaser.Scene {
       );
       const nextY = Phaser.Math.Clamp(this.player.y + direction.y * speed * movementDelta / 1000, minY, maxY);
       this.moveOnWalkableGround(nextX, nextY);
+      if (this.tryActivateMovementDoor(direction, previousX, previousY)) {
+        this.updateInteraction();
+        return;
+      }
       const didMove = Math.abs(this.player.x - previousX) > 0.01 || Math.abs(this.player.y - previousY) > 0.01;
       if (didMove) this.updateFacing(direction);
       else if (!this.windowFacingLocked && this.playerFacing !== 'front') this.faceDirection(new Phaser.Math.Vector2(0, 1));
@@ -1179,7 +1195,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleShopWorldPoint(pointX: number, pointY: number): void {
     const point = new Phaser.Math.Vector2(pointX, pointY);
-    if (this.isNearPoint(point, SHOP_EXIT, 105)) {
+    if (this.isNearShopExit(point)) {
       const approach = new Phaser.Math.Vector2(SHOP_EXIT.x, SHOP_EXIT.y);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
         this.selectPendingInteraction('exit-shop', approach);
@@ -1213,6 +1229,40 @@ export class GameScene extends Phaser.Scene {
   private getShopTapPath(x: number, y: number): Phaser.Math.Vector2[] | null {
     if (!this.isShopWalkablePosition(x, y)) return null;
     return [new Phaser.Math.Vector2(x, y)];
+  }
+
+  private isNearShopExit(point: Phaser.Math.Vector2): boolean {
+    return Math.abs(point.x - SHOP_EXIT.x) <= 64
+      && point.y >= SHOP_EXIT.y - 86
+      && point.y <= SHOP_EXIT.y + 20;
+  }
+
+  private tryActivateMovementDoor(direction: Phaser.Math.Vector2, previousX: number, previousY: number): boolean {
+    if (this.modalOpen || this.shopTransitioning || this.pendingInteraction || this.target) return false;
+
+    if (!this.shopInterior) {
+      const thresholdY = FRONT_PAVEMENT_MIN_Y + 10;
+      const inDoorLane = Math.abs(this.player.x - BUY_SELL_ENTRANCE.x) <= BUY_SELL_DOOR_WIDTH / 2 + 8;
+      const movingIntoDoor = direction.y < -0.45 && inDoorLane
+        && previousY >= this.player.y && this.player.y <= thresholdY;
+      if (movingIntoDoor) {
+        this.enterShop();
+        return true;
+      }
+      return false;
+    }
+
+    const exitThresholdX = SHOP_EXIT.x + 52;
+    const inExitLane = Math.abs(this.player.y - SHOP_EXIT.y) <= 48;
+    const movingIntoExit = direction.x < -0.45 && inExitLane
+      && previousX >= this.player.x
+      && previousX >= SHOP_EXIT.x - 52
+      && this.player.x <= exitThresholdX;
+    if (movingIntoExit) {
+      this.exitShop();
+      return true;
+    }
+    return false;
   }
 
   private showInteractionHighlight(interaction: PendingInteraction, point: Phaser.Math.Vector2): void {
@@ -1272,7 +1322,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Found a Small Golden Pothos. Visit BUY / SELL to accept the window job.');
+    this.showToast('Head to the general store and sell the Golden Pothos.');
   }
 
   private selectBrokenPotPiece(): void {
@@ -1345,6 +1395,7 @@ export class GameScene extends Phaser.Scene {
   private enterShop(): void {
     if (this.shopInterior || this.shopTransitioning) return;
     this.shopTransitioning = true;
+    this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
     this.setRepairPickupPresentationVisible(false);
@@ -1391,6 +1442,7 @@ export class GameScene extends Phaser.Scene {
   private exitShop(): void {
     if (!this.shopInterior || this.shopTransitioning) return;
     this.shopTransitioning = true;
+    this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
     this.cancelTapWalk();
@@ -1504,7 +1556,7 @@ export class GameScene extends Phaser.Scene {
     this.wantedSignText = this.add.text(BUY_SELL_WINDOW.x + BUY_SELL_WINDOW.width / 2, signY + signHeight / 2, '', {
       color: '#f6f7f3',
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-      fontSize: '15px',
+      fontSize: '20px',
       fontStyle: 'bold',
       align: 'center',
       lineSpacing: 4,
@@ -1535,11 +1587,12 @@ export class GameScene extends Phaser.Scene {
     if (requestOutstanding) {
       this.wantedSignPulse = this.tweens.add({
         targets: [this.wantedSignBackdrop, this.wantedSignText],
-        alpha: 0.58,
-        duration: 850,
+        alpha: 0.16,
+        duration: 570,
         hold: 900,
         yoyo: true,
         repeat: -1,
+        repeatDelay: 250,
         ease: 'Sine.inOut',
       });
     }

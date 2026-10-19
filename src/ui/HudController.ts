@@ -37,9 +37,11 @@ export class HudController {
   private readonly controlPanel = document.querySelector<HTMLElement>('#phone-control-panel')!;
   private readonly arcadeA = document.querySelector<HTMLButtonElement>('#arcade-a')!;
   private readonly arcadeB = document.querySelector<HTMLButtonElement>('#arcade-b')!;
-  private readonly equippedToolIcon = document.querySelector<HTMLElement>('#equipped-tool-icon')!;
-  private readonly equippedToolName = document.querySelector<HTMLElement>('#equipped-tool-name')!;
-  private readonly arcadeBLabel = document.querySelector<HTMLElement>('#arcade-b-label')!;
+  private readonly toolSelector = document.querySelector<HTMLButtonElement>('#tool-selector')!;
+  private readonly toolSelectorIcon = document.querySelector<HTMLElement>('#tool-selector-icon')!;
+  private readonly toolPopupBackdrop = document.querySelector<HTMLElement>('#tool-popup-backdrop')!;
+  private readonly toolPopupClose = document.querySelector<HTMLButtonElement>('#tool-popup-close')!;
+  private readonly toolSlots = document.querySelector<HTMLElement>('#tool-slots')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' = 'sell';
@@ -76,6 +78,18 @@ export class HudController {
       if (event.target === this.panelBackdrop) this.closePanel();
     });
     this.bindButtonActivation(this.zoomToggleButton, () => this.toggleZoom());
+    this.bindButtonActivation(this.toolSelector, () => this.toggleToolPopup());
+    this.bindButtonActivation(this.toolPopupClose, () => this.closeToolPopup());
+    this.toolPopupBackdrop.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.target === this.toolPopupBackdrop) this.closeToolPopup();
+    }, { passive: false });
+    this.toolPopupBackdrop.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.target === this.toolPopupBackdrop) this.closeToolPopup();
+    });
     this.bindButtonActivation(this.interactButton, () => this.scene?.tryInteract());
     this.bindJoystickControls();
     this.bindArcadeControls();
@@ -150,6 +164,7 @@ export class HudController {
     this.cleanerOwned = state.cleanerOwned ?? this.cleanerOwned;
     this.glueCharges = state.glueCharges ?? this.glueCharges;
     this.activeTask = state.task;
+    this.refreshToolPopup();
     const labels: Record<TaskState, string> = {
       find: 'Find a Small Golden Pothos',
       sell: 'Sell the Small Golden Pothos at BUY / SELL',
@@ -164,13 +179,12 @@ export class HudController {
   setEquippedTool(tool: EquippedTool): void {
     this.equippedTool = tool;
     const label = tool === 'cleaner' ? 'CLEANER' : tool === 'repair' ? 'REPAIR TOOL' : 'NO TOOL EQUIPPED';
-    this.equippedToolName.textContent = label;
-    this.equippedToolIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : '—';
-    this.arcadeBLabel.textContent = this.brokenPotPieceSelected
-      ? 'PICK UP'
-      : tool === 'cleaner' ? 'TAP 8×' : tool === 'repair' ? 'TAP 10×' : 'USE';
+    this.toolSelectorIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : '—';
+    this.toolSelector.classList.toggle('is-equipped', Boolean(tool));
+    this.toolSelector.setAttribute('aria-label', tool ? `Open tool selector. Equipped ${label.toLowerCase()}` : 'Open tool selector. No tool equipped');
     this.arcadeB.disabled = !tool && !this.brokenPotPieceSelected;
     this.arcadeB.setAttribute('aria-label', this.brokenPotPieceSelected ? 'Pick up selected broken pot piece' : tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
+    this.refreshToolPopup();
   }
 
   setJoystickSide(side: 'left' | 'right'): void {
@@ -256,6 +270,52 @@ export class HudController {
     else this.zoomOutHandler?.();
   }
 
+  private toggleToolPopup(): void {
+    if (this.toolPopupBackdrop.hidden) this.openToolPopup();
+    else this.closeToolPopup();
+  }
+
+  private openToolPopup(): void {
+    this.resetHeldInputs();
+    this.refreshToolPopup();
+    this.toolPopupBackdrop.hidden = false;
+    this.toolPopupBackdrop.classList.add('is-open');
+    this.toolSelector.setAttribute('aria-expanded', 'true');
+    this.scene?.setModalOpen(true, true);
+  }
+
+  private closeToolPopup(): void {
+    if (this.toolPopupBackdrop.hidden) return;
+    this.toolPopupBackdrop.classList.remove('is-open');
+    this.toolPopupBackdrop.hidden = true;
+    this.toolSelector.setAttribute('aria-expanded', 'false');
+    this.scene?.setModalOpen(false, true);
+  }
+
+  private refreshToolPopup(): void {
+    if (!this.toolSlots) return;
+    const slots: Array<{ key: 'cleaner' | 'repair' | null; label: string; icon: string; owned: boolean }> = [
+      { key: 'cleaner', label: 'CLEANER', icon: '▱', owned: this.cleanerOwned },
+      { key: 'repair', label: 'REPAIR TOOL', icon: '⚒', owned: this.repairToolOwned },
+      { key: null, label: 'EMPTY', icon: '—', owned: false },
+    ];
+    this.toolSlots.innerHTML = slots.map((slot) => {
+      const active = slot.key !== null && slot.key === this.equippedTool;
+      const disabled = slot.owned ? '' : ' disabled';
+      const classes = `tool-slot${slot.owned ? ' is-owned' : ''}${active ? ' is-active' : ''}`;
+      const key = slot.key ? ` data-tool="${slot.key}"` : '';
+      return `<button class="${classes}" type="button"${key}${disabled} aria-label="${slot.owned ? `Equip ${slot.label.toLowerCase()}` : 'Empty tool slot'}"><strong>${slot.icon}</strong><span>${active ? 'ACTIVE' : slot.label}</span></button>`;
+    }).join('');
+    this.toolSlots.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        const tool = button.dataset.tool;
+        if (tool !== 'cleaner' && tool !== 'repair') return;
+        this.scene?.equipTool(tool);
+        this.closeToolPopup();
+      });
+    });
+  }
+
   private loadJoystickSide(): 'left' | 'right' {
     try {
       const raw = localStorage.getItem('indoor-jungle-controls');
@@ -268,6 +328,7 @@ export class HudController {
 
   private applyJoystickSide(): void {
     this.controlPanel.classList.toggle('is-joystick-right', this.joystickSide === 'right');
+    requestAnimationFrame(() => this.alignJoystickToMapTab());
   }
 
   private bindArcadeControls(): void {
@@ -369,6 +430,7 @@ export class HudController {
     if (!this.phoneHybridLayout) {
       stage.style.removeProperty('width');
       stage.style.removeProperty('height');
+      this.controlPanel.style.removeProperty('--joystick-align-shift');
       requestAnimationFrame(() => this.scene?.resizeViewportToStage());
       return;
     }
@@ -387,10 +449,36 @@ export class HudController {
     const size = Math.max(1, Math.min(shell.getBoundingClientRect().width, availableHeight));
     stage.style.width = `${Math.round(size)}px`;
     stage.style.height = `${Math.round(size)}px`;
-    requestAnimationFrame(() => this.scene?.resizeViewportToStage());
+    requestAnimationFrame(() => {
+      this.scene?.resizeViewportToStage();
+      this.alignJoystickToMapTab();
+    });
+  }
+
+  private alignJoystickToMapTab(): void {
+    if (!this.phoneHybridLayout || this.joystickSide !== 'left') {
+      this.controlPanel.style.removeProperty('--joystick-align-shift');
+      return;
+    }
+    const mapButton = document.querySelector<HTMLElement>('.nav-button[data-panel="map"]');
+    const console = this.controlPanel.querySelector<HTMLElement>('.control-console');
+    if (!mapButton || !console) return;
+    const panelRect = this.controlPanel.getBoundingClientRect();
+    const joystickRect = this.joystick.getBoundingClientRect();
+    const mapRect = mapButton.getBoundingClientRect();
+    const consoleRect = console.getBoundingClientRect();
+    const halfJoystick = joystickRect.width / 2;
+    const desiredCenter = mapRect.left + mapRect.width / 2;
+    const minimumCenter = panelRect.left + halfJoystick + 8;
+    const maximumCenter = consoleRect.left - halfJoystick - 10;
+    const safeCenter = maximumCenter >= minimumCenter
+      ? Math.max(minimumCenter, Math.min(maximumCenter, desiredCenter))
+      : joystickRect.left + halfJoystick;
+    this.controlPanel.style.setProperty('--joystick-align-shift', `${safeCenter - (joystickRect.left + halfJoystick)}px`);
   }
 
   openPanel(kind: string): void {
+    this.closeToolPopup();
     this.cityMapPanCleanup?.();
     this.cityMapPanCleanup = null;
     const content = this.panelContent(kind);

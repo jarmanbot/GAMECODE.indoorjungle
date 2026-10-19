@@ -7,6 +7,8 @@ import {
   BUY_SELL_ENTRANCE,
   BUY_SELL_DOOR_WIDTH,
   BUY_SELL_WINDOW,
+  CROSSING_END_X,
+  CROSSING_START_X,
   PAVEMENT_HEIGHT,
   PAVEMENT_Y,
   FUTURE_ZONES,
@@ -145,8 +147,13 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
 
   // A simple crossing anchors the starting block.
   g.fillStyle(WHITE, 0.96);
-  for (let stripe = 0; stripe < 7; stripe += 1) {
-    g.fillRect(1420 + stripe * 32, PAVEMENT_Y + PAVEMENT_HEIGHT + 10, 18, 220);
+  const crossingX = CROSSING_START_X + 14;
+  const crossingWidth = CROSSING_END_X - CROSSING_START_X - 18;
+  const crossingY = PAVEMENT_Y + PAVEMENT_HEIGHT + 10;
+  for (let stripeY = crossingY + 14; stripeY + 18 <= crossingY + 220; stripeY += 32) {
+    // Rotate the existing crossing pattern 90 degrees: each bar now runs
+    // across the crossing width instead of along the pavement-to-pavement axis.
+    g.fillRect(crossingX, stripeY, crossingWidth, 18);
   }
 }
 
