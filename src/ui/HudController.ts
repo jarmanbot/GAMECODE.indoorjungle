@@ -44,7 +44,7 @@ export class HudController {
   private readonly toolSlots = document.querySelector<HTMLElement>('#tool-slots')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
-  private shopTab: 'sell' | 'buy' = 'sell';
+  private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
   private shopFeedback = '';
   private coins = 0;
   private hasPot = false;
@@ -481,12 +481,12 @@ export class HudController {
     this.closeToolPopup();
     this.cityMapPanCleanup?.();
     this.cityMapPanCleanup = null;
-    const content = this.panelContent(kind);
     this.activePanelKind = kind;
     if (kind === 'shop') {
       this.shopTab = 'sell';
       this.shopFeedback = '';
     }
+    const content = this.panelContent(kind);
     this.panelTitle.textContent = content.title;
     this.panelBody.innerHTML = content.body;
     if (kind === 'map') {
@@ -506,6 +506,7 @@ export class HudController {
       });
     }
     this.panelBackdrop.classList.toggle('is-city-map', kind === 'map');
+    this.panelBackdrop.classList.toggle('is-shop', kind === 'shop');
     this.mapCentreButton.hidden = kind !== 'map';
     this.panelBackdrop.hidden = false;
     requestAnimationFrame(() => this.panelBackdrop.classList.add('is-open'));
@@ -520,6 +521,7 @@ export class HudController {
     this.cityMapPanCleanup?.();
     this.cityMapPanCleanup = null;
     this.panelBackdrop.classList.remove('is-city-map');
+    this.panelBackdrop.classList.remove('is-shop');
     this.mapCentreButton.hidden = true;
     this.activePanelKind = null;
     this.panelBackdrop.classList.remove('is-open');
@@ -792,7 +794,8 @@ export class HudController {
   private bindShopPanel(): void {
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-tab]').forEach((button) => {
       this.bindButtonActivation(button, () => {
-        this.shopTab = button.dataset.shopTab === 'buy' ? 'buy' : 'sell';
+        const tab = button.dataset.shopTab;
+        this.shopTab = tab === 'buy' || tab === 'wanted' ? tab : 'sell';
         this.refreshShopPanel();
       });
     });
@@ -831,18 +834,33 @@ export class HudController {
   }
 
   private shopPanelMarkup(): string {
-    const shop = this.scene?.getShopPanelState() ?? { inventoryPot: this.potCondition, inventoryItem: this.inventoryItem, saleComplete: false, windowJobAccepted: false, windowJobComplete: false };
+    const shop = this.scene?.getShopPanelState() ?? {
+      inventoryPot: this.potCondition,
+      inventoryItem: this.inventoryItem,
+      saleComplete: false,
+      windowJobAccepted: false,
+      windowCleaningProgress: 0,
+      windowJobComplete: false,
+    };
     const sellContent = shop.inventoryPot === 'ordinary'
-      ? '<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Opening delivery in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
+      ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Opening delivery in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
       : shop.inventoryPot === 'repaired'
-        ? '<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Repaired collectible pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">10 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 10 COINS</button></div>'
-        : '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
-    const buyContent = '<div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Shop displays are previews only; buying is not available.</small></div>';
+        ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">10 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 10 COINS</button></div>'
+        : '<div class="shop-content-heading">SELL</div><div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
+    const buyContent = '<div class="shop-content-heading">BUY</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Displayed shelf items, including the 7-coin Pothos, are display-only.</small></div>';
     const openingPotCollected = shop.inventoryPot === 'ordinary' || shop.saleComplete;
-    const jobContent = openingPotCollected && !shop.windowJobAccepted && !shop.windowJobComplete
-      ? '<div class="job-card"><strong>OPENING JOB: CLEAN THE HOMES WINDOW</strong><small>Borrow a cleaning bottle, tap the HOMES estate-agent display, then tap B eight times.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>' : '';
-    const activeJob = shop.windowJobAccepted ? '<div class="job-card"><strong>HOMES WINDOW JOB ACTIVE</strong><small>Tap the estate-agent display, then tap B eight times. Each spray is counted.</small></div>' : shop.windowJobComplete ? '<div class="job-card"><strong>WINDOW JOB COMPLETE</strong><small>Return to the street to find the broken collectible pot.</small></div>' : '';
-    return `<div class="shop-balance"><span>COINS</span><strong>${this.coins}</strong></div><div class="shop-tabs" role="tablist"><button type="button" data-shop-tab="sell" class="${this.shopTab === 'sell' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'sell'}">SELL</button><button type="button" data-shop-tab="buy" class="${this.shopTab === 'buy' ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === 'buy'}">BUY</button></div><div class="shop-panel-content">${this.shopTab === 'sell' ? sellContent : buyContent}${jobContent}${activeJob}</div><p class="shop-feedback" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
+    const deliveryContent = shop.saleComplete
+      ? '<div class="shop-request is-complete"><strong>No deliveries wanted</strong><small>The opening Small Golden Pothos has already been delivered.</small><span class="shop-status">COMPLETED</span></div>'
+      : '<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>5 COINS</strong></div><span class="shop-status">WANTED</span></div>';
+    const jobContent = shop.windowJobComplete
+      ? '<div class="job-card is-complete"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Completed 8 cleaning taps</b></span><span>STATUS <b>COMPLETED</b></span></div><small>Return to the street to continue with the broken pot job.</small></div>'
+      : shop.windowJobAccepted
+        ? `<div class="job-card is-active"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Clean the window with 8 taps</b></span><span>STATUS <b>IN PROGRESS · ${shop.windowCleaningProgress} / 8</b></span></div><small>Tap the REAL ESTATE window, face it, then use B.</small></div>`
+        : `<div class="job-card ${openingPotCollected ? 'is-available' : 'is-locked'}"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Deliver the opening Pothos, then clean 8 taps</b></span><span>STATUS <b>${openingPotCollected ? 'AVAILABLE' : 'LOCKED'}</b></span></div><small>${openingPotCollected ? 'Accept this job to borrow the cleaner.' : 'Deliver the Small Golden Pothos first.'}</small>${openingPotCollected ? '<button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button>' : ''}</div>`;
+    const wantedContent = `<div class="shop-content-heading">WANTED</div><div class="shop-section-label">DELIVERY REQUEST</div>${deliveryContent}<div class="shop-section-label">WINDOW-CLEANING JOB</div>${jobContent}`;
+    const tab = (key: 'buy' | 'sell' | 'wanted', label: string): string => `<button type="button" data-shop-tab="${key}" class="${this.shopTab === key ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === key}" aria-controls="shop-panel-content">${label}</button>`;
+    const content = this.shopTab === 'sell' ? sellContent : this.shopTab === 'buy' ? buyContent : wantedContent;
+    return `<div class="shop-tabs" role="tablist" aria-label="Buy and Sell tabs">${tab('buy', 'BUY')}${tab('sell', 'SELL')}${tab('wanted', 'WANTED')}</div><div id="shop-panel-content" class="shop-panel-content">${content}</div><p class="shop-feedback ${this.shopFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
   }
 
   private cityMapMarkup(): string {

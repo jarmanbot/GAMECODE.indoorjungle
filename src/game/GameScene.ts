@@ -401,12 +401,13 @@ export class GameScene extends Phaser.Scene {
     this.toolHeld = false;
   }
 
-  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowJobComplete: boolean } {
+  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean } {
     return {
       inventoryPot: this.inventoryPot,
       inventoryItem: this.progress.inventoryItem,
       saleComplete: this.saleComplete,
       windowJobAccepted: this.progress.windowJobAccepted,
+      windowCleaningProgress: this.progress.windowCleaningProgress,
       windowJobComplete: this.progress.windowJobComplete,
     };
   }
