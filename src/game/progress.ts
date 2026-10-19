@@ -21,6 +21,8 @@ export interface ProgressState {
   repairStep: number;
   equippedTool: EquippedTool;
   task: TaskState;
+  rentalBondPaid: boolean;
+  starterKitClaimed: boolean;
 }
 
 export const DEFAULT_PROGRESS: ProgressState = {
@@ -41,6 +43,8 @@ export const DEFAULT_PROGRESS: ProgressState = {
   repairStep: 0,
   equippedTool: null,
   task: 'find',
+  rentalBondPaid: false,
+  starterKitClaimed: false,
 };
 
 export function sanitizeProgress(value: unknown): ProgressState {
@@ -74,5 +78,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
     repairStep: Math.max(0, Math.min(10, Math.floor(Number(input.repairStep) || 0))),
     equippedTool: tool,
     task,
+    rentalBondPaid: Boolean(input.rentalBondPaid),
+    starterKitClaimed: Boolean(input.starterKitClaimed),
   };
 }

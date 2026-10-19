@@ -1,4 +1,5 @@
 export type BuildingKind = 'shop' | 'homes' | 'plants' | 'apartment';
+export type PropertyListingKey = 'cheap-rental' | 'mid-rental' | 'high-property';
 
 export interface Building {
   key: string;
@@ -177,6 +178,17 @@ export const BUY_SELL_DOOR_TOP = 726;
 export const BUY_SELL_DOOR_BOTTOM = 830;
 export const BUY_SELL_ENTRANCE = { x: 1165, y: 864 };
 export const BUY_SELL_WINDOW = { x: 895, y: 590, width: 222, height: 190 };
+export const HOMES_WINDOW = { x: 1280, y: 592, width: 340, height: 184 };
+export const HOMES_WINDOW_CLEAN_ZONE = { x: 1280, y: 592, width: 340, height: 36 };
+export const HOMES_LISTINGS: Array<{ key: PropertyListingKey; x: number; y: number; width: number; height: number }> = [
+  { key: 'cheap-rental', x: 1300, y: 637, width: 112, height: 90 },
+  { key: 'mid-rental', x: 1430, y: 637, width: 78, height: 90 },
+  { key: 'high-property', x: 1523, y: 637, width: 78, height: 90 },
+];
+export const APARTMENT_DOOR_WIDTH = 60;
+export const APARTMENT_DOOR_TOP = 683;
+export const APARTMENT_DOOR_BOTTOM = 769;
+export const APARTMENT_ENTRANCE = { x: 2275, y: 864 };
 export const POT_POSITION = { x: 1648, y: 910 };
 export const START_POSITION = { x: STARTING_WALKABLE_MIN_X + 20, y: 890 };
 
@@ -186,3 +198,8 @@ export const SHOP_PLAYER_START = { x: 260, y: 690 };
 export const SHOP_EXIT = { x: 135, y: 690 };
 export const SHOP_COUNTER = { x: 390, y: 500 };
 export const SHOP_COUNTER_APPROACH = { x: 390, y: 640 };
+export const HOME_WORLD_WIDTH = 900;
+export const HOME_WORLD_HEIGHT = 700;
+export const HOME_PLAYER_START = { x: 220, y: 560 };
+export const HOME_EXIT = { x: 115, y: 560 };
+export const HOME_STARTER_KIT = { x: 560, y: 470 };

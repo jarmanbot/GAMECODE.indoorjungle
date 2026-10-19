@@ -150,10 +150,10 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
   const crossingX = CROSSING_START_X + 14;
   const crossingWidth = CROSSING_END_X - CROSSING_START_X - 18;
   const crossingY = PAVEMENT_Y + PAVEMENT_HEIGHT + 10;
-  for (let stripeX = crossingX + 14; stripeX + 18 <= crossingX + crossingWidth; stripeX += 32) {
-    // The road runs horizontally, so each crossing bar is perpendicular to it
-    // and connects the front pavement to the opposite pavement.
-    g.fillRect(stripeX, crossingY, 18, 220);
+  for (let stripeY = crossingY + 14; stripeY + 18 <= crossingY + 220 - 14; stripeY += 32) {
+    // Keep the bars horizontal as requested: each one spans the crossing
+    // width while the repeated rows connect the two pavements through the road.
+    g.fillRect(crossingX, stripeY, crossingWidth, 18);
   }
 }
 
@@ -321,9 +321,10 @@ function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building
   drawMiniHome(g, x + 40, y + 147, 112, 90, true);
   drawMiniHome(g, x + 170, y + 147, 78, 90, false);
   drawMiniHome(g, x + 263, y + 147, 78, 90, false);
-  addWorldLabel(scene, x + 96, y + 154, 'TO LET', BLACK, 13, true);
-  addWorldLabel(scene, x + 208, y + 255, 'FUTURE', WHITE, 11, true);
-  addWorldLabel(scene, x + 301, y + 255, 'FUTURE', WHITE, 11, true);
+  addWorldLabel(scene, x + 96, y + 115, 'TO RENT', WHITE, 10, true);
+  addWorldLabel(scene, x + 209, y + 115, 'TO RENT', WHITE, 9, true);
+  addWorldLabel(scene, x + 302, y + 115, 'FOR SALE', WHITE, 9, true);
+  addWorldLabel(scene, x + building.width / 2, y + 294, 'CLEAN WINDOW', WHITE, 10, true);
 }
 
 function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
@@ -356,6 +357,9 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
     g.lineBetween(windowX, y + 161, windowX + 54, y + 161);
   }
   g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 30, y + 218, 60, 86);
+  g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 64, y + 82, 128, 28);
+  addWorldLabel(scene, x + building.width / 2, y + 96, 'TO LET', WHITE, 12, true);
+  addWorldLabel(scene, x + building.width / 2, y + 207, 'HOME DOOR', WHITE, 9, true);
 }
 
 function drawMiniHome(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number, height: number, actual: boolean): void {

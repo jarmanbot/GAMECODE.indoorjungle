@@ -10,6 +10,7 @@ import {
   STARTING_WALKABLE_MAX_X,
   STARTING_WALKABLE_MIN_X,
   WORLD_WIDTH,
+  type PropertyListingKey,
   type ZoomMode,
 } from '../game/world';
 import type { InventoryItem, PotCondition, TaskState, EquippedTool } from '../game/progress';
@@ -46,6 +47,7 @@ export class HudController {
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
   private shopFeedback = '';
+  private propertyFeedback = '';
   private coins = 0;
   private hasPot = false;
   private inventoryItem: InventoryItem | null = null;
@@ -218,6 +220,18 @@ export class HudController {
     if (this.activePanelKind !== 'shop') return;
     this.panelBody.innerHTML = this.shopPanelMarkup();
     this.bindShopPanel();
+  }
+
+  refreshPropertyPanel(feedback = ''): void {
+    if (feedback) this.propertyFeedback = feedback;
+    if (!this.activePanelKind?.startsWith('property-')) return;
+    const listing = this.activePanelKind.slice('property-'.length) as PropertyListingKey;
+    this.panelBody.innerHTML = this.propertyPanelMarkup(listing);
+    this.bindPropertyPanel();
+  }
+
+  openPropertyDetails(listing: PropertyListingKey): void {
+    this.openPanel(`property-${listing}`);
   }
 
   setZoomMode(mode: ZoomMode): void {
@@ -491,6 +505,7 @@ export class HudController {
       this.shopTab = 'sell';
       this.shopFeedback = '';
     }
+    if (kind.startsWith('property-')) this.propertyFeedback = '';
     const content = this.panelContent(kind);
     this.panelTitle.textContent = content.title;
     this.panelBody.innerHTML = content.body;
@@ -499,6 +514,7 @@ export class HudController {
       this.setMapPosition(this.mapPositionRatio);
     }
     if (kind === 'shop') this.bindShopPanel();
+    if (kind.startsWith('property-')) this.bindPropertyPanel();
     if (kind === 'settings') this.bindSettingsPanel();
     if (kind === 'bag') {
       const repairButton = this.panelBody.querySelector<HTMLButtonElement>('[data-repair-pot]');
@@ -739,7 +755,7 @@ export class HudController {
       const potNote = this.potCondition === 'broken'
         ? 'Collect the pieces, then repair this special empty pot.'
         : this.potCondition === 'repaired'
-          ? 'Empty and ready to sell at BUY / SELL for 10 coins.'
+          ? 'Empty and ready to sell at BUY / SELL for 75 coins.'
           : 'Opening delivery. Sell it at BUY / SELL for 5 coins.';
       const repairButton = this.potCondition === 'broken'
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
@@ -777,9 +793,18 @@ export class HudController {
       };
     }
     if (kind === 'home') {
+      const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, starterKitClaimed: false };
       return {
         title: 'Home',
-        body: '<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>The nearby starter apartment is advertised TO LET at HOMES. Renting is outside this prototype.</small></div>',
+        body: rental.rentalBondPaid
+          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds and watering can.' : 'Starter kit ready inside: pot, used medium, basil seeds and watering can.'}</small><small>Planting is the next prototype feature.</small></div>`
+          : '<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at HOMES to review the 60-coin bond and access details.</small></div>',
+      };
+    }
+    if (kind.startsWith('property-')) {
+      return {
+        title: 'REAL ESTATE',
+        body: this.propertyPanelMarkup(kind.slice('property-'.length) as PropertyListingKey),
       };
     }
     if (kind === 'settings') {
@@ -792,7 +817,7 @@ export class HudController {
     }
     return {
       title: 'More',
-      body: '<div class="settings-list"><div><strong>Prototype help</strong><small>Stay on the pavement and use the contextual action button when Alex is close enough.</small></div><div><strong>Future features</strong><small>Growing plants, renting, bills, and additional districts are intentionally not implemented.</small></div><button class="restart-button" type="button" data-restart>RESTART PROTOTYPE</button></div>',
+      body: '<div class="settings-list"><div><strong>Prototype help</strong><small>Stay on the pavement and use the contextual action button when Alex is close enough.</small></div><div><strong>Future features</strong><small>Planting, later homes, bills, and additional districts are intentionally not implemented.</small></div><button class="restart-button" type="button" data-restart>RESTART PROTOTYPE</button></div>',
     };
   }
 
@@ -811,6 +836,11 @@ export class HudController {
     });
     const acceptJob = this.panelBody.querySelector<HTMLButtonElement>('[data-accept-window-job]');
     if (acceptJob) this.bindButtonActivation(acceptJob, () => this.scene?.acceptWindowJob());
+  }
+
+  private bindPropertyPanel(): void {
+    const payBond = this.panelBody.querySelector<HTMLButtonElement>('[data-pay-bond]');
+    if (payBond) this.bindButtonActivation(payBond, () => this.scene?.payRentalBond());
   }
 
   private bindSettingsPanel(): void {
@@ -850,7 +880,7 @@ export class HudController {
     const sellContent = shop.inventoryPot === 'ordinary'
       ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Opening delivery in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
       : shop.inventoryPot === 'repaired'
-        ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">10 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 10 COINS</button></div>'
+        ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">75 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 75 COINS</button></div>'
         : '<div class="shop-content-heading">SELL</div><div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
     const buyContent = '<div class="shop-content-heading">BUY</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Displayed shelf items, including the 7-coin Pothos, are display-only.</small></div>';
     const openingPotCollected = shop.inventoryPot === 'ordinary' || shop.saleComplete;
@@ -858,7 +888,7 @@ export class HudController {
       ? '<div class="shop-request is-complete"><strong>No deliveries wanted</strong><small>The opening Small Golden Pothos has already been delivered.</small><span class="shop-status">COMPLETED</span></div>'
       : '<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>5 COINS</strong></div><span class="shop-status">WANTED</span></div>';
     const jobContent = shop.windowJobComplete
-      ? '<div class="job-card is-complete"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Completed 8 cleaning taps</b></span><span>STATUS <b>COMPLETED</b></span></div><small>Return to the street to continue with the broken pot job.</small></div>'
+      ? '<div class="job-card is-complete"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Completed 8 sprays</b></span><span>STATUS <b>COMPLETED</b></span></div><small>Return to the street to continue with the broken pot job.</small></div>'
       : shop.windowJobAccepted
         ? `<div class="job-card is-active"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Complete 8 sprays</b></span><span>STATUS <b>IN PROGRESS · ${shop.windowCleaningProgress} / 8</b></span></div><small>Tap the REAL ESTATE window, face it, then press B once per spray.</small></div>`
         : `<div class="job-card ${openingPotCollected ? 'is-available' : 'is-locked'}"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Deliver the opening Pothos, then complete 8 sprays</b></span><span>STATUS <b>${openingPotCollected ? 'AVAILABLE' : 'LOCKED'}</b></span></div><small>${openingPotCollected ? 'Accept this job to borrow the cleaner.' : 'Deliver the Small Golden Pothos first.'}</small>${openingPotCollected ? '<button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button>' : ''}</div>`;
@@ -866,6 +896,25 @@ export class HudController {
     const tab = (key: 'buy' | 'sell' | 'wanted', label: string): string => `<button type="button" data-shop-tab="${key}" class="${this.shopTab === key ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === key}" aria-controls="shop-panel-content">${label}</button>`;
     const content = this.shopTab === 'sell' ? sellContent : this.shopTab === 'buy' ? buyContent : wantedContent;
     return `<div class="shop-tabs" role="tablist" aria-label="Buy and Sell tabs">${tab('buy', 'BUY')}${tab('sell', 'SELL')}${tab('wanted', 'WANTED')}</div><div id="shop-panel-content" class="shop-panel-content">${content}</div><p class="shop-feedback ${this.shopFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
+  }
+
+  private propertyPanelMarkup(listing: PropertyListingKey): string {
+    const state = this.scene?.getPropertyPanelState() ?? {
+      coins: this.coins,
+      rentalBondPaid: false,
+      starterKitClaimed: false,
+    };
+    if (listing === 'mid-rental') {
+      return '<div class="property-details"><div class="property-heading">TO RENT <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Larger future rental preview"><span>ROOMS</span><span>GARDEN</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>Mid-level rental</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A larger future home for a later part of the prototype. No price or unlock condition has been set yet.</p></div>';
+    }
+    if (listing === 'high-property') {
+      return '<div class="property-details"><div class="property-heading">FOR SALE <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Future property preview"><span>HOUSE</span><span>LAND</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>High-level property</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A future property listing. Price, unlock conditions and interior access are not available in this prototype.</p></div>';
+    }
+    const shortfall = Math.max(0, 60 - state.coins);
+    const rentalContent = state.rentalBondPaid
+      ? '<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Use the STARTER APARTMENT door on the street to enter. The one-time starter kit is waiting inside.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can</small></div>'
+      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : '<p class="property-note">The 60-coin bond unlocks the apartment and its one-time starter kit together.</p>'}<button class="property-action" type="button" data-pay-bond>PAY 60-COIN BOND</button>`;
+    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>60 COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
   }
 
   private cityMapMarkup(): string {

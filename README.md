@@ -42,7 +42,7 @@ Controls can swap the joystick and A/B groups; the choice is stored locally.
 - Reversible portrait phone layout trial with an outside-the-world joystick, pointer capture, dead-zone handling, and shared tap/keyboard/zoom actions. Set `PHONE_HYBRID_CONTROLS` in `src/game/config.ts` to `false` to restore the previous phone layout.
 - Opening loop: find and collect one Small Golden Pothos, then accept the opening window-cleaning job from the BUY / SELL counter. Selling the first delivery remains available for 5 coins but is no longer the next required objective.
 - Opening job: collect the Small Golden Pothos first, accept the job at the counter, then tap the HOMES estate-agent window and tap the equipped cleaner eight times. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
-- Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 10 coins.
+- Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 75 coins.
 - BUY / SELL shows the outstanding Golden Pothos request in its street window. After the opening delivery is sold, the shop keeps one display-only Small Golden Pothos with a 7-coin resale tag; the sparse B&W, NES-style, and polished PlayStation-style shelf previews are also display-only.
 - Progress is stored in the single `indoor-jungle-progress-v1` local-storage record. Missing or older records use the original opening state; no external service is involved.
 - Decorative cars, crossing, skyline, vacant lots, weeds, rubbish, construction, and future roads.
@@ -50,7 +50,7 @@ Controls can swap the joystick and A/B groups; the choice is stored locally.
 ## Provisional decisions
 
 - The pot sale value is temporary prototype tuning, fixed at 5 coins.
-- Window reward (3 coins) and repaired-pot sale value (10 coins) are provisional prototype tuning.
+- Window reward (3 coins) and repaired-pot sale value (75 coins) are provisional prototype tuning.
 - World movement is intentionally lightweight and constrained to the front pavement, marked crossing, and opposite pavement; cars are decoration only.
 - Art is code-drawn so the same world geometry can later receive Atari colour, 16-bit, or 32-bit renderers.
 

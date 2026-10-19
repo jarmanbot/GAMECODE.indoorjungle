@@ -5,6 +5,10 @@ import { PHONE_HYBRID_CONTROLS } from './config';
 import { DEFAULT_PROGRESS, sanitizeProgress, type EquippedTool, type InventoryItem, type PotCondition, type ProgressState, type TaskState } from './progress';
 import {
   BUILDINGS,
+  APARTMENT_DOOR_BOTTOM,
+  APARTMENT_DOOR_TOP,
+  APARTMENT_DOOR_WIDTH,
+  APARTMENT_ENTRANCE,
   BUY_SELL_DOOR_BOTTOM,
   BUY_SELL_DOOR_HEIGHT,
   BUY_SELL_DOOR_TOP,
@@ -15,6 +19,13 @@ import {
   CROSSING_START_X,
   FRONT_PAVEMENT_MAX_Y,
   FRONT_PAVEMENT_MIN_Y,
+  HOME_EXIT,
+  HOME_PLAYER_START,
+  HOME_STARTER_KIT,
+  HOME_WORLD_HEIGHT,
+  HOME_WORLD_WIDTH,
+  HOMES_LISTINGS,
+  HOMES_WINDOW_CLEAN_ZONE,
   OPPOSITE_PAVEMENT_MAX_Y,
   OPPOSITE_PAVEMENT_MIN_Y,
   POT_POSITION,
@@ -29,6 +40,7 @@ import {
   STARTING_WALKABLE_MIN_X,
   WORLD_HEIGHT,
   WORLD_WIDTH,
+  type PropertyListingKey,
   type ZoomMode,
 } from './world';
 import type { HudController } from '../ui/HudController';
@@ -41,7 +53,7 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop';
+type PendingInteraction = 'pickup' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit';
 type PlayerFacing = 'front' | 'back' | 'left' | 'right';
 
 export class GameScene extends Phaser.Scene {
@@ -78,6 +90,7 @@ export class GameScene extends Phaser.Scene {
   private modalOpen = false;
   private mapMovementAllowed = false;
   private shopInterior = false;
+  private homeInterior = false;
   private shopTransitioning = false;
   private movementReleaseRequired = false;
   private streetZoomMode: ZoomMode = 'close';
@@ -87,6 +100,8 @@ export class GameScene extends Phaser.Scene {
   private interactionHighlight!: Phaser.GameObjects.Graphics;
   private streetObjects: Phaser.GameObjects.GameObject[] = [];
   private shopObjects: Phaser.GameObjects.GameObject[] = [];
+  private homeObjects: Phaser.GameObjects.GameObject[] = [];
+  private homeStarterKitObjects: Phaser.GameObjects.GameObject[] = [];
   private toastTimer?: Phaser.Time.TimerEvent;
   private lastWorldInputAt = 0;
   private portraitFollowCentered = false;
@@ -115,6 +130,9 @@ export class GameScene extends Phaser.Scene {
   private repairPickupReady = false;
   private repairAnimating = false;
   private brokenPotPieceSelected = false;
+  private rentalBondPaid = false;
+  private starterKitClaimed = false;
+  private rentalFeedbackAt = 0;
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -159,6 +177,8 @@ export class GameScene extends Phaser.Scene {
     this.scale.on('resize', () => {
       if (this.shopInterior) {
         this.setShopCamera();
+      } else if (this.homeInterior) {
+        this.setHomeCamera();
       } else {
         this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         this.applyZoom(this.zoomMode);
@@ -216,7 +236,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
-    if (!this.shopInterior) this.updateCloseVerticalFollow();
+    if (!this.shopInterior && !this.homeInterior) this.updateCloseVerticalFollow();
 
     const direction = new Phaser.Math.Vector2(
       this.mapMovementAllowed ? 0 : Number(this.cursorKeys.left.isDown || this.keys.A.isDown) * -1 + Number(this.cursorKeys.right.isDown || this.keys.D.isDown),
@@ -225,7 +245,7 @@ export class GameScene extends Phaser.Scene {
     const hasKeyboardInput = direction.lengthSq() > 0;
     const hasJoystickInput = this.joystickSteering;
     if (hasKeyboardInput || hasJoystickInput) this.cancelToolUse(false);
-    if (!this.shopInterior && (hasKeyboardInput || hasJoystickInput || this.target)) this.updatePortraitFollow();
+    if (!this.shopInterior && !this.homeInterior && (hasKeyboardInput || hasJoystickInput || this.target)) this.updatePortraitFollow();
     if (hasKeyboardInput) {
       direction.normalize();
       this.cancelTapWalk();
@@ -255,10 +275,10 @@ export class GameScene extends Phaser.Scene {
       // the joystick and the camera is following Alex.
       const movementDelta = Math.min(delta, 32);
       const speed = hasKeyboardInput || hasJoystickInput ? 235 : 190;
-      const minX = this.shopInterior ? 82 : STARTING_WALKABLE_MIN_X;
-      const maxX = this.shopInterior ? SHOP_WORLD_WIDTH - 82 : STARTING_WALKABLE_MAX_X;
-      const minY = this.shopInterior ? 160 : FRONT_PAVEMENT_MIN_Y;
-      const maxY = this.shopInterior ? SHOP_WORLD_HEIGHT - 72 : OPPOSITE_PAVEMENT_MAX_Y;
+      const minX = this.shopInterior ? 82 : this.homeInterior ? 72 : STARTING_WALKABLE_MIN_X;
+      const maxX = this.shopInterior ? SHOP_WORLD_WIDTH - 82 : this.homeInterior ? HOME_WORLD_WIDTH - 72 : STARTING_WALKABLE_MAX_X;
+      const minY = this.shopInterior ? 160 : this.homeInterior ? 90 : FRONT_PAVEMENT_MIN_Y;
+      const maxY = this.shopInterior ? SHOP_WORLD_HEIGHT - 72 : this.homeInterior ? HOME_WORLD_HEIGHT - 72 : OPPOSITE_PAVEMENT_MAX_Y;
       const previousX = this.player.x;
       const previousY = this.player.y;
       const nextX = Phaser.Math.Clamp(
@@ -277,7 +297,7 @@ export class GameScene extends Phaser.Scene {
       else if (!this.windowFacingLocked && this.playerFacing !== 'front') this.faceDirection(new Phaser.Math.Vector2(0, 1));
       this.updateRepairInterruption();
       this.drawPlayer();
-      if (!this.shopInterior) this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
+      if (!this.shopInterior && !this.homeInterior) this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
     }
 
     // Alex faces the player whenever movement has ended. The window-cleaning
@@ -319,14 +339,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   zoomBy(direction: 1 | -1): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.shopTransitioning) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     const index = this.zoomOrder.indexOf(this.zoomMode);
     const nextIndex = Phaser.Math.Clamp(index + direction, 0, this.zoomOrder.length - 1);
     this.applyZoom(this.zoomOrder[nextIndex]);
   }
 
   setZoom(mode: ZoomMode): void {
-    if (this.phoneLandscapeBlocked || this.shopInterior || this.shopTransitioning) return;
+    if (this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     this.applyZoom(mode);
   }
 
@@ -334,11 +354,13 @@ export class GameScene extends Phaser.Scene {
     if (this.modalOpen || this.phoneLandscapeBlocked) return;
     if (this.pendingInteraction && !this.target) this.completePendingInteraction();
     else if (this.shopInterior && this.isWithinShopCounterRange()) this.openShopPanel();
-    else if (!this.shopInterior && this.isPlayerNearBuySellEntrance()) this.selectPendingInteraction(
+    else if (this.homeInterior && this.isNearHomeExit()) this.selectPendingInteraction('exit-home', new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT.y));
+    else if (this.homeInterior && this.isNearStarterKit()) this.claimStarterKit();
+    else if (!this.shopInterior && !this.homeInterior && this.isPlayerNearBuySellEntrance()) this.selectPendingInteraction(
       'enter-shop',
       new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
     );
-    else if (!this.shopInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
+    else if (!this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
       this.windowFacingLocked = true;
       this.faceDirection(new Phaser.Math.Vector2(0, -1));
       this.showToast('Face the HOMES display window, then press B once per spray.', 1700);
@@ -423,6 +445,21 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
+  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; starterKitClaimed: boolean } {
+    return {
+      coins: this.coins,
+      rentalBondPaid: this.rentalBondPaid,
+      starterKitClaimed: this.starterKitClaimed,
+    };
+  }
+
+  getRentalState(): { rentalBondPaid: boolean; starterKitClaimed: boolean } {
+    return {
+      rentalBondPaid: this.rentalBondPaid,
+      starterKitClaimed: this.starterKitClaimed,
+    };
+  }
+
   private syncHudState(): void {
     this.hud.setGameState({
       coins: this.coins,
@@ -449,6 +486,8 @@ export class GameScene extends Phaser.Scene {
     this.inventoryPot = this.progress.inventoryPot;
     this.inventoryHasPot = this.inventoryPot !== null;
     this.saleComplete = this.progress.saleComplete;
+    this.rentalBondPaid = this.progress.rentalBondPaid;
+    this.starterKitClaimed = this.progress.starterKitClaimed;
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     // Older saves can retain the repair objective without the newer ground
     // item flag. Restore that item from the completed window-job state rather
@@ -480,6 +519,8 @@ export class GameScene extends Phaser.Scene {
       ? 'small-golden-pothos'
       : this.inventoryPot ? 'special-repair-pot' : null;
     this.progress.saleComplete = this.saleComplete;
+    this.progress.rentalBondPaid = this.rentalBondPaid;
+    this.progress.starterKitClaimed = this.starterKitClaimed;
     this.progress.brokenPotOwned = this.inventoryPot === 'broken' || this.progress.brokenPotOwned;
     try { localStorage.setItem(this.progressKey, JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
   }
@@ -562,7 +603,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isWindowDisplayPoint(point: Phaser.Math.Vector2): boolean {
-    return point.x >= 1270 && point.x <= 1630 && point.y >= 580 && point.y <= 790;
+    return point.x >= HOMES_WINDOW_CLEAN_ZONE.x
+      && point.x <= HOMES_WINDOW_CLEAN_ZONE.x + HOMES_WINDOW_CLEAN_ZONE.width
+      && point.y >= HOMES_WINDOW_CLEAN_ZONE.y
+      && point.y <= HOMES_WINDOW_CLEAN_ZONE.y + HOMES_WINDOW_CLEAN_ZONE.height;
+  }
+
+  private getPropertyListingAtPoint(point: Phaser.Math.Vector2): PropertyListingKey | null {
+    const listing = HOMES_LISTINGS.find((candidate) => point.x >= candidate.x
+      && point.x <= candidate.x + candidate.width
+      && point.y >= candidate.y
+      && point.y <= candidate.y + candidate.height);
+    return listing?.key ?? null;
+  }
+
+  private isNearApartmentDoor(point: Phaser.Math.Vector2): boolean {
+    return Math.abs(point.x - APARTMENT_ENTRANCE.x) <= APARTMENT_DOOR_WIDTH / 2 + 18
+      && point.y >= APARTMENT_DOOR_TOP - 18
+      && point.y <= APARTMENT_DOOR_BOTTOM + 14;
+  }
+
+  private getApartmentApproachPoint(): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(APARTMENT_ENTRANCE.x, APARTMENT_ENTRANCE.y);
   }
 
   private isFacingWindow(): boolean {
@@ -695,7 +757,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   beginPortableRepair(): void {
-    if (this.shopInterior) {
+    if (this.shopInterior || this.homeInterior) {
       this.showToast('Repair the pot outside on the street.', 1600);
       return;
     }
@@ -851,7 +913,15 @@ export class GameScene extends Phaser.Scene {
       this.openShopPanel();
       return;
     }
-    if (!this.shopInterior && this.isPlayerNearBuySellEntrance()) {
+    if (this.homeInterior && this.isNearHomeExit()) {
+      this.exitHome();
+      return;
+    }
+    if (this.homeInterior && this.isNearStarterKit()) {
+      this.claimStarterKit();
+      return;
+    }
+    if (!this.shopInterior && !this.homeInterior && this.isPlayerNearBuySellEntrance()) {
       this.selectPendingInteraction(
         'enter-shop',
         new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
@@ -886,14 +956,14 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = false;
     this.inventoryPot = null;
     this.progress.inventoryItem = null;
-    this.coins += 10;
+    this.coins += 75;
     this.progress.inventoryPot = null;
     this.progress.coins = this.coins;
     this.progress.task = 'complete';
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel('Repaired pot sold for 10 coins.');
-    this.showToast('Repaired pot sold for 10 coins.');
+    this.hud.refreshShopPanel('Repaired pot sold for 75 coins.');
+    this.showToast('Repaired pot sold for 75 coins.');
   }
 
   acceptWindowJob(): void {
@@ -909,12 +979,49 @@ export class GameScene extends Phaser.Scene {
     this.showToast('Cleaner equipped. Tap the HOMES display window, then press B once per spray, 8 times.', 5200);
   }
 
+  payRentalBond(): void {
+    if (this.rentalBondPaid) {
+      this.hud.refreshPropertyPanel('Your rental is already unlocked.');
+      return;
+    }
+    const bond = 60;
+    if (this.coins < bond) {
+      const shortfall = bond - this.coins;
+      this.hud.refreshPropertyPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the bond.`);
+      this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the 60-coin bond.`, 1800);
+      return;
+    }
+    this.coins -= bond;
+    this.rentalBondPaid = true;
+    this.starterKitClaimed = false;
+    this.progress.rentalBondPaid = true;
+    this.progress.starterKitClaimed = false;
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.refreshPropertyPanel('Bond paid. Your rental and starter kit are unlocked.');
+    this.showToast('Bond paid. Your starter apartment is unlocked.', 2200);
+  }
+
+  private claimStarterKit(): void {
+    if (!this.rentalBondPaid || this.starterKitClaimed) {
+      if (this.starterKitClaimed) this.showToast('Starter kit already claimed. Planting is the next prototype feature.', 1900);
+      return;
+    }
+    this.starterKitClaimed = true;
+    this.progress.starterKitClaimed = true;
+    this.saveProgress();
+    this.showToast('Starter kit claimed: pot, basil seeds and watering can. Planting is the next prototype feature.', 2800);
+    this.drawHomeInteriorKit();
+  }
+
   restartPrototype(): void {
     this.progress = sanitizeProgress(DEFAULT_PROGRESS);
     this.inventoryHasPot = false;
     this.inventoryPot = null;
     this.saleComplete = false;
     this.coins = 0;
+    this.rentalBondPaid = false;
+    this.starterKitClaimed = false;
     this.repairPickupReady = false;
     this.repairPotDisplay?.destroy();
     this.repairPotDisplay = undefined;
@@ -1093,6 +1200,10 @@ export class GameScene extends Phaser.Scene {
       this.handleShopWorldPoint(point.x, point.y);
       return;
     }
+    if (this.homeInterior) {
+      this.handleHomeWorldPoint(point.x, point.y);
+      return;
+    }
     if (this.repairPickupReady && this.repairPotDisplay?.visible) {
       const repairPosition = new Phaser.Math.Vector2(this.repairPotDisplay.x, this.repairPotDisplay.y);
       if (this.isNearPoint(point, repairPosition, 125)) {
@@ -1110,6 +1221,12 @@ export class GameScene extends Phaser.Scene {
         }
         return;
       }
+    }
+    const propertyListing = this.getPropertyListingAtPoint(point);
+    if (propertyListing) {
+      this.cancelTapWalk();
+      this.hud.openPropertyDetails(propertyListing);
+      return;
     }
     if (this.progress.windowJobAccepted && this.isWindowDisplayPoint(point)) {
       const approach = this.getWindowInteractionPoint();
@@ -1176,6 +1293,26 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         this.selectPendingInteraction('enter-shop', approach, tapPath);
+      }
+      return;
+    }
+    if (this.isNearApartmentDoor(point)) {
+      const approach = this.getApartmentApproachPoint();
+      if (!this.rentalBondPaid) {
+        this.cancelTapWalk();
+        this.showToast('Rent the starter apartment at HOMES first.', 1800);
+        return;
+      }
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 120) {
+        this.selectPendingInteraction('enter-home', approach);
+      } else {
+        const tapPath = this.getTapPath(approach.x, approach.y);
+        if (!tapPath) {
+          this.cancelTapWalk();
+          this.showToast('The starter apartment entrance cannot be reached.', 1600);
+          return;
+        }
+        this.selectPendingInteraction('enter-home', approach, tapPath);
       }
       return;
     }
@@ -1288,8 +1425,47 @@ export class GameScene extends Phaser.Scene {
     this.selectWalkPath(path);
   }
 
+  private handleHomeWorldPoint(pointX: number, pointY: number): void {
+    const point = new Phaser.Math.Vector2(pointX, pointY);
+    if (this.isNearHomeExit(point)) {
+      const approach = new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT.y);
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
+        this.selectPendingInteraction('exit-home', approach);
+      } else {
+        const path = this.getHomeTapPath(approach.x, approach.y);
+        if (path) this.selectPendingInteraction('exit-home', approach, path);
+        else this.showToast('The exit cannot be reached.', 1500);
+      }
+      return;
+    }
+    if (this.isNearStarterKit(point)) {
+      const approach = new Phaser.Math.Vector2(HOME_STARTER_KIT.x - 120, HOME_STARTER_KIT.y);
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, HOME_STARTER_KIT.x, HOME_STARTER_KIT.y) <= 110) {
+        if (!this.starterKitClaimed) this.claimStarterKit();
+        else this.showToast('Starter kit already claimed. Planting is the next prototype feature.', 1900);
+      } else {
+        const path = this.getHomeTapPath(approach.x, approach.y);
+        if (path) this.selectPendingInteraction('claim-starter-kit', approach, path);
+        else this.showToast('The starter kit cannot be reached.', 1500);
+      }
+      return;
+    }
+    const path = this.getHomeTapPath(point.x, point.y);
+    if (!path) {
+      this.cancelTapWalk();
+      this.showToast('That area is not accessible.', 1500);
+      return;
+    }
+    this.selectWalkPath(path);
+  }
+
   private getShopTapPath(x: number, y: number): Phaser.Math.Vector2[] | null {
     if (!this.isShopWalkablePosition(x, y)) return null;
+    return [new Phaser.Math.Vector2(x, y)];
+  }
+
+  private getHomeTapPath(x: number, y: number): Phaser.Math.Vector2[] | null {
+    if (!this.isHomeWalkablePosition(x, y)) return null;
     return [new Phaser.Math.Vector2(x, y)];
   }
 
@@ -1299,16 +1475,51 @@ export class GameScene extends Phaser.Scene {
       && point.y <= SHOP_EXIT.y + 20;
   }
 
+  private isNearHomeExit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
+    return Math.abs(point.x - HOME_EXIT.x) <= 64
+      && point.y >= HOME_EXIT.y - 86
+      && point.y <= HOME_EXIT.y + 20;
+  }
+
+  private isNearStarterKit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
+    return Phaser.Math.Distance.Between(point.x, point.y, HOME_STARTER_KIT.x, HOME_STARTER_KIT.y) <= 92;
+  }
+
   private tryActivateMovementDoor(direction: Phaser.Math.Vector2, previousX: number, previousY: number): boolean {
     if (this.modalOpen || this.shopTransitioning || this.pendingInteraction || this.target) return false;
 
-    if (!this.shopInterior) {
+    if (!this.shopInterior && !this.homeInterior) {
       const thresholdY = FRONT_PAVEMENT_MIN_Y + 10;
       const inDoorLane = Math.abs(this.player.x - BUY_SELL_ENTRANCE.x) <= BUY_SELL_DOOR_WIDTH / 2 + 8;
       const movingIntoDoor = direction.y < -0.45 && inDoorLane
         && previousY >= this.player.y && this.player.y <= thresholdY;
       if (movingIntoDoor) {
         this.enterShop();
+        return true;
+      }
+      const inApartmentLane = Math.abs(this.player.x - APARTMENT_ENTRANCE.x) <= APARTMENT_DOOR_WIDTH / 2 + 8;
+      const movingIntoApartment = direction.y < -0.45 && inApartmentLane
+        && previousY >= this.player.y && this.player.y <= FRONT_PAVEMENT_MIN_Y + 10;
+      if (movingIntoApartment) {
+        if (this.rentalBondPaid) this.enterHome();
+        else if (performance.now() - this.rentalFeedbackAt > 900) {
+          this.rentalFeedbackAt = performance.now();
+          this.showToast('Rent the starter apartment at HOMES first.', 1500);
+        }
+        return true;
+      }
+      return false;
+    }
+
+    if (this.homeInterior) {
+      const exitThresholdX = HOME_EXIT.x + 52;
+      const inExitLane = Math.abs(this.player.y - HOME_EXIT.y) <= 48;
+      const movingIntoExit = direction.x < -0.45 && inExitLane
+        && previousX >= this.player.x
+        && previousX >= HOME_EXIT.x - 52
+        && this.player.x <= exitThresholdX;
+      if (movingIntoExit) {
+        this.exitHome();
         return true;
       }
       return false;
@@ -1368,10 +1579,13 @@ export class GameScene extends Phaser.Scene {
     if (interaction === 'enter-shop') this.enterShop();
     if (interaction === 'counter') this.openShopPanel();
     if (interaction === 'exit-shop') this.exitShop();
+    if (interaction === 'enter-home') this.enterHome();
+    if (interaction === 'exit-home') this.exitHome();
+    if (interaction === 'claim-starter-kit') this.claimStarterKit();
   }
 
   private collectPot(): void {
-    if (this.shopInterior || this.inventoryHasPot || !this.pot.visible) return;
+    if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !this.pot.visible) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, POT_POSITION.x, POT_POSITION.y) > 110) return;
     this.inventoryHasPot = true;
     this.inventoryPot = 'ordinary';
@@ -1389,7 +1603,7 @@ export class GameScene extends Phaser.Scene {
 
   private selectBrokenPotPiece(): void {
     const position = this.getBrokenPotPosition();
-    if (this.shopInterior || this.inventoryHasPot || !this.brokenPot.visible || this.progress.brokenPotPiecesRemaining <= 0) return;
+    if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !this.brokenPot.visible || this.progress.brokenPotPiecesRemaining <= 0) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) return;
     this.brokenPotPieceSelected = true;
     this.syncHudState();
@@ -1398,7 +1612,7 @@ export class GameScene extends Phaser.Scene {
 
   private collectBrokenPotPiece(): void {
     const position = this.getBrokenPotPosition();
-    if (this.shopInterior || !this.brokenPotPieceSelected || this.inventoryHasPot || !this.brokenPot.visible) return;
+    if (this.shopInterior || this.homeInterior || !this.brokenPotPieceSelected || this.inventoryHasPot || !this.brokenPot.visible) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) {
       this.showToast('Move closer to the broken piece first.', 1400);
       return;
@@ -1432,7 +1646,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private collectRepairedPot(): void {
-    if (this.shopInterior || !this.repairPickupReady || !this.repairPotDisplay?.visible || this.inventoryPot !== 'broken') return;
+    if (this.shopInterior || this.homeInterior || !this.repairPickupReady || !this.repairPotDisplay?.visible || this.inventoryPot !== 'broken') return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.repairPotDisplay.x, this.repairPotDisplay.y) > 110) return;
     this.inventoryHasPot = true;
     this.inventoryPot = 'repaired';
@@ -1445,7 +1659,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Repaired pot added to the Bag. Sell it at BUY / SELL for 10 coins.');
+    this.showToast('Repaired pot added to the Bag. Sell it at BUY / SELL for 75 coins.');
   }
 
   private openShopPanel(): void {
@@ -1455,7 +1669,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private enterShop(): void {
-    if (this.shopInterior || this.shopTransitioning) return;
+    if (this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
@@ -1501,6 +1715,51 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.fadeIn(160, 7, 9, 10);
   }
 
+  private enterHome(): void {
+    if (this.shopInterior || this.homeInterior || this.shopTransitioning || !this.rentalBondPaid) return;
+    this.shopTransitioning = true;
+    this.movementReleaseRequired = true;
+    this.hud.resetHeldInputs();
+    this.cancelToolUse(true);
+    this.setRepairPickupPresentationVisible(false);
+    this.cancelTapWalk();
+    this.streetPosition.set(this.player.x, this.player.y);
+    this.streetZoomMode = this.zoomMode;
+    this.player.setAlpha(1);
+    this.tweens.add({
+      targets: this.player,
+      x: APARTMENT_ENTRANCE.x,
+      y: APARTMENT_DOOR_BOTTOM - 18,
+      duration: 360,
+      ease: 'Sine.inOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.player,
+          alpha: 0,
+          duration: 220,
+          ease: 'Quad.in',
+          onComplete: () => {
+            this.cameras.main.fadeOut(180, 7, 9, 10);
+            this.time.delayedCall(180, () => this.enterHomeNow());
+          },
+        });
+      },
+    });
+  }
+
+  private enterHomeNow(): void {
+    this.homeInterior = true;
+    this.setObjectsVisible(this.streetObjects, false);
+    this.homeObjects = [];
+    this.drawHomeInterior();
+    this.player.setPosition(HOME_PLAYER_START.x, HOME_PLAYER_START.y).setAlpha(1).setVisible(true);
+    this.destinationMarker.setVisible(false);
+    this.clearInteractionHighlight();
+    this.setHomeCamera();
+    this.shopTransitioning = false;
+    this.cameras.main.fadeIn(160, 7, 9, 10);
+  }
+
   private exitShop(): void {
     if (!this.shopInterior || this.shopTransitioning) return;
     this.shopTransitioning = true;
@@ -1532,6 +1791,36 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.fadeIn(160, 7, 9, 10);
   }
 
+  private exitHome(): void {
+    if (!this.homeInterior || this.shopTransitioning) return;
+    this.shopTransitioning = true;
+    this.movementReleaseRequired = true;
+    this.hud.resetHeldInputs();
+    this.cancelToolUse(true);
+    this.cancelTapWalk();
+    this.cameras.main.fadeOut(120, 7, 9, 10);
+    this.time.delayedCall(120, () => this.exitHomeNow());
+  }
+
+  private exitHomeNow(): void {
+    this.homeObjects.forEach((object) => object.destroy());
+    this.homeObjects = [];
+    this.homeStarterKitObjects = [];
+    this.homeInterior = false;
+    this.setObjectsVisible(this.streetObjects, true);
+    this.player.setPosition(APARTMENT_ENTRANCE.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
+    this.setRepairPickupPresentationVisible(this.repairPickupReady);
+    this.updateProgressVisuals();
+    this.destinationMarker.setVisible(false);
+    this.clearInteractionHighlight();
+    this.zoomMode = this.streetZoomMode;
+    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.applyZoom(this.streetZoomMode);
+    this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
+    this.shopTransitioning = false;
+    this.cameras.main.fadeIn(160, 7, 9, 10);
+  }
+
   private setShopCamera(): void {
     const fittedZoom = Math.min(
       this.scale.width / SHOP_WORLD_WIDTH,
@@ -1544,6 +1833,19 @@ export class GameScene extends Phaser.Scene {
     const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
     const zoom = portraitPhone ? Math.max(0.58, fittedZoom) : Math.max(0.25, fittedZoom);
     this.cameras.main.setBounds(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
+    this.cameras.main.setZoom(zoom);
+    this.cameras.main.startFollow(this.player, true, 0.14, 0.14, 0, 0);
+    this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
+  }
+
+  private setHomeCamera(): void {
+    const fittedZoom = Math.min(
+      this.scale.width / HOME_WORLD_WIDTH,
+      this.scale.height / HOME_WORLD_HEIGHT,
+    ) * 0.92;
+    const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
+    const zoom = portraitPhone ? Math.max(0.58, fittedZoom) : Math.max(0.25, fittedZoom);
+    this.cameras.main.setBounds(0, 0, HOME_WORLD_WIDTH, HOME_WORLD_HEIGHT);
     this.cameras.main.setZoom(zoom);
     this.cameras.main.startFollow(this.player, true, 0.14, 0.14, 0, 0);
     this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
@@ -1607,6 +1909,74 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setDepth(7);
       this.shopObjects.push(label);
     });
+  }
+
+  private drawHomeInterior(): void {
+    const room = this.add.graphics().setDepth(-100);
+    room.fillStyle(0x252a2d, 1).fillRect(0, 0, HOME_WORLD_WIDTH, HOME_WORLD_HEIGHT);
+    room.fillStyle(0x454c4e, 1).fillRect(48, 80, HOME_WORLD_WIDTH - 96, HOME_WORLD_HEIGHT - 128);
+    room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(48, 80, HOME_WORLD_WIDTH - 96, HOME_WORLD_HEIGHT - 128);
+    room.lineStyle(3, 0x697271, 0.8).lineBetween(48, 430, HOME_WORLD_WIDTH - 48, 430);
+    this.homeObjects.push(room);
+
+    const window = this.add.graphics().setDepth(3);
+    window.fillStyle(0x111416, 1).fillRect(610, 150, 190, 150);
+    window.lineStyle(5, 0xf6f7f3, 1).strokeRect(610, 150, 190, 150);
+    window.lineStyle(3, 0x858d8d, 1).lineBetween(705, 150, 705, 300).lineBetween(610, 225, 800, 225);
+    this.homeObjects.push(window);
+
+    const growingSpot = this.add.graphics().setDepth(3);
+    growingSpot.fillStyle(0x111416, 1).fillRect(420, 438, 150, 64);
+    growingSpot.lineStyle(3, 0xf6f7f3, 0.95).strokeRect(420, 438, 150, 64);
+    growingSpot.fillStyle(0x697271, 1).fillRect(438, 454, 114, 25);
+    this.homeObjects.push(growingSpot);
+
+    const exit = this.add.graphics().setDepth(4);
+    exit.fillStyle(0x111416, 1).fillRect(HOME_EXIT.x - 48, HOME_EXIT.y - 72, 96, 78);
+    exit.lineStyle(5, 0xf6f7f3, 1).strokeRect(HOME_EXIT.x - 48, HOME_EXIT.y - 72, 96, 78);
+    this.homeObjects.push(exit);
+
+    const labels = [
+      { text: 'YOUR RENTAL', x: HOME_WORLD_WIDTH / 2, y: 112, size: '26px' },
+      { text: 'GROWING SPACE', x: 495, y: 522, size: '14px' },
+      { text: 'WINDOW', x: 705, y: 326, size: '14px' },
+      { text: 'EXIT', x: HOME_EXIT.x, y: HOME_EXIT.y + 28, size: '14px' },
+    ];
+    labels.forEach(({ text, x, y, size }) => {
+      const label = this.add.text(x, y, text, {
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: size, fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(7);
+      this.homeObjects.push(label);
+    });
+    this.drawHomeInteriorKit();
+  }
+
+  private drawHomeInteriorKit(): void {
+    this.homeStarterKitObjects.forEach((object) => object.destroy());
+    this.homeStarterKitObjects = [];
+    if (!this.homeInterior) return;
+    const kit = this.add.graphics().setDepth(4);
+    kit.fillStyle(0x111416, 1).fillRect(HOME_STARTER_KIT.x - 95, HOME_STARTER_KIT.y - 46, 190, 72);
+    kit.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(HOME_STARTER_KIT.x - 95, HOME_STARTER_KIT.y - 46, 190, 72);
+    kit.fillStyle(0x697271, 1).fillRect(HOME_STARTER_KIT.x - 72, HOME_STARTER_KIT.y - 23, 34, 24);
+    kit.lineStyle(2, 0xf6f7f3, 0.9).strokeRect(HOME_STARTER_KIT.x - 72, HOME_STARTER_KIT.y - 23, 34, 24);
+    kit.fillStyle(0x858d8d, 1).fillRect(HOME_STARTER_KIT.x - 10, HOME_STARTER_KIT.y - 23, 42, 24);
+    kit.fillStyle(0xd8dddc, 1).fillRect(HOME_STARTER_KIT.x + 50, HOME_STARTER_KIT.y - 28, 10, 34);
+    this.homeStarterKitObjects.push(kit);
+    const label = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y + 42,
+      this.starterKitClaimed ? 'STARTER KIT CLAIMED' : 'STARTER KIT · TAP TO CLAIM', {
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold',
+        backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
+      }).setOrigin(0.5).setDepth(7);
+    this.homeStarterKitObjects.push(label);
+    const contents = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y - 62,
+      'POT · USED MEDIUM\nBASIL SEEDS · WATERING CAN', {
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold',
+        align: 'center', lineSpacing: 2,
+        backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
+      }).setOrigin(0.5).setDepth(7);
+    this.homeStarterKitObjects.push(contents);
+    this.homeObjects.push(...this.homeStarterKitObjects);
   }
 
   private createWantedSign(): void {
@@ -1937,7 +2307,9 @@ export class GameScene extends Phaser.Scene {
     const currentY = this.player.y;
     const isWalkable = (x: number, y: number): boolean => this.shopInterior
       ? this.isShopWalkablePosition(x, y)
-      : this.isWalkablePosition(x, y);
+      : this.homeInterior
+        ? this.isHomeWalkablePosition(x, y)
+        : this.isWalkablePosition(x, y);
     if (isWalkable(nextX, nextY)) {
       this.player.setPosition(nextX, nextY);
       return;
@@ -1957,6 +2329,10 @@ export class GameScene extends Phaser.Scene {
     const insideLeftShelf = x >= 82 && x <= 292 && y >= 210 && y <= 500;
     const insideRightShelf = x >= 868 && x <= 1078 && y >= 210 && y <= 500;
     return !insideCounter && !insideLeftShelf && !insideRightShelf;
+  }
+
+  private isHomeWalkablePosition(x: number, y: number): boolean {
+    return x >= 72 && x <= HOME_WORLD_WIDTH - 72 && y >= 90 && y <= HOME_WORLD_HEIGHT - 72;
   }
 
   private isWalkablePosition(x: number, y: number): boolean {
@@ -1995,11 +2371,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateInteraction(): void {
-    if (!this.modalOpen && !this.shopInterior && this.brokenPotPieceSelected) {
+    if (!this.modalOpen && this.homeInterior && this.isNearHomeExit()) {
+      this.hud.setAction('EXIT HOME');
+      return;
+    }
+    if (!this.modalOpen && this.homeInterior && this.isNearStarterKit() && !this.starterKitClaimed) {
+      this.hud.setAction('CLAIM STARTER KIT');
+      return;
+    }
+    if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.brokenPotPieceSelected) {
       this.hud.setAction('PRESS B TO PICK UP PIECE');
       return;
     }
-    if (!this.modalOpen && !this.shopInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
+    if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
       this.hud.setAction('FACE HOMES WINDOW');
       return;
     }
