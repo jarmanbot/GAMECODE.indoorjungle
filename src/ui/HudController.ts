@@ -64,6 +64,7 @@ export class HudController {
   private zoomMode: ZoomMode = 'normal';
   private toolPointerId: number | null = null;
   private joystickSide: 'left' | 'right' = this.loadJoystickSide();
+  private arcadeAPointerId: number | null = null;
 
   constructor(audio: AudioController) {
     this.audio = audio;
@@ -136,11 +137,14 @@ export class HudController {
 
   resetHeldInputs(): void {
     this.resetJoystick();
+    const aPointerId = this.arcadeAPointerId;
+    this.arcadeAPointerId = null;
+    if (aPointerId !== null) this.arcadeA.releasePointerCapture?.(aPointerId);
     const pointerId = this.toolPointerId;
     this.toolPointerId = null;
     if (pointerId !== null) this.arcadeB.releasePointerCapture?.(pointerId);
     this.arcadeB.classList.remove('is-held');
-    this.scene?.releaseTool();
+    this.scene?.cancelActiveToolAction();
   }
 
   setPhoneOrientationBlocked(blocked: boolean): void {
@@ -304,7 +308,9 @@ export class HudController {
       const disabled = slot.owned ? '' : ' disabled';
       const classes = `tool-slot${slot.owned ? ' is-owned' : ''}${active ? ' is-active' : ''}`;
       const key = slot.key ? ` data-tool="${slot.key}"` : '';
-      return `<button class="${classes}" type="button"${key}${disabled} aria-label="${slot.owned ? `Equip ${slot.label.toLowerCase()}` : 'Empty tool slot'}"><strong>${slot.icon}</strong><span>${active ? 'ACTIVE' : slot.label}</span></button>`;
+      const label = slot.owned ? slot.label : 'EMPTY';
+      const icon = slot.owned ? slot.icon : '—';
+      return `<button class="${classes}" type="button"${key}${disabled} aria-label="${slot.owned ? `Equip ${slot.label.toLowerCase()}` : 'Empty tool slot'}"><strong>${icon}</strong><span>${active ? 'ACTIVE' : label}</span></button>`;
     }).join('');
     this.toolSlots.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((button) => {
       this.bindButtonActivation(button, () => {
@@ -332,18 +338,17 @@ export class HudController {
   }
 
   private bindArcadeControls(): void {
-    let aPointerId: number | null = null;
     const pressA = (event: PointerEvent): void => {
-      if (aPointerId !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
-      aPointerId = event.pointerId;
+      if (this.arcadeAPointerId !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      this.arcadeAPointerId = event.pointerId;
       this.arcadeA.setPointerCapture?.(event.pointerId);
       event.preventDefault();
       event.stopPropagation();
       this.scene?.pressHop();
     };
     const releaseA = (event: PointerEvent): void => {
-      if (aPointerId !== event.pointerId) return;
-      aPointerId = null;
+      if (this.arcadeAPointerId !== event.pointerId) return;
+      this.arcadeAPointerId = null;
       this.arcadeA.releasePointerCapture?.(event.pointerId);
       event.preventDefault();
       event.stopPropagation();
@@ -740,7 +745,7 @@ export class HudController {
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
         : '';
       const toolNote = [
-        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Equipped for B / USE.' : 'Hold B near the HOMES estate-agent window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Press B once per spray.' : 'Equip it near the HOMES estate-agent window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
         this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining. Tap B 10 times beside a broken pot.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
       ].join('');
       return {
@@ -855,8 +860,8 @@ export class HudController {
     const jobContent = shop.windowJobComplete
       ? '<div class="job-card is-complete"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Completed 8 cleaning taps</b></span><span>STATUS <b>COMPLETED</b></span></div><small>Return to the street to continue with the broken pot job.</small></div>'
       : shop.windowJobAccepted
-        ? `<div class="job-card is-active"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Clean the window with 8 taps</b></span><span>STATUS <b>IN PROGRESS · ${shop.windowCleaningProgress} / 8</b></span></div><small>Tap the REAL ESTATE window, face it, then use B.</small></div>`
-        : `<div class="job-card ${openingPotCollected ? 'is-available' : 'is-locked'}"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Deliver the opening Pothos, then clean 8 taps</b></span><span>STATUS <b>${openingPotCollected ? 'AVAILABLE' : 'LOCKED'}</b></span></div><small>${openingPotCollected ? 'Accept this job to borrow the cleaner.' : 'Deliver the Small Golden Pothos first.'}</small>${openingPotCollected ? '<button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button>' : ''}</div>`;
+        ? `<div class="job-card is-active"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Complete 8 sprays</b></span><span>STATUS <b>IN PROGRESS · ${shop.windowCleaningProgress} / 8</b></span></div><small>Tap the REAL ESTATE window, face it, then press B once per spray.</small></div>`
+        : `<div class="job-card ${openingPotCollected ? 'is-available' : 'is-locked'}"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Deliver the opening Pothos, then complete 8 sprays</b></span><span>STATUS <b>${openingPotCollected ? 'AVAILABLE' : 'LOCKED'}</b></span></div><small>${openingPotCollected ? 'Accept this job to borrow the cleaner.' : 'Deliver the Small Golden Pothos first.'}</small>${openingPotCollected ? '<button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button>' : ''}</div>`;
     const wantedContent = `<div class="shop-content-heading">WANTED</div><div class="shop-section-label">DELIVERY REQUEST</div>${deliveryContent}<div class="shop-section-label">WINDOW-CLEANING JOB</div>${jobContent}`;
     const tab = (key: 'buy' | 'sell' | 'wanted', label: string): string => `<button type="button" data-shop-tab="${key}" class="${this.shopTab === key ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === key}" aria-controls="shop-panel-content">${label}</button>`;
     const content = this.shopTab === 'sell' ? sellContent : this.shopTab === 'buy' ? buyContent : wantedContent;

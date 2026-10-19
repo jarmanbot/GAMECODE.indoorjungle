@@ -16,7 +16,7 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
 - `E` near the BUY / SELL entrance or shop counter: select entry or open the panel.
 - `Space` (or phone `A`): one visual hop. It does not move Alex’s ground position or bypass collisions.
-- `Q` (or phone `B`): use the equipped tool. Cleaner uses eight taps; repair uses ten taps beside the visible ground pot.
+- `Q` (or phone `B`): use the equipped tool. Cleaner uses eight one-second sprays; repair uses ten taps beside the visible ground pot.
 - Tap or click the world: walk to that point.
 - Mouse wheel, the single IN/OUT zoom button, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
 - Tap/click the Small Golden Pothos or BUY / SELL entrance to walk there and interact on arrival. Alex shows front, back, left and right poses; window cleaning requires the back-facing pose toward the HOMES display. After the window job, tap a broken-pot piece and press B to pick up each piece.

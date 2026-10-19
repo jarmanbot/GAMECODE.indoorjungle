@@ -150,10 +150,10 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
   const crossingX = CROSSING_START_X + 14;
   const crossingWidth = CROSSING_END_X - CROSSING_START_X - 18;
   const crossingY = PAVEMENT_Y + PAVEMENT_HEIGHT + 10;
-  for (let stripeY = crossingY + 14; stripeY + 18 <= crossingY + 220; stripeY += 32) {
-    // Rotate the existing crossing pattern 90 degrees: each bar now runs
-    // across the crossing width instead of along the pavement-to-pavement axis.
-    g.fillRect(crossingX, stripeY, crossingWidth, 18);
+  for (let stripeX = crossingX + 14; stripeX + 18 <= crossingX + crossingWidth; stripeX += 32) {
+    // The road runs horizontally, so each crossing bar is perpendicular to it
+    // and connects the front pavement to the opposite pavement.
+    g.fillRect(stripeX, crossingY, 18, 220);
   }
 }
 

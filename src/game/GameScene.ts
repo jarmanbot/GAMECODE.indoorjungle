@@ -97,6 +97,9 @@ export class GameScene extends Phaser.Scene {
   private toolFeedbackAt = 0;
   private lastSavedCleaningStage = 0;
   private sprayTimer?: Phaser.Time.TimerEvent;
+  private sprayAnimating = false;
+  private sprayElapsed = 0;
+  private readonly sprayDuration = 1000;
   private wantedSignBackdrop?: Phaser.GameObjects.Graphics;
   private wantedSignText?: Phaser.GameObjects.Text;
   private wantedSignPulse?: Phaser.Tweens.Tween;
@@ -172,6 +175,7 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.updateCars(delta);
+    this.updateWindowSpray(delta);
 
     if (this.modalOpen && !this.mapMovementAllowed) {
       this.updateInteraction();
@@ -220,7 +224,7 @@ export class GameScene extends Phaser.Scene {
     );
     const hasKeyboardInput = direction.lengthSq() > 0;
     const hasJoystickInput = this.joystickSteering;
-    if (hasKeyboardInput || hasJoystickInput) this.releaseTool();
+    if (hasKeyboardInput || hasJoystickInput) this.cancelToolUse(false);
     if (!this.shopInterior && (hasKeyboardInput || hasJoystickInput || this.target)) this.updatePortraitFollow();
     if (hasKeyboardInput) {
       direction.normalize();
@@ -297,6 +301,10 @@ export class GameScene extends Phaser.Scene {
     if (isOpen && !preserveDestination) this.cancelTapWalk();
   }
 
+  cancelActiveToolAction(): void {
+    this.cancelToolUse(false);
+  }
+
   resizeViewportToStage(): void {
     const canvas = this.game?.canvas;
     if (!canvas) return;
@@ -333,7 +341,7 @@ export class GameScene extends Phaser.Scene {
     else if (!this.shopInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
       this.windowFacingLocked = true;
       this.faceDirection(new Phaser.Math.Vector2(0, -1));
-      this.showToast('Face the HOMES display window, then tap B eight times.', 1700);
+      this.showToast('Face the HOMES display window, then press B once per spray.', 1700);
     }
   }
 
@@ -371,6 +379,8 @@ export class GameScene extends Phaser.Scene {
 
   pressTool(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    if (this.toolHeld) return;
+    this.toolHeld = true;
     this.audio.unlock();
     if (this.brokenPotPieceSelected) {
       this.collectBrokenPotPiece();
@@ -390,6 +400,7 @@ export class GameScene extends Phaser.Scene {
   equipTool(tool: Exclude<EquippedTool, null>): void {
     if (tool === 'cleaner' && !this.progress.cleanerOwned) return;
     if (tool === 'repair' && !this.progress.repairToolOwned) return;
+    this.cancelToolUse(false);
     this.progress.equippedTool = tool;
     this.saveProgress();
     this.syncHudState();
@@ -561,55 +572,104 @@ export class GameScene extends Phaser.Scene {
   }
 
   private advanceWindowCleaningTap(): void {
-    if (this.hopActive || !this.progress.windowJobAccepted || this.progress.windowJobComplete || this.progress.equippedTool !== 'cleaner') return;
+    if (this.hopActive || this.sprayAnimating || !this.progress.windowJobAccepted || this.progress.windowJobComplete || this.progress.equippedTool !== 'cleaner') return;
     const inRange = this.isNearWindowApproach();
     if (!inRange || !this.isFacingWindow()) {
       const now = performance.now();
       if (now - this.toolFeedbackAt > 700) {
         this.toolFeedbackAt = now;
-        this.showToast(!inRange ? 'Move closer to the HOMES window.' : 'Tap the HOMES window to face it, then tap B.', 1300);
+        this.showToast(!inRange ? 'Move closer to the HOMES window.' : 'Face the HOMES window, then press B once per spray.', 1300);
       }
       return;
     }
 
     this.audio.playToolUse();
-    const approach = this.getWindowInteractionPoint();
-    const display = this.getWindowDisplayPoint();
-    this.sprayEffect.clear();
-    // Deliberately oversized, high-contrast spray burst: it is a feedback
-    // effect only and does not change Alex’s collision or ground position.
-    this.sprayEffect.fillStyle(0xf6f7f3, 0.98).fillCircle(approach.x, approach.y - 48, 13);
-    this.sprayEffect.fillStyle(0xd8dddc, 0.96);
-    for (let index = 0; index < 10; index += 1) {
-      const spread = (index - 4.5) * 15;
-      const progress = 0.25 + (index % 3) * 0.21;
-      this.sprayEffect.fillCircle(
-        approach.x + spread * progress,
-        approach.y - 70 - progress * 100,
-        5 + (index % 3),
-      );
-    }
-    this.sprayEffect.lineStyle(5, 0xf6f7f3, 0.92)
-      .lineBetween(approach.x, approach.y - 56, display.x, display.y + 48)
-      .lineBetween(approach.x - 15, approach.y - 58, display.x - 55, display.y + 58)
-      .lineBetween(approach.x + 15, approach.y - 58, display.x + 55, display.y + 58);
-    this.sprayEffect.lineStyle(3, 0x111416, 0.95).strokeRect(display.x - 166, display.y - 84, 332, 168);
-    this.sprayEffect.setVisible(true);
     this.sprayTimer?.remove(false);
-    this.sprayTimer = this.time.delayedCall(420, () => this.stopSprayEffect());
-
-    this.progress.windowCleaningProgress = Math.min(8, this.progress.windowCleaningProgress + 1);
-    this.lastSavedCleaningStage = this.progress.windowCleaningProgress;
-    this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
-    this.saveProgress();
-    this.showToast(`SPRAY ${this.progress.windowCleaningProgress} / 8`, 850);
-    if (this.progress.windowCleaningProgress >= 8) this.completeWindowJob();
+    this.sprayTimer = undefined;
+    this.sprayAnimating = true;
+    this.sprayElapsed = 0;
+    this.drawWindowSpray(0);
+    this.showToast('SPRAYING WINDOW…', 1100);
   }
 
   private stopSprayEffect(): void {
     this.sprayTimer?.remove(false);
     this.sprayTimer = undefined;
+    this.sprayAnimating = false;
+    this.sprayElapsed = 0;
     this.sprayEffect?.clear().setVisible(false);
+  }
+
+  private updateWindowSpray(delta: number): void {
+    if (!this.sprayAnimating) return;
+    const movementHeld = this.joystickSteering
+      || this.cursorKeys?.left.isDown || this.cursorKeys?.right.isDown
+      || this.cursorKeys?.up.isDown || this.cursorKeys?.down.isDown
+      || this.keys?.W.isDown || this.keys?.A.isDown || this.keys?.S.isDown || this.keys?.D.isDown;
+    const stillValid = !this.modalOpen && !this.phoneLandscapeBlocked && !this.shopTransitioning
+      && !this.hopActive && !this.target && !movementHeld
+      && this.progress.windowJobAccepted && !this.progress.windowJobComplete
+      && this.progress.equippedTool === 'cleaner'
+      && this.isNearWindowApproach() && this.isFacingWindow();
+    if (!stillValid) {
+      this.stopSprayEffect();
+      return;
+    }
+
+    this.sprayElapsed = Math.min(this.sprayDuration, this.sprayElapsed + Math.min(delta, 32));
+    const progress = this.sprayElapsed / this.sprayDuration;
+    this.drawWindowSpray(progress);
+    if (progress < 1) return;
+
+    this.sprayAnimating = false;
+    this.progress.windowCleaningProgress = Math.min(8, this.progress.windowCleaningProgress + 1);
+    this.lastSavedCleaningStage = this.progress.windowCleaningProgress;
+    this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
+    this.saveProgress();
+    this.showToast(`SPRAY ${this.progress.windowCleaningProgress} / 8`, 1000);
+    if (this.progress.windowCleaningProgress >= 8) {
+      this.completeWindowJob();
+      this.stopSprayEffect();
+      return;
+    }
+    this.sprayTimer?.remove(false);
+    this.sprayTimer = this.time.delayedCall(180, () => this.stopSprayEffect());
+  }
+
+  private drawWindowSpray(progress: number): void {
+    if (!this.sprayEffect) return;
+    const approach = this.getWindowInteractionPoint();
+    const display = this.getWindowDisplayPoint();
+    const sourceX = approach.x;
+    const sourceY = approach.y - 52;
+    const targetX = display.x;
+    const targetY = display.y + 48;
+    const travel = Math.min(1, progress / 0.82);
+    const lerp = (start: number, end: number, amount: number): number => start + (end - start) * amount;
+
+    this.sprayEffect.clear();
+    this.sprayEffect.lineStyle(3, 0xd8dddc, 0.76);
+    this.sprayEffect.lineBetween(sourceX, sourceY, targetX - 30, targetY);
+    this.sprayEffect.lineBetween(sourceX, sourceY, targetX + 30, targetY);
+    this.sprayEffect.fillStyle(0xf6f7f3, 0.98).fillCircle(sourceX, sourceY, 10);
+    for (let index = 0; index < 9; index += 1) {
+      const offset = (index % 3 - 1) * 12;
+      const dropletProgress = Math.max(0, Math.min(1, travel - (index % 5) * 0.07));
+      const x = lerp(sourceX, targetX + offset, dropletProgress);
+      const y = lerp(sourceY, targetY + offset * 0.35, dropletProgress);
+      this.sprayEffect.fillStyle(index % 2 === 0 ? 0xf6f7f3 : 0xbfc5c3, 0.96);
+      this.sprayEffect.fillCircle(x, y, 4 + (index % 2));
+    }
+    if (progress >= 0.82) {
+      const splashProgress = Math.min(1, (progress - 0.82) / 0.18);
+      const splashRadius = 8 + splashProgress * 16;
+      this.sprayEffect.lineStyle(3, 0xf6f7f3, 0.95);
+      this.sprayEffect.strokeCircle(targetX, targetY, splashRadius);
+      this.sprayEffect.lineBetween(targetX - splashRadius - 7, targetY, targetX - splashRadius / 2, targetY);
+      this.sprayEffect.lineBetween(targetX + splashRadius / 2, targetY, targetX + splashRadius + 7, targetY);
+      this.sprayEffect.lineBetween(targetX, targetY - splashRadius - 7, targetX, targetY - splashRadius / 2);
+    }
+    this.sprayEffect.setVisible(true);
   }
 
   private completeWindowJob(): void {
@@ -846,7 +906,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel('Cleaner borrowed and equipped.');
-    this.showToast('Cleaner equipped. Tap the HOMES display window, then tap B eight times.', 5200);
+    this.showToast('Cleaner equipped. Tap the HOMES display window, then press B once per spray, 8 times.', 5200);
   }
 
   restartPrototype(): void {
@@ -1027,6 +1087,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleWorldPoint(screenX: number, screenY: number): void {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld) return;
+    if (this.sprayAnimating) this.cancelToolUse(false);
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
     if (this.shopInterior) {
       this.handleShopWorldPoint(point.x, point.y);
@@ -1055,7 +1116,7 @@ export class GameScene extends Phaser.Scene {
       if (this.isNearWindowApproach()) {
         this.windowFacingLocked = true;
         this.faceDirection(new Phaser.Math.Vector2(0, -1));
-        this.showToast('HOMES display selected. Hold B to clean.', 1500);
+        this.showToast('HOMES display selected. Press B once per spray.', 1500);
       } else {
         const tapPath = this.getTapPath(approach.x, approach.y);
         if (!tapPath) {
@@ -1302,7 +1363,7 @@ export class GameScene extends Phaser.Scene {
     if (interaction === 'window-clean') {
       this.windowFacingLocked = true;
       this.faceDirection(new Phaser.Math.Vector2(0, -1));
-      this.showToast('HOMES display selected. Hold B to clean.', 1500);
+      this.showToast('HOMES display selected. Press B once per spray.', 1500);
     }
     if (interaction === 'enter-shop') this.enterShop();
     if (interaction === 'counter') this.openShopPanel();
@@ -1323,7 +1384,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Head to the general store and sell the Golden Pothos.');
+    this.showToast('Found a Small Golden Pothos.');
   }
 
   private selectBrokenPotPiece(): void {
