@@ -1,8 +1,26 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, setBuySellDoorOpen } from './art';
+import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawBasilCrop, setBuySellDoorOpen, type BasilVisualStage } from './art';
 import { AudioController } from './AudioController';
 import { PHONE_HYBRID_CONTROLS } from './config';
-import { DEFAULT_PROGRESS, sanitizeProgress, type EquippedTool, type InventoryItem, type PotCondition, type ProgressState, type TaskState } from './progress';
+import { createDevCheckpoint, type DevCheckpointScene } from './devCheckpoints';
+import {
+  BASIL_HARVEST_STOCK_ID,
+  DEFAULT_SHOP_STOCK_QUALITY,
+  DEFAULT_PROGRESS,
+  OPENING_GOLDEN_POTHOS_INSTANCE_ID,
+  sanitizeProgress,
+  SPECIAL_REPAIR_POT_INSTANCE_ID,
+  type BasilStage,
+  type EquippedTool,
+  type InventoryItem,
+  type PotCondition,
+  type PlacedWorldItem,
+  type ProgressState,
+  type ShopStockCondition,
+  type ShopStockEntry,
+  type ShopStockItem,
+  type TaskState,
+} from './progress';
 import {
   BUILDINGS,
   APARTMENT_DOOR_BOTTOM,
@@ -20,14 +38,25 @@ import {
   FRONT_PAVEMENT_MAX_Y,
   FRONT_PAVEMENT_MIN_Y,
   HOME_EXIT,
+  HOME_GROWING_SPOTS,
   HOME_PLAYER_START,
   HOME_STARTER_KIT,
   HOME_WORLD_HEIGHT,
   HOME_WORLD_WIDTH,
+  BASIL_GROWTH_DURATION_MS,
+  BASIL_POT_INTERACTION_RADIUS,
+  BASIL_HARVEST_PRICE,
+  BASIL_SEED_PRICE,
+  getShopBuybackPrice,
+  OPENING_POTHOS_SALE_PRICE,
+  WINDOW_JOB_REWARD,
+  REPAIRED_POT_SALE_PRICE,
+  RENTAL_BOND_COST,
   HOMES_LISTINGS,
-  HOMES_WINDOW_CLEAN_ZONE,
+  HOMES_WINDOW_CLEAN_SECTIONS,
   OPPOSITE_PAVEMENT_MAX_Y,
   OPPOSITE_PAVEMENT_MIN_Y,
+  PAVEMENT_Y,
   POT_POSITION,
   SHOP_COUNTER,
   SHOP_COUNTER_APPROACH,
@@ -53,8 +82,10 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit';
+type PendingInteraction = 'pickup' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit' | 'place-starter-pot' | 'select-basil-pot';
 type PlayerFacing = 'front' | 'back' | 'left' | 'right';
+type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
+const DEV_BUILD = import.meta.env.DEV;
 
 export class GameScene extends Phaser.Scene {
   private readonly zoomOrder: ZoomMode[] = ['normal', 'close'];
@@ -62,6 +93,7 @@ export class GameScene extends Phaser.Scene {
   private readonly audio: AudioController;
   private player!: Phaser.GameObjects.Graphics;
   private pot!: Phaser.GameObjects.Graphics;
+  private placedItemDisplay?: Phaser.GameObjects.Graphics;
   private brokenPot!: Phaser.GameObjects.Graphics;
   private windowDirtOverlay!: Phaser.GameObjects.Graphics;
   private sprayEffect!: Phaser.GameObjects.Graphics;
@@ -83,10 +115,16 @@ export class GameScene extends Phaser.Scene {
   private zoomMode: ZoomMode = 'close';
   private inventoryHasPot = false;
   private inventoryPot: PotCondition | null = null;
+  private inventoryInstanceId: string | null = null;
   private saleComplete = false;
   private coins = 0;
   private progress: ProgressState = sanitizeProgress(DEFAULT_PROGRESS);
-  private readonly progressKey = 'indoor-jungle-progress-v1';
+  private readonly normalProgressKey = 'indoor-jungle-progress-v1';
+  private readonly devProgressKey = 'indoor-jungle-progress-dev-test-v1';
+  private readonly devModeKey = 'indoor-jungle-dev-test-mode-v1';
+  private readonly devSessionKey = 'indoor-jungle-dev-test-session-v1';
+  private testSaveMode = false;
+  private devSessionMeta: DevSessionMeta | null = null;
   private modalOpen = false;
   private mapMovementAllowed = false;
   private shopInterior = false;
@@ -98,10 +136,17 @@ export class GameScene extends Phaser.Scene {
   private streetPosition = new Phaser.Math.Vector2(START_POSITION.x, START_POSITION.y);
   private destinationMarker!: Phaser.GameObjects.Graphics;
   private interactionHighlight!: Phaser.GameObjects.Graphics;
+  private placementHighlight!: Phaser.GameObjects.Graphics;
+  private placementOptionsHighlight!: Phaser.GameObjects.Graphics;
+  private itemPlacementMode = false;
+  private placementTarget: Phaser.Math.Vector2 | null = null;
+  private placementOptionTargets: Phaser.Math.Vector2[] = [];
   private streetObjects: Phaser.GameObjects.GameObject[] = [];
   private shopObjects: Phaser.GameObjects.GameObject[] = [];
   private homeObjects: Phaser.GameObjects.GameObject[] = [];
   private homeStarterKitObjects: Phaser.GameObjects.GameObject[] = [];
+  private basilPot?: Phaser.GameObjects.Graphics;
+  private basilWaterEffect?: Phaser.GameObjects.Graphics;
   private toastTimer?: Phaser.Time.TimerEvent;
   private lastWorldInputAt = 0;
   private portraitFollowCentered = false;
@@ -126,6 +171,8 @@ export class GameScene extends Phaser.Scene {
   private lastFacing = new Phaser.Math.Vector2(0, 1);
   private playerFacing: PlayerFacing = 'front';
   private windowFacingLocked = false;
+  private windowFacePromptRequired = false;
+  private selectedWindowSectionIndex: number | null = null;
   private repairPresentationActive = false;
   private repairPickupReady = false;
   private repairAnimating = false;
@@ -133,6 +180,12 @@ export class GameScene extends Phaser.Scene {
   private rentalBondPaid = false;
   private starterKitClaimed = false;
   private rentalFeedbackAt = 0;
+  private basilPotSelected = false;
+  private selectedGrowingSpotIndex: number | null = null;
+  private basilWaterAnimating = false;
+  private basilWaterElapsed = 0;
+  private readonly basilWaterDuration = 720;
+  private basilStageCache: BasilStage = 'empty';
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -141,6 +194,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
     this.buySellDoor = drawNeighborhood(this);
     this.createWantedSign();
@@ -149,9 +203,19 @@ export class GameScene extends Phaser.Scene {
     this.createPlayer();
     this.createPot();
     this.createBrokenPot();
+    this.createPlacedItem();
     this.createSprayEffect();
     this.createDestinationMarker();
     this.createInteractionHighlight();
+    this.createPlacementHighlight();
+    // Migrate an older accepted job that already completed the new total
+    // number of configured sprays without replaying the cleaning actions.
+    if (this.progress.windowJobAccepted
+      && !this.progress.windowJobComplete
+      && this.progress.windowCleaningProgress >= this.getTotalWindowSprays()) {
+      this.progress.windowCleaningProgress = this.getTotalWindowSprays();
+      this.completeWindowJob();
+    }
     this.streetObjects = [...this.children.list];
 
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -190,11 +254,22 @@ export class GameScene extends Phaser.Scene {
     this.syncHudState();
     this.updateProgressVisuals();
     this.updatePhoneOrientationState();
+    if (this.testSaveMode && this.devSessionMeta && this.devSessionMeta.scene !== 'street') {
+      this.restoreDevSessionScene(this.devSessionMeta);
+    } else if (this.testSaveMode && this.devSessionMeta) {
+      this.player.setPosition(this.devSessionMeta.spawn.x, this.devSessionMeta.spawn.y);
+      this.zoomMode = this.devSessionMeta.zoom;
+      this.streetZoomMode = this.devSessionMeta.zoom;
+      this.applyZoom(this.zoomMode);
+    }
+    this.hud.setDevTestMode(this.testSaveMode, this.devSessionMeta?.checkpointId ?? null);
     this.updateInteraction();
   }
 
   update(_time: number, delta: number): void {
     this.updateCars(delta);
+    this.updateBasilGrowth();
+    this.updateBasilWatering(delta);
     this.updateWindowSpray(delta);
 
     if (this.modalOpen && !this.mapMovementAllowed) {
@@ -249,9 +324,13 @@ export class GameScene extends Phaser.Scene {
     if (hasKeyboardInput) {
       direction.normalize();
       this.cancelTapWalk();
+      this.selectedGrowingSpotIndex = null;
+      this.clearItemPlacement();
     } else if (hasJoystickInput) {
       direction.copy(this.joystickInput);
       this.cancelTapWalk();
+      this.selectedGrowingSpotIndex = null;
+      this.clearItemPlacement();
     } else if (this.target) {
       direction.set(this.target.x - this.player.x, this.target.y - this.player.y);
       if (direction.length() < 8) {
@@ -318,6 +397,7 @@ export class GameScene extends Phaser.Scene {
     this.mapMovementAllowed = false;
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
+    if (isOpen) this.clearItemPlacement();
     if (isOpen && !preserveDestination) this.cancelTapWalk();
   }
 
@@ -352,18 +432,29 @@ export class GameScene extends Phaser.Scene {
 
   tryInteract(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.itemPlacementMode) {
+      this.showToast(this.placementTarget ? 'Press B to put the item down.' : 'Tap a clear pavement square first.', 1500);
+      return;
+    }
     if (this.pendingInteraction && !this.target) this.completePendingInteraction();
     else if (this.shopInterior && this.isWithinShopCounterRange()) this.openShopPanel();
     else if (this.homeInterior && this.isNearHomeExit()) this.selectPendingInteraction('exit-home', new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT.y));
     else if (this.homeInterior && this.isNearStarterKit()) this.claimStarterKit();
+    else if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
+      if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
+      else if (!this.progress.starterPotPlaced) this.placeStarterPot();
+      else if (this.basilPotSelected && this.getBasilStage() === 'planted') this.startBasilWatering();
+      else this.hud.openPanel('basil');
+    }
     else if (!this.shopInterior && !this.homeInterior && this.isPlayerNearBuySellEntrance()) this.selectPendingInteraction(
       'enter-shop',
       new Phaser.Math.Vector2(BUY_SELL_ENTRANCE.x, BUY_SELL_ENTRANCE.y),
     );
     else if (!this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
+      this.windowFacePromptRequired = false;
       this.windowFacingLocked = true;
       this.faceDirection(new Phaser.Math.Vector2(0, -1));
-      this.showToast('Face the HOMES display window, then press B once per spray.', 1700);
+      this.showToast('Press B to clean window.', 1700);
     }
   }
 
@@ -381,13 +472,63 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.joystickInput.set(x, y).normalize();
-    if (!this.joystickSteering) this.cancelTapWalk();
+    if (!this.joystickSteering) {
+      this.cancelTapWalk();
+      this.clearItemPlacement();
+    }
     this.cancelToolUse(false);
     this.joystickSteering = true;
   }
 
+  canPutDownCarriedItem(): boolean {
+    return this.inventoryHasPot && !this.shopInterior && !this.homeInterior && !this.shopTransitioning;
+  }
+
+  putDownCarriedItem(): void {
+    if (!this.canPutDownCarriedItem()) {
+      this.showToast(this.shopInterior || this.homeInterior ? 'Put items down on the street.' : 'There is nothing in the Bag to put down.', 1500);
+      return;
+    }
+    if (!this.itemPlacementMode) {
+      this.itemPlacementMode = true;
+      this.placementTarget = null;
+      this.placementOptionTargets = this.getItemPlacementOptions();
+      this.updatePlacementHighlight();
+      this.syncHudState();
+      this.showToast('Choose a highlighted square or tap clear pavement, then press B.', 2200);
+      return;
+    }
+    if (!this.placementTarget) {
+      this.showToast('Tap a clear pavement square first.', 1700);
+      return;
+    }
+    if (!this.inventoryPot || !this.inventoryInstanceId || !this.progress.inventoryItem) return;
+    const placement = this.placementTarget;
+    const placed: PlacedWorldItem = {
+      item: this.progress.inventoryItem,
+      condition: this.inventoryPot,
+      instanceId: this.inventoryInstanceId,
+      x: placement.x,
+      y: placement.y,
+    };
+    this.progress.placedWorldItem = placed;
+    this.inventoryHasPot = false;
+    this.inventoryPot = null;
+    this.inventoryInstanceId = null;
+    this.progress.inventoryPot = null;
+    this.progress.inventoryItem = null;
+    this.progress.inventoryInstanceId = null;
+    this.repairPickupReady = false;
+    this.clearItemPlacement();
+    this.updateProgressVisuals();
+    this.saveProgress();
+    this.syncHudState();
+    this.showToast(`${this.getPlacedItemLabel(placed)} put down.`, 1600);
+  }
+
   pressHop(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    this.clearItemPlacement();
     this.audio.unlock();
     this.audio.playJump();
     if (this.repairPresentationActive) this.cancelRepairPresentation();
@@ -404,8 +545,21 @@ export class GameScene extends Phaser.Scene {
     if (this.toolHeld) return;
     this.toolHeld = true;
     this.audio.unlock();
+    if (this.itemPlacementMode) {
+      if (this.placementTarget) this.putDownCarriedItem();
+      else this.showToast('Tap a clear pavement square first.', 1500);
+      return;
+    }
     if (this.brokenPotPieceSelected) {
       this.collectBrokenPotPiece();
+      return;
+    }
+    if (this.homeInterior) {
+      if (this.progress.equippedTool !== 'watering-can') {
+        this.showToast('Equip the watering can, then select the basil pot.', 1500);
+        return;
+      }
+      this.startBasilWatering();
       return;
     }
     if (!this.progress.equippedTool) {
@@ -422,19 +576,22 @@ export class GameScene extends Phaser.Scene {
   equipTool(tool: Exclude<EquippedTool, null>): void {
     if (tool === 'cleaner' && !this.progress.cleanerOwned) return;
     if (tool === 'repair' && !this.progress.repairToolOwned) return;
+    if (tool === 'watering-can' && !this.progress.wateringCanOwned) return;
     this.cancelToolUse(false);
     this.progress.equippedTool = tool;
+    this.assignToolToSlot(tool);
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel(`${tool === 'cleaner' ? 'Cleaner' : 'Repair tool'} equipped.`);
-    this.showToast(`${tool === 'cleaner' ? 'Cleaner' : 'Repair tool'} equipped.`, 1200);
+    const label = tool === 'cleaner' ? 'Cleaner' : tool === 'repair' ? 'Repair tool' : 'Watering can';
+    this.hud.refreshShopPanel(`${label} equipped.`);
+    this.showToast(`${label} equipped.`, 1200);
   }
 
   releaseTool(): void {
     this.toolHeld = false;
   }
 
-  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean } {
+  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; basilHarvests: number; basilSeeds: number; starterKitClaimed: boolean; shopStock: ShopStockEntry[] } {
     return {
       inventoryPot: this.inventoryPot,
       inventoryItem: this.progress.inventoryItem,
@@ -442,6 +599,24 @@ export class GameScene extends Phaser.Scene {
       windowJobAccepted: this.progress.windowJobAccepted,
       windowCleaningProgress: this.progress.windowCleaningProgress,
       windowJobComplete: this.progress.windowJobComplete,
+      basilHarvests: this.progress.basilHarvests,
+      basilSeeds: this.progress.basilSeeds,
+      starterKitClaimed: this.starterKitClaimed,
+      shopStock: this.progress.shopStock.map((entry) => ({ ...entry, instanceIds: [...entry.instanceIds] })),
+    };
+  }
+
+  getBasilPanelState(): { starterKitClaimed: boolean; starterPotPlaced: boolean; stage: BasilStage; seeds: number; harvests: number; timeRemainingMs: number; wateringCanOwned: boolean; basilCycleCount: number; basicFertilizerCharges: number } {
+    return {
+      starterKitClaimed: this.starterKitClaimed,
+      starterPotPlaced: this.progress.starterPotPlaced,
+      stage: this.getBasilStage(),
+      seeds: this.progress.basilSeeds,
+      harvests: this.progress.basilHarvests,
+      timeRemainingMs: this.getBasilTimeRemaining(),
+      wateringCanOwned: this.progress.wateringCanOwned,
+      basilCycleCount: this.progress.basilCycleCount,
+      basicFertilizerCharges: this.progress.basicFertilizerCharges,
     };
   }
 
@@ -470,24 +645,48 @@ export class GameScene extends Phaser.Scene {
       equippedTool: this.progress.equippedTool,
       repairToolOwned: this.progress.repairToolOwned,
       cleanerOwned: this.progress.cleanerOwned,
+      wateringCanOwned: this.progress.wateringCanOwned,
+      toolSlots: this.progress.toolSlots,
       glueCharges: this.progress.glueCharges,
       brokenPotPieceSelected: this.brokenPotPieceSelected,
+      canPlaceItem: this.itemPlacementMode && Boolean(this.placementTarget),
+      starterKitClaimed: this.starterKitClaimed,
+      starterPotPlaced: this.progress.starterPotPlaced,
+      basilSeeds: this.progress.basilSeeds,
+      basilHarvests: this.progress.basilHarvests,
+      basilCycleCount: this.progress.basilCycleCount,
+      basicFertilizerCharges: this.progress.basicFertilizerCharges,
     });
   }
 
   private loadProgress(): void {
     try {
-      const raw = localStorage.getItem(this.progressKey);
+      const raw = localStorage.getItem(this.getProgressStorageKey());
       this.progress = sanitizeProgress(raw ? JSON.parse(raw) : DEFAULT_PROGRESS);
     } catch {
       this.progress = sanitizeProgress(DEFAULT_PROGRESS);
     }
+    this.devSessionMeta = this.testSaveMode ? this.readDevSessionMeta() : null;
     this.coins = this.progress.coins;
     this.inventoryPot = this.progress.inventoryPot;
+    this.inventoryInstanceId = this.progress.inventoryInstanceId;
     this.inventoryHasPot = this.inventoryPot !== null;
     this.saleComplete = this.progress.saleComplete;
     this.rentalBondPaid = this.progress.rentalBondPaid;
     this.starterKitClaimed = this.progress.starterKitClaimed;
+    if (this.rentalBondPaid && this.starterKitClaimed && !this.progress.starterKitGranted) {
+      // The previous apartment pass persisted the claim flag before the
+      // repeatable kit contents existed. Migrate that valid old claim once.
+      this.grantStarterKitState();
+      this.saveProgress();
+    }
+    // Older saves predate the starter-kit fertiliser. Award it only while the
+    // first basil cycle has not begun, so a consumed charge cannot respawn.
+    if (this.progress.starterKitClaimed && this.progress.starterKitGranted
+      && this.progress.basilCycleCount === 0 && this.progress.basicFertilizerCharges === 0) {
+      this.progress.basicFertilizerCharges = 1;
+      this.saveProgress();
+    }
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     // Older saves can retain the repair objective without the newer ground
     // item flag. Restore that item from the completed window-job state rather
@@ -510,11 +709,19 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.inventoryPot === 'ordinary' && (this.progress.task === 'find' || this.progress.task === 'sell')) this.progress.task = 'clean';
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
+    this.basilStageCache = this.getBasilStage();
+    // A crop can mature while the game is closed. Promote the saved objective
+    // on load without granting a harvest until the player explicitly picks it.
+    if (this.basilStageCache === 'mature' && this.progress.task !== 'harvest-basil') {
+      this.progress.task = 'harvest-basil';
+      this.saveProgress();
+    }
   }
 
   private saveProgress(): void {
     this.progress.coins = this.coins;
     this.progress.inventoryPot = this.inventoryPot;
+    this.progress.inventoryInstanceId = this.inventoryPot ? (this.inventoryInstanceId ?? (this.inventoryPot === 'ordinary' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID)) : null;
     this.progress.inventoryItem = this.inventoryPot === 'ordinary'
       ? 'small-golden-pothos'
       : this.inventoryPot ? 'special-repair-pot' : null;
@@ -522,11 +729,227 @@ export class GameScene extends Phaser.Scene {
     this.progress.rentalBondPaid = this.rentalBondPaid;
     this.progress.starterKitClaimed = this.starterKitClaimed;
     this.progress.brokenPotOwned = this.inventoryPot === 'broken' || this.progress.brokenPotOwned;
-    try { localStorage.setItem(this.progressKey, JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
+    try { localStorage.setItem(this.getProgressStorageKey(), JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
+    if (this.testSaveMode && this.player) this.writeDevSessionMeta({
+      checkpointId: this.devSessionMeta?.checkpointId ?? 'active-test-save',
+      scene: this.shopInterior ? 'shop' : this.homeInterior ? 'home' : 'street',
+      spawn: { x: this.player.x, y: this.player.y },
+      zoom: this.zoomMode,
+    });
+  }
+
+  public loadDevCheckpoint(id: string): void {
+    if (!DEV_BUILD) return;
+    const snapshot = createDevCheckpoint(id);
+    if (!snapshot) return;
+    this.hud.closePanel();
+    this.setDevTestMode(true);
+    this.clearSceneForDevLoad();
+    this.applyProgressState(snapshot.progress);
+    this.devSessionMeta = {
+      checkpointId: snapshot.id,
+      scene: snapshot.scene,
+      spawn: { ...snapshot.spawn },
+      zoom: 'close',
+    };
+    this.restoreDevSessionScene(this.devSessionMeta);
+    this.updateProgressVisuals();
+    if (this.repairPickupReady && this.progress.inventoryPot === 'broken') this.createRepairPickupPresentation();
+    this.refreshWantedSign();
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.setDevTestMode(true, snapshot.id);
+    this.persistDevSession();
+    this.showToast(`Loaded checkpoint: ${snapshot.label}.`, 2200);
+    this.updateInteraction();
+  }
+
+  public resetDevTestSave(): void {
+    if (!DEV_BUILD) return;
+    this.loadDevCheckpoint('fresh-start');
+  }
+
+  public returnToNormalSave(): void {
+    if (!DEV_BUILD) return;
+    this.hud.closePanel();
+    this.clearSceneForDevLoad();
+    this.setDevTestMode(false);
+    this.devSessionMeta = null;
+    this.loadProgress();
+    this.player.setPosition(START_POSITION.x, START_POSITION.y).setAlpha(1).setVisible(true);
+    this.zoomMode = 'close';
+    this.streetZoomMode = 'close';
+    this.updateProgressVisuals();
+    this.refreshWantedSign();
+    this.applyZoom(this.zoomMode);
+    this.syncHudState();
+    this.hud.setDevTestMode(false, null);
+    this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
+    this.showToast('Returned to the normal save.', 1800);
+    this.updateInteraction();
+  }
+
+  public addDevCoins(amount: 10 | 100): void {
+    if (!DEV_BUILD || !this.testSaveMode) return;
+    this.coins += amount;
+    this.progress.coins = this.coins;
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.showDevFeedback(`Added ${amount} coins to the test save.`);
+    this.showToast(`Test save: +${amount} coins.`, 1400);
+  }
+
+  public canFinishCurrentCrop(): boolean {
+    return DEV_BUILD && this.testSaveMode && this.progress.basilPlanted
+      && this.progress.basilGrowthStartedAt !== null && this.getBasilStage() === 'seedling';
+  }
+
+  public finishCurrentCrop(): void {
+    if (!this.canFinishCurrentCrop()) return;
+    this.progress.basilGrowthStartedAt = Date.now() - BASIL_GROWTH_DURATION_MS - 1;
+    this.basilStageCache = 'seedling';
+    // Let the normal growth-completion path promote the objective and visual;
+    // this never grants the harvest itself.
+    this.updateBasilGrowth();
+    this.hud.showDevFeedback('Current crop is mature and ready to harvest.');
+  }
+
+  private applyProgressState(progress: ProgressState): void {
+    this.progress = sanitizeProgress(progress);
+    this.coins = this.progress.coins;
+    this.inventoryPot = this.progress.inventoryPot;
+    this.inventoryInstanceId = this.progress.inventoryInstanceId;
+    this.inventoryHasPot = this.inventoryPot !== null;
+    this.saleComplete = this.progress.saleComplete;
+    this.rentalBondPaid = this.progress.rentalBondPaid;
+    this.starterKitClaimed = this.progress.starterKitClaimed;
+    this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
+    this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
+    this.basilStageCache = this.getBasilStage();
+  }
+
+  private clearSceneForDevLoad(): void {
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    this.cancelToolUse(true);
+    this.tweens.killAll();
+    this.shopTransitioning = false;
+    this.movementReleaseRequired = false;
+    this.hopActive = false;
+    this.hopElapsed = 0;
+    this.hopVisualOffset = 0;
+    this.windowFacePromptRequired = false;
+    this.windowFacingLocked = false;
+    this.repairPresentationActive = false;
+    this.repairAnimating = false;
+    this.repairPickupReady = false;
+    this.repairPotDisplay?.destroy();
+    this.repairPotDisplay = undefined;
+    this.repairPickupPrompt?.destroy();
+    this.repairPickupPrompt = undefined;
+    this.shopObjects.forEach((object) => object.destroy());
+    this.homeObjects.forEach((object) => object.destroy());
+    this.shopObjects = [];
+    this.homeObjects = [];
+    this.homeStarterKitObjects = [];
+    this.shopGoldenPothosDisplay = [];
+    this.shopInterior = false;
+    this.homeInterior = false;
+    this.basilPot = undefined;
+    this.basilWaterEffect = undefined;
+    this.setObjectsVisible(this.streetObjects, true);
+    if (this.buySellDoor) setBuySellDoorOpen(this.buySellDoor, false);
+    this.player.setAlpha(1).setVisible(true);
+    this.cameras.main.stopFollow().resetFX();
+    this.sprayEffect.clear().setVisible(false);
+    this.destinationMarker.setVisible(false);
+    this.clearInteractionHighlight();
+  }
+
+  private restoreDevSessionScene(meta: DevSessionMeta): void {
+    this.zoomMode = meta.zoom;
+    this.streetZoomMode = meta.zoom;
+    if (meta.scene === 'shop') {
+      this.shopInterior = false;
+      this.enterShopNow();
+    } else if (meta.scene === 'home') {
+      this.homeInterior = false;
+      this.enterHomeNow();
+    } else {
+      this.player.setPosition(meta.spawn.x, meta.spawn.y).setAlpha(1).setVisible(true);
+      this.applyZoom(meta.zoom);
+    }
+    this.player.setPosition(meta.spawn.x, meta.spawn.y).setAlpha(1).setVisible(true);
+    if (meta.scene === 'shop') this.setShopCamera();
+    if (meta.scene === 'home') this.setHomeCamera();
+  }
+
+  private setDevTestMode(active: boolean): void {
+    this.testSaveMode = active && DEV_BUILD;
+    try {
+      if (this.testSaveMode) localStorage.setItem(this.devModeKey, '1');
+      else localStorage.removeItem(this.devModeKey);
+    } catch { /* private browsing may deny storage */ }
+    this.hud.setDevTestMode(this.testSaveMode, this.devSessionMeta?.checkpointId ?? null);
+  }
+
+  private readDevTestMode(): boolean {
+    if (!DEV_BUILD) return false;
+    try { return localStorage.getItem(this.devModeKey) === '1'; } catch { return false; }
+  }
+
+  private getProgressStorageKey(): string {
+    return this.testSaveMode ? this.devProgressKey : this.normalProgressKey;
+  }
+
+  private readDevSessionMeta(): DevSessionMeta | null {
+    try {
+      const raw = localStorage.getItem(this.devSessionKey);
+      if (!raw) return null;
+      const value = JSON.parse(raw) as Partial<DevSessionMeta>;
+      if ((value.scene !== 'street' && value.scene !== 'shop' && value.scene !== 'home')
+        || !value.spawn || !Number.isFinite(value.spawn.x) || !Number.isFinite(value.spawn.y)
+        || (value.zoom !== 'close' && value.zoom !== 'normal')
+        || typeof value.checkpointId !== 'string') return null;
+      return { checkpointId: value.checkpointId, scene: value.scene, spawn: { x: value.spawn.x, y: value.spawn.y }, zoom: value.zoom };
+    } catch { return null; }
+  }
+
+  private writeDevSessionMeta(meta: DevSessionMeta): void {
+    if (!DEV_BUILD) return;
+    try { localStorage.setItem(this.devSessionKey, JSON.stringify(meta)); } catch { /* private browsing may deny storage */ }
+  }
+
+  private persistDevSession(): void {
+    if (!DEV_BUILD || !this.testSaveMode || !this.player) return;
+    this.writeDevSessionMeta({
+      checkpointId: this.devSessionMeta?.checkpointId ?? 'active-test-save',
+      scene: this.shopInterior ? 'shop' : this.homeInterior ? 'home' : 'street',
+      spawn: { x: this.player.x, y: this.player.y },
+      zoom: this.zoomMode,
+    });
+  }
+
+  private grantStarterKitState(): void {
+    this.progress.starterKitGranted = true;
+    this.progress.basilSeeds = Math.max(1, this.progress.basilSeeds);
+    this.progress.basicFertilizerCharges = Math.max(1, this.progress.basicFertilizerCharges);
+    this.progress.wateringCanOwned = true;
+    this.assignToolToSlot('watering-can');
+  }
+
+  private assignToolToSlot(tool: Exclude<EquippedTool, null>): void {
+    const slots = this.progress.toolSlots.length === 3 ? this.progress.toolSlots : [null, null, null];
+    if (slots.includes(tool)) return;
+    const emptySlot = slots.findIndex((slot) => slot === null);
+    // If every slot is assigned, replace only the slot assignment. Ownership
+    // flags remain untouched, so no previously owned tool is deleted.
+    slots[emptySlot >= 0 ? emptySlot : 0] = tool;
+    this.progress.toolSlots = slots;
   }
 
   private updateProgressVisuals(): void {
-    if (this.pot) this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete);
+    if (this.pot) this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete && !this.progress.placedWorldItem);
     // The broken pieces remain visible even while the opening pot is still in
     // the Bag. Selling is no longer the next required objective, so hiding
     // the ground item here made the repair pickup appear to be missing.
@@ -540,9 +963,10 @@ export class GameScene extends Phaser.Scene {
       }
       this.brokenPot.setVisible(shouldShowBrokenPot);
     }
+    this.updatePlacedItemVisual();
     if (this.windowDirtOverlay) {
       this.windowDirtOverlay.setVisible(this.progress.windowJobAccepted && !this.progress.windowJobComplete);
-      this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
+      this.refreshWindowDirtOverlay();
     }
   }
 
@@ -576,6 +1000,7 @@ export class GameScene extends Phaser.Scene {
   private cancelToolUse(cancelRepair: boolean): void {
     this.releaseTool();
     this.stopSprayEffect();
+    this.stopBasilWatering();
     if (cancelRepair && this.repairPresentationActive) this.cancelRepairPresentation();
   }
 
@@ -586,27 +1011,68 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getWindowInteractionPoint(): Phaser.Math.Vector2 {
-    // This is a walkable point directly below the HOMES estate-agent display.
-    // Selecting the window routes Alex here and explicitly turns them toward
-    // the facade, so the cleaning job never depends on guesswork.
-    return new Phaser.Math.Vector2(1440, FRONT_PAVEMENT_MIN_Y + 10);
+  private getWindowSectionProgress(sectionIndex: number): number {
+    const section = HOMES_WINDOW_CLEAN_SECTIONS[sectionIndex];
+    if (!section) return 0;
+    const completedBefore = HOMES_WINDOW_CLEAN_SECTIONS
+      .slice(0, sectionIndex)
+      .reduce((total, candidate) => total + candidate.spraysRequired, 0);
+    return Phaser.Math.Clamp(this.progress.windowCleaningProgress - completedBefore, 0, section.spraysRequired);
   }
 
-  private getWindowDisplayPoint(): Phaser.Math.Vector2 {
-    return new Phaser.Math.Vector2(1440, 680);
+  private getTotalWindowSprays(): number {
+    return HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0);
+  }
+
+  private getActiveWindowSectionIndex(): number {
+    let remaining = this.progress.windowCleaningProgress;
+    for (let index = 0; index < HOMES_WINDOW_CLEAN_SECTIONS.length; index += 1) {
+      if (remaining < HOMES_WINDOW_CLEAN_SECTIONS[index].spraysRequired) return index;
+      remaining -= HOMES_WINDOW_CLEAN_SECTIONS[index].spraysRequired;
+    }
+    return Math.max(0, HOMES_WINDOW_CLEAN_SECTIONS.length - 1);
+  }
+
+  private getSelectedWindowSectionIndex(): number {
+    return this.selectedWindowSectionIndex ?? this.getActiveWindowSectionIndex();
+  }
+
+  private getWindowInteractionPoint(sectionIndex = this.getSelectedWindowSectionIndex()): Phaser.Math.Vector2 {
+    const section = HOMES_WINDOW_CLEAN_SECTIONS[sectionIndex] ?? HOMES_WINDOW_CLEAN_SECTIONS[0];
+    // This is a walkable point directly below the selected HOMES display
+    // section, so Alex must move along the pavement between sections.
+    return new Phaser.Math.Vector2(section.x + section.width / 2, FRONT_PAVEMENT_MIN_Y + 10);
+  }
+
+  private getWindowDisplayPoint(sectionIndex = this.getSelectedWindowSectionIndex()): Phaser.Math.Vector2 {
+    const section = HOMES_WINDOW_CLEAN_SECTIONS[sectionIndex] ?? HOMES_WINDOW_CLEAN_SECTIONS[0];
+    return new Phaser.Math.Vector2(section.x + section.width / 2, section.y + section.height / 2);
   }
 
   private isNearWindowApproach(): boolean {
+    if (this.getSelectedWindowSectionIndex() !== this.getActiveWindowSectionIndex()) return false;
     const point = this.getWindowInteractionPoint();
-    return Phaser.Math.Distance.Between(this.player.x, this.player.y, point.x, point.y) <= 130;
+    // The contextual action belongs to the facade, not the whole approach
+    // route. Alex's head is about 43 world units above the player origin, so
+    // the action becomes available only when that head reaches the shop edge.
+    const headTouchingFacade = this.player.y - 43 <= PAVEMENT_Y + 4;
+    const withinWindowLane = Math.abs(this.player.x - point.x) <= 96;
+    return headTouchingFacade && withinWindowLane;
   }
 
   private isWindowDisplayPoint(point: Phaser.Math.Vector2): boolean {
-    return point.x >= HOMES_WINDOW_CLEAN_ZONE.x
-      && point.x <= HOMES_WINDOW_CLEAN_ZONE.x + HOMES_WINDOW_CLEAN_ZONE.width
-      && point.y >= HOMES_WINDOW_CLEAN_ZONE.y
-      && point.y <= HOMES_WINDOW_CLEAN_ZONE.y + HOMES_WINDOW_CLEAN_ZONE.height;
+    return HOMES_WINDOW_CLEAN_SECTIONS.some((section) => point.x >= section.x
+      && point.x <= section.x + section.width
+      && point.y >= section.y
+      && point.y <= section.y + section.height);
+  }
+
+  private getWindowSectionIndexAtPoint(point: Phaser.Math.Vector2): number | null {
+    const index = HOMES_WINDOW_CLEAN_SECTIONS.findIndex((section) => point.x >= section.x
+      && point.x <= section.x + section.width
+      && point.y >= section.y
+      && point.y <= section.y + section.height);
+    return index >= 0 ? index : null;
   }
 
   private getPropertyListingAtPoint(point: Phaser.Math.Vector2): PropertyListingKey | null {
@@ -635,6 +1101,11 @@ export class GameScene extends Phaser.Scene {
 
   private advanceWindowCleaningTap(): void {
     if (this.hopActive || this.sprayAnimating || !this.progress.windowJobAccepted || this.progress.windowJobComplete || this.progress.equippedTool !== 'cleaner') return;
+    const activeSection = this.getActiveWindowSectionIndex();
+    if (this.getSelectedWindowSectionIndex() !== activeSection) {
+      this.showToast('Move to the next dirty window section.', 1400);
+      return;
+    }
     const inRange = this.isNearWindowApproach();
     if (!inRange || !this.isFacingWindow()) {
       const now = performance.now();
@@ -684,15 +1155,25 @@ export class GameScene extends Phaser.Scene {
     if (progress < 1) return;
 
     this.sprayAnimating = false;
-    this.progress.windowCleaningProgress = Math.min(8, this.progress.windowCleaningProgress + 1);
+    const sprayedSectionIndex = this.getActiveWindowSectionIndex();
+    const sprayedSection = HOMES_WINDOW_CLEAN_SECTIONS[sprayedSectionIndex];
+    this.progress.windowCleaningProgress = Math.min(this.getTotalWindowSprays(), this.progress.windowCleaningProgress + 1);
     this.lastSavedCleaningStage = this.progress.windowCleaningProgress;
-    this.windowDirtOverlay.setAlpha(Math.max(0.12, 1 - this.progress.windowCleaningProgress / 8));
+    this.selectedWindowSectionIndex = null;
+    this.refreshWindowDirtOverlay();
     this.saveProgress();
-    this.showToast(`SPRAY ${this.progress.windowCleaningProgress} / 8`, 1000);
-    if (this.progress.windowCleaningProgress >= 8) {
+    const sectionProgress = this.getWindowSectionProgress(sprayedSectionIndex);
+    this.showToast(`SECTION ${sprayedSectionIndex + 1}/${HOMES_WINDOW_CLEAN_SECTIONS.length} · SPRAY ${sectionProgress}/${sprayedSection.spraysRequired}`, 1000);
+    if (this.progress.windowCleaningProgress >= this.getTotalWindowSprays()) {
       this.completeWindowJob();
       this.stopSprayEffect();
       return;
+    }
+    if (sectionProgress >= sprayedSection.spraysRequired) {
+      this.windowFacePromptRequired = true;
+      this.windowFacingLocked = false;
+      this.faceDirection(new Phaser.Math.Vector2(0, 1));
+      this.showToast('Already clean. Move to the next window.', 1800);
     }
     this.sprayTimer?.remove(false);
     this.sprayTimer = this.time.delayedCall(180, () => this.stopSprayEffect());
@@ -741,19 +1222,23 @@ export class GameScene extends Phaser.Scene {
     this.progress.cleanerOwned = false;
     this.progress.repairToolOwned = true;
     this.progress.glueCharges = Math.max(1, this.progress.glueCharges);
+    this.progress.toolSlots = this.progress.toolSlots.map((tool) => tool === 'cleaner' ? null : tool);
+    this.assignToolToSlot('repair');
     this.progress.equippedTool = 'repair';
     this.progress.brokenPotAvailable = true;
     this.progress.brokenPotPiecesRemaining = 3;
     this.progress.task = 'repair';
+    this.selectedWindowSectionIndex = null;
+    this.windowFacePromptRequired = false;
     this.windowFacingLocked = false;
     this.faceDirection(new Phaser.Math.Vector2(0, 1));
-    this.coins += 3;
+    this.coins += WINDOW_JOB_REWARD;
     this.progress.coins = this.coins;
     this.sprayEffect.setVisible(false);
     this.updateProgressVisuals();
     this.saveProgress();
     this.syncHudState();
-    this.showToast('HOMES window clean. +3 coins. A repair tool and glue were added.');
+    this.showToast(`HOMES window clean. +${WINDOW_JOB_REWARD} coins. A repair tool and glue were added.`);
   }
 
   beginPortableRepair(): void {
@@ -764,7 +1249,7 @@ export class GameScene extends Phaser.Scene {
     if (this.inventoryPot === 'broken' && (this.repairPickupReady || this.progress.repairStep >= 10)) {
       this.repairPickupReady = true;
       this.createRepairPickupPresentation();
-      this.showToast('The pot is repaired. Click it to put it in the Bag.', 2200);
+      this.showToast('The pot is repaired. Tap or click it to put it in the Bag.', 2200);
       return;
     }
     if (!this.progress.repairToolOwned || this.progress.glueCharges < 1 || this.inventoryPot !== 'broken') {
@@ -797,41 +1282,39 @@ export class GameScene extends Phaser.Scene {
     this.repairPotDisplay.setVisible(true);
     this.drawRepairPresentation();
     this.repairPickupPrompt?.destroy();
-    this.repairPickupPrompt = this.add.text(this.repairPotDisplay.x, this.repairPotDisplay.y - 88, 'CLICK TO PUT IN BAG', {
-      color: '#f6f7f3',
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      fontStyle: 'bold',
-      stroke: '#111416',
-      strokeThickness: 5,
-      backgroundColor: '#111416',
-      padding: { left: 7, right: 7, top: 4, bottom: 4 },
-    }).setOrigin(0.5).setDepth(27);
+    // Pickup remains click/tap-driven, without a persistent label covering the
+    // repaired pot or nearby pavement.
+    this.repairPickupPrompt = undefined;
   }
 
   private drawRepairPresentation(): void {
     if (!this.repairPotDisplay) return;
     const stage = Phaser.Math.Clamp(this.progress.repairStep, 0, 10);
+    const completed = this.repairPickupReady || stage >= 10;
     const display = this.repairPotDisplay;
     display.clear();
 
     // Keep the repair target grounded and conspicuous without changing its
-    // collision footprint or turning it into a second collectible.
+    // collision footprint or turning it into a second collectible. Once the
+    // repair is complete, leave only the pot visible so it reads as an
+    // ordinary tappable world item rather than an active repair station.
     display.fillStyle(0x111416, 0.55).fillEllipse(0, 25, 116, 22);
-    display.lineStyle(3, 0xf6f7f3, 0.9).strokeEllipse(0, 22, 142, 38);
+    if (!completed) display.lineStyle(3, 0xf6f7f3, 0.9).strokeEllipse(0, 22, 142, 38);
     drawBrokenPot(display, 0, 0, 1.15, stage);
 
-    // Ten chunky segments make the required taps visible at a glance.
-    for (let index = 0; index < 10; index += 1) {
-      const x = -54 + index * 12;
-      display.fillStyle(index < stage ? 0xf6f7f3 : 0x3b4244, 1).fillRect(x, 43, 9, 8);
-      display.lineStyle(1, 0xbfc5c3, 0.9).strokeRect(x, 43, 9, 8);
+    if (!completed) {
+      // Ten chunky segments make the required taps visible at a glance.
+      for (let index = 0; index < 10; index += 1) {
+        const x = -54 + index * 12;
+        display.fillStyle(index < stage ? 0xf6f7f3 : 0x3b4244, 1).fillRect(x, 43, 9, 8);
+        display.lineStyle(1, 0xbfc5c3, 0.9).strokeRect(x, 43, 9, 8);
+      }
     }
   }
 
   private advanceRepairStep(): void {
     if (this.repairPickupReady) {
-      this.showToast('The pot is repaired. Click it to put it in the Bag.', 1600);
+      this.showToast('The pot is repaired. Tap or click it to put it in the Bag.', 1600);
       return;
     }
     if (!this.repairPresentationActive || this.repairAnimating || this.hopActive || this.inventoryPot !== 'broken') return;
@@ -870,7 +1353,7 @@ export class GameScene extends Phaser.Scene {
     this.createRepairPickupPresentation();
     this.saveProgress();
     this.syncHudState();
-    this.showToast('Pot fully repaired. Click it to put it in the Bag.', 2400);
+    this.showToast('Pot fully repaired. Tap or click it to put it in the Bag.', 2400);
   }
 
   private cancelRepairPresentation(): void {
@@ -902,6 +1385,48 @@ export class GameScene extends Phaser.Scene {
     return null;
   }
 
+  private getItemPlacementAtPoint(point: Phaser.Math.Vector2): Phaser.Math.Vector2 | null {
+    const onFrontPavement = point.y >= FRONT_PAVEMENT_MIN_Y + 22 && point.y <= FRONT_PAVEMENT_MAX_Y - 16;
+    const onOppositePavement = point.y >= OPPOSITE_PAVEMENT_MIN_Y + 16 && point.y <= OPPOSITE_PAVEMENT_MAX_Y - 16;
+    if (!onFrontPavement && !onOppositePavement) return null;
+
+    const grid = 24;
+    const candidate = new Phaser.Math.Vector2(
+      Phaser.Math.Clamp(Math.round(point.x / grid) * grid, STARTING_WALKABLE_MIN_X + 58, STARTING_WALKABLE_MAX_X - 58),
+      Math.round(point.y / grid) * grid,
+    );
+    const existingPositions = [
+      POT_POSITION,
+      this.getBrokenPotPosition(),
+      this.progress.placedWorldItem,
+    ].filter((position): position is { x: number; y: number } => Boolean(position));
+    const clear = existingPositions.every((position) => Phaser.Math.Distance.Between(candidate.x, candidate.y, position.x, position.y) > 112);
+    if (
+      clear
+      && this.isWalkablePosition(candidate.x, candidate.y)
+      && this.getTapPath(candidate.x, candidate.y)
+      && !this.isNearBuySellDoor(candidate)
+      && !this.isNearApartmentDoor(candidate)
+    ) {
+      return candidate;
+    }
+    return null;
+  }
+
+  private getItemPlacementOptions(): Phaser.Math.Vector2[] {
+    const laneY = this.player.y >= OPPOSITE_PAVEMENT_MIN_Y
+      ? (OPPOSITE_PAVEMENT_MIN_Y + OPPOSITE_PAVEMENT_MAX_Y) / 2
+      : (FRONT_PAVEMENT_MIN_Y + FRONT_PAVEMENT_MAX_Y) / 2;
+    const options: Phaser.Math.Vector2[] = [];
+    [-240, -120, 120, 240].forEach((offset) => {
+      const option = this.getItemPlacementAtPoint(new Phaser.Math.Vector2(this.player.x + offset, laneY));
+      if (option && !options.some((existing) => Phaser.Math.Distance.Between(existing.x, existing.y, option.x, option.y) < 1)) {
+        options.push(option);
+      }
+    });
+    return options;
+  }
+
   private setRepairPickupPresentationVisible(visible: boolean): void {
     this.repairPotDisplay?.setVisible(visible);
     this.repairPickupPrompt?.setVisible(visible);
@@ -921,6 +1446,19 @@ export class GameScene extends Phaser.Scene {
       this.claimStarterKit();
       return;
     }
+    if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
+      if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
+      else if (!this.progress.starterPotPlaced) this.placeStarterPot();
+      else if (this.basilPotSelected && this.getBasilStage() === 'planted') this.startBasilWatering();
+      else this.hud.openPanel('basil');
+      return;
+    }
+    if (!this.shopInterior && !this.homeInterior && this.progress.placedWorldItem
+      && this.placedItemDisplay?.visible
+      && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.progress.placedWorldItem.x, this.progress.placedWorldItem.y) <= 110) {
+      this.collectPlacedItem();
+      return;
+    }
     if (!this.shopInterior && !this.homeInterior && this.isPlayerNearBuySellEntrance()) {
       this.selectPendingInteraction(
         'enter-shop',
@@ -929,46 +1467,164 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private getShopStockEntry(stockId: string): ShopStockEntry | null {
+    return this.progress.shopStock.find((entry) => entry.stockId === stockId && entry.quantity > 0) ?? null;
+  }
+
+  private getShopSalePrice(item: ShopStockItem): number {
+    if (item === 'small-golden-pothos') return OPENING_POTHOS_SALE_PRICE;
+    if (item === 'special-repair-pot') return REPAIRED_POT_SALE_PRICE;
+    return BASIL_HARVEST_PRICE;
+  }
+
+  private getShopBuyPrice(item: ShopStockItem): number {
+    return getShopBuybackPrice(this.getShopSalePrice(item));
+  }
+
+  private normalizeTransactionQuantity(value: number, maximum: number): number {
+    if (!Number.isFinite(value)) return 0;
+    const quantity = Math.floor(value);
+    return quantity >= 1 && quantity <= maximum ? quantity : 0;
+  }
+
+  private addShopStock(item: ShopStockItem, condition: ShopStockCondition, quantity: number, instanceId?: string, quality = DEFAULT_SHOP_STOCK_QUALITY): boolean {
+    const amount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
+    if (!amount) return false;
+    if (item === 'basil-harvest') {
+      const existing = this.progress.shopStock.find((entry) => entry.item === item && entry.quality === quality && entry.condition === condition);
+      if (existing) existing.quantity += amount;
+      else this.progress.shopStock.push({ stockId: quality === DEFAULT_SHOP_STOCK_QUALITY ? BASIL_HARVEST_STOCK_ID : `${BASIL_HARVEST_STOCK_ID}:${quality}`, item, quality, condition, quantity: amount, instanceIds: [] });
+      return true;
+    }
+
+    const id = instanceId?.trim() || (item === 'small-golden-pothos' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID);
+    if (this.progress.shopStock.some((entry) => entry.item === item && entry.instanceIds.includes(id))) return false;
+    this.progress.shopStock.push({ stockId: id, item, quality, condition, quantity: 1, instanceIds: [id] });
+    return true;
+  }
+
+  private removeShopStock(stockId: string, quantity: number): ShopStockEntry | null {
+    const index = this.progress.shopStock.findIndex((entry) => entry.stockId === stockId);
+    if (index < 0) return null;
+    const entry = this.progress.shopStock[index];
+    const amount = this.normalizeTransactionQuantity(quantity, entry.quantity);
+    if (!amount) return null;
+    const removed: ShopStockEntry = { ...entry, quantity: amount, instanceIds: [...entry.instanceIds] };
+    entry.quantity -= amount;
+    if (entry.quantity <= 0) this.progress.shopStock.splice(index, 1);
+    return removed;
+  }
+
+  private refreshShopStockDisplay(): void {
+    this.shopGoldenPothosDisplay.forEach((object) => object.destroy());
+    const displaySet = new Set(this.shopGoldenPothosDisplay);
+    this.shopObjects = this.shopObjects.filter((object) => !displaySet.has(object));
+    this.shopGoldenPothosDisplay = [];
+    this.createShopGoldenPothosDisplay();
+  }
+
   sellOpeningPot(): void {
-    // The shop panel is intentionally modal while this action is performed;
-    // modalOpen must not reject the panel's own transaction button.
-    if (!this.shopInterior || this.inventoryPot !== 'ordinary' || this.saleComplete) return;
+    // This method remains the opening delivery entry point, but also supports
+    // reselling the same preserved instance after a buyback.
+    if (!this.shopInterior || this.inventoryPot !== 'ordinary') return;
+    const instanceId = this.inventoryInstanceId ?? OPENING_GOLDEN_POTHOS_INSTANCE_ID;
+    if (!this.addShopStock('small-golden-pothos', 'ordinary', 1, instanceId)) return;
+    const firstDelivery = !this.saleComplete;
     this.inventoryHasPot = false;
     this.inventoryPot = null;
-    this.saleComplete = true;
-    this.coins += 5;
+    this.inventoryInstanceId = null;
+    this.coins += OPENING_POTHOS_SALE_PRICE;
     this.progress.inventoryPot = null;
     this.progress.inventoryItem = null;
+    this.progress.inventoryInstanceId = null;
     this.progress.coins = this.coins;
+    // Keep the scene mirror in sync before saveProgress(), which serializes
+    // the authoritative sale-complete flag. Without this assignment the
+    // sold collectible could respawn and the next job would remain locked.
+    this.saleComplete = true;
     this.progress.saleComplete = true;
     this.progress.shopGoldenPothosStock = true;
-    this.progress.task = 'clean';
+    if (firstDelivery) {
+      this.progress.task = 'clean';
+      this.refreshWantedSign();
+    }
     this.saveProgress();
     this.syncHudState();
-    this.refreshWantedSign();
-    this.createShopGoldenPothosDisplay();
-    this.hud.refreshShopPanel('Small Golden Pothos delivered. +5 coins.');
-    this.showToast('Small Golden Pothos sold for 5 coins.');
+    this.refreshShopStockDisplay();
+    this.hud.refreshShopPanel(firstDelivery
+      ? `Small Golden Pothos delivered. +${OPENING_POTHOS_SALE_PRICE} coins.`
+      : `Small Golden Pothos resold for ${OPENING_POTHOS_SALE_PRICE} coins.`);
+    this.showToast(`${firstDelivery ? 'Small Golden Pothos sold' : 'Small Golden Pothos resold'} for ${OPENING_POTHOS_SALE_PRICE} coins.`);
   }
 
   sellRepairedPot(): void {
     if (!this.shopInterior || this.inventoryPot !== 'repaired') return;
+    const instanceId = this.inventoryInstanceId ?? SPECIAL_REPAIR_POT_INSTANCE_ID;
+    if (!this.addShopStock('special-repair-pot', 'repaired', 1, instanceId)) return;
+    const firstSale = !this.progress.repairedPotSaleComplete;
     this.inventoryHasPot = false;
     this.inventoryPot = null;
+    this.inventoryInstanceId = null;
     this.progress.inventoryItem = null;
-    this.coins += 75;
+    this.progress.inventoryInstanceId = null;
+    this.coins += REPAIRED_POT_SALE_PRICE;
     this.progress.inventoryPot = null;
     this.progress.coins = this.coins;
-    this.progress.task = 'complete';
+    this.progress.repairedPotSaleComplete = true;
+    if (firstSale) this.progress.task = 'complete';
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel('Repaired pot sold for 75 coins.');
-    this.showToast('Repaired pot sold for 75 coins.');
+    this.refreshShopStockDisplay();
+    this.hud.refreshShopPanel(`Repaired pot ${firstSale ? 'sold' : 'resold'} for ${REPAIRED_POT_SALE_PRICE} coins.`);
+    this.showToast(`Repaired pot ${firstSale ? 'sold' : 'resold'} for ${REPAIRED_POT_SALE_PRICE} coins.`);
+  }
+
+  buyShopStock(stockId: string, quantity = 1): void {
+    if (!this.shopInterior) return;
+    const entry = this.getShopStockEntry(stockId);
+    if (!entry) {
+      this.hud.refreshShopPanel('That stock is no longer available.');
+      return;
+    }
+    const amount = this.normalizeTransactionQuantity(quantity, entry.quantity);
+    if (!amount) return;
+    if (entry.item !== 'basil-harvest' && amount !== 1) return;
+    if (entry.item !== 'basil-harvest' && (this.inventoryHasPot || this.progress.placedWorldItem)) {
+      this.hud.refreshShopPanel('Carry or place only one loose display pot at a time.');
+      return;
+    }
+    const unitPrice = this.getShopBuyPrice(entry.item);
+    const total = unitPrice * amount;
+    if (this.coins < total) {
+      const shortfall = total - this.coins;
+      this.hud.refreshShopPanel(`Need ${shortfall} more coin${shortfall === 1 ? '' : 's'} to buy ${amount} item${amount === 1 ? '' : 's'}.`);
+      this.showToast(`Insufficient funds: ${shortfall} more coin${shortfall === 1 ? '' : 's'} needed.`, 1600);
+      return;
+    }
+    const removed = this.removeShopStock(stockId, amount);
+    if (!removed) return;
+    this.coins -= total;
+    if (removed.item === 'basil-harvest') {
+      this.progress.basilHarvests += amount;
+    } else {
+      this.inventoryHasPot = true;
+      this.inventoryPot = removed.condition === 'ordinary' ? 'ordinary' : 'repaired';
+      this.inventoryInstanceId = removed.instanceIds[0] ?? removed.stockId;
+      this.progress.inventoryPot = this.inventoryPot;
+      this.progress.inventoryItem = this.inventoryPot === 'ordinary' ? 'small-golden-pothos' : 'special-repair-pot';
+      this.progress.inventoryInstanceId = this.inventoryInstanceId;
+    }
+    this.progress.coins = this.coins;
+    this.saveProgress();
+    this.syncHudState();
+    this.refreshShopStockDisplay();
+    const label = removed.item === 'basil-harvest' ? 'Basil harvest' : removed.item === 'small-golden-pothos' ? 'Small Golden Pothos' : 'Empty repaired pot';
+    this.hud.refreshShopPanel(`Bought ${amount} ${label}${amount === 1 ? '' : 's'} for ${total} coins.`);
+    this.showToast(`${label} added to the Bag.`, 1600);
   }
 
   acceptWindowJob(): void {
-    const openingPotCollected = this.inventoryPot === 'ordinary' || this.saleComplete;
-    if (!this.shopInterior || !openingPotCollected || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
+    if (!this.shopInterior || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
     this.progress.cleanerOwned = true;
     this.progress.equippedTool = 'cleaner';
@@ -976,7 +1632,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel('Cleaner borrowed and equipped.');
-    this.showToast('Cleaner equipped. Tap the HOMES display window, then press B once per spray, 8 times.', 5200);
+    this.showToast('Press B to clean window.', 1700);
   }
 
   payRentalBond(): void {
@@ -984,11 +1640,11 @@ export class GameScene extends Phaser.Scene {
       this.hud.refreshPropertyPanel('Your rental is already unlocked.');
       return;
     }
-    const bond = 60;
+    const bond = RENTAL_BOND_COST;
     if (this.coins < bond) {
       const shortfall = bond - this.coins;
       this.hud.refreshPropertyPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the bond.`);
-      this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the 60-coin bond.`, 1800);
+      this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the ${RENTAL_BOND_COST}-coin bond.`, 1800);
       return;
     }
     this.coins -= bond;
@@ -1004,25 +1660,342 @@ export class GameScene extends Phaser.Scene {
 
   private claimStarterKit(): void {
     if (!this.rentalBondPaid || this.starterKitClaimed) {
-      if (this.starterKitClaimed) this.showToast('Starter kit already claimed. Planting is the next prototype feature.', 1900);
+      if (this.starterKitClaimed) this.showToast('Starter kit already claimed. Place the pot on the grow table.', 1900);
       return;
     }
     this.starterKitClaimed = true;
     this.progress.starterKitClaimed = true;
+    this.grantStarterKitState();
+    this.progress.task = 'place-pot';
     this.saveProgress();
-    this.showToast('Starter kit claimed: pot, basil seeds and watering can. Planting is the next prototype feature.', 2800);
+    this.showToast('Starter kit claimed: pot, basil seeds, watering can and one basic fertiliser. Place the pot on the grow table.', 3000);
     this.drawHomeInteriorKit();
+    this.syncHudState();
+  }
+
+  plantBasil(): void {
+    const state = this.getBasilStage();
+    if (!this.homeInterior || !this.progress.starterPotPlaced) {
+      this.hud.refreshBasilPanel('Place the starter pot on the grow table first.');
+      return;
+    }
+    if (state !== 'empty') {
+      this.hud.refreshBasilPanel(state === 'mature' ? 'Basil is ready to harvest.' : 'This pot is already occupied.');
+      return;
+    }
+    if (this.progress.basilSeeds < 1) {
+      this.hud.refreshBasilPanel('No basil seed portions available. Buy one at BUY / SELL.');
+      return;
+    }
+    this.progress.basilSeeds -= 1;
+    this.progress.basilPlanted = true;
+    this.progress.basilGrowthStartedAt = null;
+    this.progress.basilCycleCount += 1;
+    this.progress.task = 'water-basil';
+    this.basilPotSelected = true;
+    this.basilStageCache = 'planted';
+    this.saveProgress();
+    this.updateBasilVisual();
+    this.syncHudState();
+    this.hud.refreshBasilPanel('Basil planted. Close this panel, select the pot, equip the watering can and press B.');
+    this.showToast('Basil planted. Select the pot, equip the watering can and press B.', 2600);
+  }
+
+  useBasicFertilizer(): void {
+    if (!this.homeInterior || !this.progress.starterPotPlaced) {
+      this.hud.refreshBasilPanel('Use the fertiliser beside the planted basil pot.');
+      return;
+    }
+    if (this.getBasilStage() !== 'seedling' || this.progress.basilGrowthStartedAt === null) {
+      this.hud.refreshBasilPanel('Basic fertiliser is only used while basil is growing.');
+      return;
+    }
+    if (this.progress.basicFertilizerCharges < 1) {
+      this.hud.refreshBasilPanel('No basic fertiliser remains. Plants shop stock will arrive later.');
+      return;
+    }
+
+    this.progress.basicFertilizerCharges -= 1;
+    // The current basil growth period is 60 seconds. Move its timestamp back
+    // by that full period and let the normal maturity path update the task,
+    // visual and save state without granting a harvest.
+    this.progress.basilGrowthStartedAt = Date.now() - BASIL_GROWTH_DURATION_MS - 1;
+    this.basilStageCache = 'seedling';
+    this.saveProgress();
+    this.updateBasilGrowth();
+    this.updateBasilVisual();
+    this.syncHudState();
+    this.hud.refreshBasilPanel('Basic fertiliser used. Basil is mature and ready to harvest.');
+    this.showToast('Basic fertiliser used. Basil grew instantly.', 2200);
+  }
+
+  harvestBasil(): void {
+    if (!this.homeInterior || this.getBasilStage() !== 'mature' || !this.progress.starterPotPlaced) {
+      this.hud.refreshBasilPanel('Basil is not ready to harvest yet.');
+      return;
+    }
+    this.progress.basilHarvests += 1;
+    this.progress.basilPlanted = false;
+    this.progress.basilGrowthStartedAt = null;
+    this.progress.task = 'sell-basil';
+    // Harvest leaves the reusable starter pot empty and unselected so the
+    // nearby contextual action returns to opening the basic pot.
+    this.basilPotSelected = false;
+    this.basilStageCache = 'empty';
+    this.saveProgress();
+    this.updateBasilVisual();
+    this.syncHudState();
+    this.updateInteraction();
+    this.hud.highlightBag();
+    this.hud.refreshBasilPanel(`Basil harvested and added to the Bag. Sell it at BUY / SELL for ${BASIL_HARVEST_PRICE} coins.`);
+    this.showToast(`Basil harvested. Sell it at BUY / SELL for ${BASIL_HARVEST_PRICE} coins.`, 2400);
+  }
+
+  sellBasilHarvest(quantity = 1): void {
+    if (!this.shopInterior) return;
+    const amount = this.normalizeTransactionQuantity(quantity, this.progress.basilHarvests);
+    if (!amount || !this.addShopStock('basil-harvest', 'fresh', amount)) return;
+    const total = BASIL_HARVEST_PRICE * amount;
+    this.progress.basilHarvests -= amount;
+    this.coins += total;
+    this.progress.task = 'buy-seeds';
+    this.saveProgress();
+    this.syncHudState();
+    this.refreshShopStockDisplay();
+    this.hud.refreshShopPanel(`Basil harvest ×${amount} sold for ${total} coins. Buy another seed portion to grow again.`);
+    this.showToast(`Basil harvest ×${amount} sold for ${total} coins.`, 1800);
+  }
+
+  buyBasilSeed(quantity = 1): void {
+    if (!this.shopInterior || !this.starterKitClaimed) return;
+    const amount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
+    if (!amount) return;
+    const total = BASIL_SEED_PRICE * amount;
+    if (this.coins < total) {
+      const shortfall = total - this.coins;
+      this.hud.refreshShopPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${amount} seed portion${amount === 1 ? '' : 's'}.`);
+      this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for basil seeds.`, 1600);
+      return;
+    }
+    this.coins -= total;
+    this.progress.basilSeeds += amount;
+    this.progress.task = 'plant-basil';
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.refreshShopPanel(`${amount} basil seed portion${amount === 1 ? '' : 's'} added to the Bag.`);
+    this.showToast(`Bought ${amount} basil seed portion${amount === 1 ? '' : 's'} for ${total} coins.`, 1600);
+  }
+
+  private getBasilStage(): BasilStage {
+    if (!this.progress.starterPotPlaced || !this.progress.basilPlanted) return 'empty';
+    if (this.progress.basilGrowthStartedAt === null) return 'planted';
+    const elapsed = Math.max(0, Date.now() - this.progress.basilGrowthStartedAt);
+    if (elapsed >= BASIL_GROWTH_DURATION_MS) return 'mature';
+    return 'seedling';
+  }
+
+  private getBasilTimeRemaining(): number {
+    if (this.progress.basilGrowthStartedAt === null) return 0;
+    return Math.max(0, BASIL_GROWTH_DURATION_MS - Math.max(0, Date.now() - this.progress.basilGrowthStartedAt));
+  }
+
+  private updateBasilGrowth(): void {
+    if (this.progress.basilGrowthStartedAt === null) return;
+    const stage = this.getBasilStage();
+    if (stage !== this.basilStageCache) {
+      this.basilStageCache = stage;
+      if (stage === 'mature') {
+        this.progress.task = 'harvest-basil';
+        this.saveProgress();
+        this.syncHudState();
+        this.showToast('Mature basil is ready to harvest.', 2200);
+      }
+      this.updateBasilVisual();
+    }
+  }
+
+  private startBasilWatering(): void {
+    if (!this.homeInterior || !this.basilPotSelected) {
+      this.showToast('Select the planted basil pot first.', 1500);
+      return;
+    }
+    if (!this.progress.wateringCanOwned || this.progress.equippedTool !== 'watering-can') {
+      this.showToast('Equip the watering can before pressing B.', 1500);
+      return;
+    }
+    if (this.getBasilStage() === 'mature') {
+      this.showToast('Basil is ready to harvest.', 1500);
+      return;
+    }
+    if (this.progress.basilGrowthStartedAt !== null || this.basilWaterAnimating) {
+      this.showToast('This basil has already been watered.', 1400);
+      return;
+    }
+    const growingSpot = this.getActiveGrowingSpot();
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 115) {
+      this.showToast('Move beside the basil pot before watering.', 1500);
+      return;
+    }
+    this.audio.playToolUse();
+    this.basilWaterAnimating = true;
+    this.basilWaterElapsed = 0;
+    this.drawBasilWatering(0);
+    this.showToast('WATERING…', 900);
+  }
+
+  private stopBasilWatering(): void {
+    this.basilWaterAnimating = false;
+    this.basilWaterElapsed = 0;
+    this.basilWaterEffect?.clear().setVisible(false);
+  }
+
+  private updateBasilWatering(delta: number): void {
+    if (!this.basilWaterAnimating) return;
+    const movementHeld = this.joystickSteering
+      || this.cursorKeys?.left.isDown || this.cursorKeys?.right.isDown
+      || this.cursorKeys?.up.isDown || this.cursorKeys?.down.isDown
+      || this.keys?.W.isDown || this.keys?.A.isDown || this.keys?.S.isDown || this.keys?.D.isDown;
+    const stillValid = this.homeInterior && !this.modalOpen && !this.phoneLandscapeBlocked
+      && !this.shopTransitioning && !this.hopActive && !this.target && !movementHeld
+      && this.basilPotSelected && this.progress.equippedTool === 'watering-can'
+      && this.progress.basilGrowthStartedAt === null
+      && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getActiveGrowingSpot().x, this.getActiveGrowingSpot().y) <= 115;
+    if (!stillValid) {
+      this.stopBasilWatering();
+      return;
+    }
+    this.basilWaterElapsed = Math.min(this.basilWaterDuration, this.basilWaterElapsed + Math.min(delta, 32));
+    const progress = this.basilWaterElapsed / this.basilWaterDuration;
+    this.drawBasilWatering(progress);
+    if (progress < 1) return;
+    this.stopBasilWatering();
+    this.progress.basilGrowthStartedAt = Date.now();
+    this.progress.task = 'grow-basil';
+    this.basilStageCache = 'seedling';
+    this.saveProgress();
+    this.updateBasilVisual();
+    this.syncHudState();
+    this.showToast('Basil watered. It will mature in about 60 seconds.', 2200);
+  }
+
+  private drawBasilWatering(progress: number): void {
+    if (!this.basilWaterEffect) return;
+    const sourceX = this.player.x;
+    const sourceY = this.player.y - 40;
+    const growingSpot = this.getActiveGrowingSpot();
+    const targetX = growingSpot.x;
+    const targetY = growingSpot.y - 34;
+    const travel = Math.min(1, progress / 0.8);
+    this.basilWaterEffect.clear();
+    this.basilWaterEffect.lineStyle(3, 0xd8dddc, 0.9);
+    this.basilWaterEffect.lineBetween(sourceX, sourceY, targetX - 14, targetY);
+    this.basilWaterEffect.fillStyle(0xf6f7f3, 0.95);
+    for (let index = 0; index < 6; index += 1) {
+      const offset = (index % 3 - 1) * 11;
+      const x = sourceX + (targetX + offset - sourceX) * Math.max(0, travel - (index % 3) * 0.08);
+      const y = sourceY + (targetY + offset * 0.2 - sourceY) * Math.max(0, travel - (index % 3) * 0.08);
+      this.basilWaterEffect.fillCircle(x, y, 3 + index % 2);
+    }
+    if (progress >= 0.8) {
+      this.basilWaterEffect.lineStyle(2, 0xf6f7f3, 0.9).strokeCircle(targetX, targetY, 8 + (progress - 0.8) * 20);
+    }
+    this.basilWaterEffect.setVisible(true);
+  }
+
+  private updateBasilVisual(): void {
+    if (!this.basilPot) return;
+    const stage = this.getBasilStage();
+    const growingSpot = this.getActiveGrowingSpot();
+    this.basilPot.setPosition(growingSpot.x, growingSpot.y);
+    this.basilPot.clear();
+    this.basilPot.setVisible(this.starterKitClaimed && this.progress.starterPotPlaced);
+    if (this.basilPot.visible) drawBasilCrop(this.basilPot, 0, 0, stage as BasilVisualStage, 0.9);
+  }
+
+  private isNearGrowingSpot(point: Phaser.Math.Vector2): boolean {
+    return this.getGrowingSpotIndexAtPoint(point) !== null;
+  }
+
+  private isNearGrowingSpotPlayer(): boolean {
+    const growingSpot = this.getActiveGrowingSpot();
+    return Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      growingSpot.x,
+      growingSpot.y,
+    ) <= BASIL_POT_INTERACTION_RADIUS;
+  }
+
+  private getBasilApproachPoint(): Phaser.Math.Vector2 {
+    const growingSpot = this.getActiveGrowingSpot();
+    // Stop Alex close to the pot's edge so the contextual OPEN POT action is
+    // available beside the selected slot rather than at a distant approach.
+    return new Phaser.Math.Vector2(growingSpot.x - 54, growingSpot.y);
+  }
+
+  private getActiveGrowingSpot(): { x: number; y: number } {
+    const index = this.progress.starterPotPlaced
+      ? this.progress.starterPotSlot
+      : this.selectedGrowingSpotIndex ?? 1;
+    return HOME_GROWING_SPOTS[Phaser.Math.Clamp(index, 0, HOME_GROWING_SPOTS.length - 1)] ?? HOME_GROWING_SPOTS[1];
+  }
+
+  private getGrowingSpotIndexAtPoint(point: Phaser.Math.Vector2): number | null {
+    const index = HOME_GROWING_SPOTS.findIndex((spot) => Math.abs(point.x - spot.x) <= 42
+      // Include the visible pot/leaves above the compact table slot without
+      // widening the neighbouring slot targets.
+      && point.y >= spot.y - 78
+      && point.y <= spot.y + 34);
+    return index >= 0 ? index : null;
+  }
+
+  private placeStarterPot(): void {
+    if (!this.homeInterior || !this.starterKitClaimed || this.progress.starterPotPlaced) return;
+    const growingSpot = this.getActiveGrowingSpot();
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 120) return;
+    this.progress.starterPotSlot = this.selectedGrowingSpotIndex ?? this.progress.starterPotSlot;
+    this.progress.starterPotPlaced = true;
+    this.progress.task = 'plant-basil';
+    this.basilPotSelected = true;
+    this.saveProgress();
+    this.updateBasilVisual();
+    this.syncHudState();
+    this.selectedGrowingSpotIndex = null;
+    this.showToast('Starter pot placed. Select it to plant basil.', 1900);
+    this.hud.openPanel('basil');
+  }
+
+  private selectBasilPot(): void {
+    if (!this.homeInterior || !this.progress.starterPotPlaced) return;
+    if (!this.isNearGrowingSpotPlayer()) {
+      this.showToast('Move closer to the growing pot first.', 1400);
+      return;
+    }
+    this.basilPotSelected = true;
+    const stage = this.getBasilStage();
+    if (stage === 'empty' || stage === 'mature') {
+      this.hud.openPanel('basil');
+    } else {
+      this.showToast('Basil selected. Equip the watering can and press B.', 1900);
+    }
+    this.updateInteraction();
   }
 
   restartPrototype(): void {
     this.progress = sanitizeProgress(DEFAULT_PROGRESS);
     this.inventoryHasPot = false;
     this.inventoryPot = null;
+    this.inventoryInstanceId = null;
     this.saleComplete = false;
     this.coins = 0;
+    this.clearItemPlacement();
     this.rentalBondPaid = false;
     this.starterKitClaimed = false;
     this.repairPickupReady = false;
+    this.windowFacePromptRequired = false;
+    this.basilPotSelected = false;
+    this.basilStageCache = 'empty';
+    this.stopBasilWatering();
     this.repairPotDisplay?.destroy();
     this.repairPotDisplay = undefined;
     this.repairPickupPrompt?.destroy();
@@ -1032,6 +2005,9 @@ export class GameScene extends Phaser.Scene {
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.player.setPosition(START_POSITION.x, START_POSITION.y);
+    this.zoomMode = 'close';
+    this.streetZoomMode = 'close';
+    this.applyZoom(this.zoomMode);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y).setVisible(true);
     this.drawPlayer();
     this.updateProgressVisuals();
@@ -1077,7 +2053,7 @@ export class GameScene extends Phaser.Scene {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
     drawGoldenPothos(this.pot, 0, 0, 0.9);
-    this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete);
+    this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete && !this.progress.placedWorldItem);
   }
 
   private createBrokenPot(): void {
@@ -1091,16 +2067,69 @@ export class GameScene extends Phaser.Scene {
     this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
   }
 
+  private createPlacedItem(): void {
+    this.placedItemDisplay = this.add.graphics().setDepth(22);
+    this.updatePlacedItemVisual();
+  }
+
+  private updatePlacedItemVisual(): void {
+    if (!this.placedItemDisplay) return;
+    const placed = this.progress.placedWorldItem;
+    if (!placed || this.shopInterior || this.homeInterior) {
+      this.placedItemDisplay.clear().setVisible(false);
+      return;
+    }
+    this.placedItemDisplay.setPosition(placed.x, placed.y).clear();
+    if (placed.item === 'small-golden-pothos') {
+      drawGoldenPothos(this.placedItemDisplay, 0, 0, 0.9);
+    } else if (placed.condition === 'broken') {
+      // A broken pot is represented as three loose pieces on the ground.
+      // The global piece counter is for the separate street pickup and is 0
+      // after the pot has been assembled into the Bag, so it must not control
+      // the appearance of a deliberately placed broken pot.
+      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, 1.08, 3);
+    } else {
+      // A repaired pot keeps its empty, seamed silhouette when placed back
+      // on the street; it never regresses to loose pieces or gains foliage.
+      drawBrokenPot(this.placedItemDisplay, 0, 0, 0.9, 10);
+    }
+    this.placedItemDisplay.setVisible(true);
+  }
+
   private createWindowDirtOverlay(): void {
     this.windowDirtOverlay = this.add.graphics().setDepth(8);
-    const window = BUILDINGS.find((building) => building.key === 'homes');
-    if (!window) return;
-    this.windowDirtOverlay.fillStyle(0x111416, 0.32).fillRect(window.x + 22, window.y + 104, window.width - 44, 180);
-    this.windowDirtOverlay.fillStyle(0x858d8d, 0.42);
-    for (let index = 0; index < 12; index += 1) {
-      this.windowDirtOverlay.fillRect(window.x + 38 + (index % 5) * 54, window.y + 122 + Math.floor(index / 5) * 46, 26, 9);
-    }
+    this.refreshWindowDirtOverlay();
     this.windowDirtOverlay.setVisible(this.progress.windowJobAccepted && !this.progress.windowJobComplete);
+  }
+
+  private refreshWindowDirtOverlay(): void {
+    if (!this.windowDirtOverlay) return;
+    this.windowDirtOverlay.clear();
+    HOMES_WINDOW_CLEAN_SECTIONS.forEach((section, sectionIndex) => {
+      const sectionProgress = this.getWindowSectionProgress(sectionIndex);
+      const complete = sectionProgress >= section.spraysRequired;
+      const dirtLevel = 1 - sectionProgress / section.spraysRequired;
+      this.windowDirtOverlay.fillStyle(0x111416, complete ? 0.08 : 0.12 + dirtLevel * 0.38).fillRect(
+        section.x,
+        section.y,
+        section.width,
+        section.height,
+      );
+      this.windowDirtOverlay.lineStyle(2, 0xf6f7f3, complete ? 0.34 : 0.45 + dirtLevel * 0.35).strokeRect(
+        section.x,
+        section.y,
+        section.width,
+        section.height,
+      );
+      if (complete) return;
+      this.windowDirtOverlay.fillStyle(0x858d8d, 0.34 + dirtLevel * 0.34);
+      const dirtMarks = Math.max(1, Math.ceil(dirtLevel * 6));
+      for (let mark = 0; mark < dirtMarks; mark += 1) {
+        const markX = section.x + 14 + (mark % 2) * (section.width - 54);
+        const markY = section.y + 18 + Math.floor(mark / 2) * 42;
+        this.windowDirtOverlay.fillRect(markX, markY, 30, 11);
+      }
+    });
   }
 
   private createSprayEffect(): void {
@@ -1119,6 +2148,52 @@ export class GameScene extends Phaser.Scene {
 
   private createInteractionHighlight(): void {
     this.interactionHighlight = this.add.graphics().setDepth(29).setVisible(false);
+  }
+
+  private createPlacementHighlight(): void {
+    this.placementOptionsHighlight = this.add.graphics().setDepth(20).setVisible(false);
+    this.placementHighlight = this.add.graphics().setDepth(21).setVisible(false);
+    this.placementHighlight.fillStyle(0xf6f7f3, 0.16).fillRect(-56, -34, 112, 68);
+    this.placementHighlight.lineStyle(3, 0xf6f7f3, 0.95).strokeRect(-56, -34, 112, 68);
+    this.placementHighlight.lineStyle(2, 0x111416, 0.9);
+    this.placementHighlight.lineBetween(-56, -34, -42, -34);
+    this.placementHighlight.lineBetween(56, -34, 42, -34);
+    this.placementHighlight.lineBetween(-56, 34, -42, 34);
+    this.placementHighlight.lineBetween(56, 34, 42, 34);
+  }
+
+  private updatePlacementOptions(): void {
+    if (!this.placementOptionsHighlight) return;
+    this.placementOptionsHighlight.clear();
+    if (!this.itemPlacementMode || this.shopInterior || this.homeInterior || this.placementOptionTargets.length === 0) {
+      this.placementOptionsHighlight.setVisible(false);
+      return;
+    }
+    this.placementOptionTargets.forEach((option) => {
+      const selected = this.placementTarget
+        && Phaser.Math.Distance.Between(option.x, option.y, this.placementTarget.x, this.placementTarget.y) < 1;
+      if (selected) return;
+      this.placementOptionsHighlight.fillStyle(0xf6f7f3, 0.09).fillRect(option.x - 48, option.y - 28, 96, 56);
+      this.placementOptionsHighlight.lineStyle(2, 0xf6f7f3, 0.7).strokeRect(option.x - 48, option.y - 28, 96, 56);
+      this.placementOptionsHighlight.lineStyle(2, 0x111416, 0.7);
+      this.placementOptionsHighlight.lineBetween(option.x - 48, option.y - 28, option.x - 36, option.y - 28);
+      this.placementOptionsHighlight.lineBetween(option.x + 48, option.y + 28, option.x + 36, option.y + 28);
+    });
+    this.placementOptionsHighlight.setVisible(true);
+  }
+
+  private updatePlacementHighlight(): void {
+    if (!this.placementHighlight) return;
+    this.updatePlacementOptions();
+    const visible = this.itemPlacementMode
+      && !this.shopInterior
+      && !this.homeInterior
+      && Boolean(this.placementTarget);
+    if (!visible || !this.placementTarget) {
+      this.placementHighlight.setVisible(false);
+      return;
+    }
+    this.placementHighlight.setPosition(this.placementTarget.x, this.placementTarget.y).setVisible(true);
   }
 
   private createCars(): void {
@@ -1204,6 +2279,10 @@ export class GameScene extends Phaser.Scene {
       this.handleHomeWorldPoint(point.x, point.y);
       return;
     }
+    if (this.itemPlacementMode) {
+      this.handleItemPlacementPoint(point);
+      return;
+    }
     if (this.repairPickupReady && this.repairPotDisplay?.visible) {
       const repairPosition = new Phaser.Math.Vector2(this.repairPotDisplay.x, this.repairPotDisplay.y);
       if (this.isNearPoint(point, repairPosition, 125)) {
@@ -1222,19 +2301,41 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
-    const propertyListing = this.getPropertyListingAtPoint(point);
-    if (propertyListing) {
-      this.cancelTapWalk();
-      this.hud.openPropertyDetails(propertyListing);
+    const placedItem = this.progress.placedWorldItem;
+    if (placedItem && this.placedItemDisplay?.visible && !this.inventoryHasPot
+      && this.isNearPoint(point, placedItem, 118)) {
+      const approach = this.getPlacedItemApproachPoint(placedItem);
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, placedItem.x, placedItem.y) <= 110) {
+        this.selectPendingInteraction('pickup-placed-item', approach);
+      } else {
+        const tapPath = this.getTapPath(approach.x, approach.y);
+        if (!tapPath) {
+          this.cancelTapWalk();
+          this.showToast('That item cannot be reached.', 1500);
+          return;
+        }
+        this.selectPendingInteraction('pickup-placed-item', approach, tapPath);
+      }
       return;
     }
     if (this.progress.windowJobAccepted && this.isWindowDisplayPoint(point)) {
-      const approach = this.getWindowInteractionPoint();
+      const sectionIndex = this.getWindowSectionIndexAtPoint(point);
+      const activeSection = this.getActiveWindowSectionIndex();
+      if (sectionIndex === null) return;
+      if (sectionIndex !== activeSection) {
+        this.selectedWindowSectionIndex = null;
+        this.cancelTapWalk();
+        this.showToast(sectionIndex < activeSection ? 'Already clean. Move to the next window.' : 'Clean the previous window section first.', 1600);
+        return;
+      }
+      this.selectedWindowSectionIndex = sectionIndex;
+      const approach = this.getWindowInteractionPoint(sectionIndex);
       if (this.isNearWindowApproach()) {
-        this.windowFacingLocked = true;
-        this.faceDirection(new Phaser.Math.Vector2(0, -1));
-        this.showToast('HOMES display selected. Press B once per spray.', 1500);
+        this.windowFacePromptRequired = true;
+        this.windowFacingLocked = false;
+        this.faceDirection(new Phaser.Math.Vector2(0, 1));
       } else {
+        this.windowFacePromptRequired = false;
         const tapPath = this.getTapPath(approach.x, approach.y);
         if (!tapPath) {
           this.cancelTapWalk();
@@ -1243,6 +2344,12 @@ export class GameScene extends Phaser.Scene {
         }
         this.selectPendingInteraction('window-clean', approach, tapPath);
       }
+      return;
+    }
+    const propertyListing = this.getPropertyListingAtPoint(point);
+    if (propertyListing) {
+      this.cancelTapWalk();
+      this.hud.openPropertyDetails(propertyListing);
       return;
     }
     const brokenPosition = this.getBrokenPotPosition();
@@ -1362,8 +2469,16 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(POT_POSITION.x - 72, POT_POSITION.y);
   }
 
+  private getPlacedItemApproachPoint(item: Pick<PlacedWorldItem, 'x' | 'y'>): Phaser.Math.Vector2 {
+    const approachX = item.x - 72 < STARTING_WALKABLE_MIN_X + 24 ? item.x + 72 : item.x - 72;
+    return new Phaser.Math.Vector2(approachX, item.y);
+  }
+
   private selectWalkPath(path: Phaser.Math.Vector2[]): void {
     this.pendingInteraction = null;
+    this.selectedWindowSectionIndex = null;
+    this.windowFacePromptRequired = false;
+    this.basilPotSelected = false;
     this.windowFacingLocked = false;
     this.clearInteractionHighlight();
     this.target = path.shift() ?? null;
@@ -1378,6 +2493,7 @@ export class GameScene extends Phaser.Scene {
     path?: Phaser.Math.Vector2[],
   ): void {
     this.cancelTapWalk();
+    if (interaction !== 'window-clean') this.selectedWindowSectionIndex = null;
     this.pendingInteraction = interaction;
     this.showInteractionHighlight(interaction, approach);
     if (path && path.length > 0) {
@@ -1442,11 +2558,35 @@ export class GameScene extends Phaser.Scene {
       const approach = new Phaser.Math.Vector2(HOME_STARTER_KIT.x - 120, HOME_STARTER_KIT.y);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, HOME_STARTER_KIT.x, HOME_STARTER_KIT.y) <= 110) {
         if (!this.starterKitClaimed) this.claimStarterKit();
-        else this.showToast('Starter kit already claimed. Planting is the next prototype feature.', 1900);
+        else this.showToast('Starter kit already claimed. Place the pot on the grow table.', 1900);
       } else {
         const path = this.getHomeTapPath(approach.x, approach.y);
         if (path) this.selectPendingInteraction('claim-starter-kit', approach, path);
         else this.showToast('The starter kit cannot be reached.', 1500);
+      }
+      return;
+    }
+    const growingSpotIndex = this.getGrowingSpotIndexAtPoint(point);
+    if (growingSpotIndex !== null) {
+      if (!this.starterKitClaimed) {
+        this.cancelTapWalk();
+        this.showToast('Claim the starter kit before using the grow table.', 1700);
+        return;
+      }
+      if (this.progress.starterPotPlaced && growingSpotIndex !== this.progress.starterPotSlot) {
+        this.cancelTapWalk();
+        this.showToast('That grow-table slot is empty. Another pot can use it later.', 1800);
+        return;
+      }
+      this.selectedGrowingSpotIndex = growingSpotIndex;
+      const approach = this.getBasilApproachPoint();
+      const interaction: PendingInteraction = this.progress.starterPotPlaced ? 'select-basil-pot' : 'place-starter-pot';
+      if (this.isNearGrowingSpotPlayer()) {
+        this.selectPendingInteraction(interaction, approach);
+      } else {
+        const path = this.getHomeTapPath(approach.x, approach.y);
+        if (path) this.selectPendingInteraction(interaction, approach, path);
+        else this.showToast('That grow-table slot cannot be reached.', 1500);
       }
       return;
     }
@@ -1467,6 +2607,22 @@ export class GameScene extends Phaser.Scene {
   private getHomeTapPath(x: number, y: number): Phaser.Math.Vector2[] | null {
     if (!this.isHomeWalkablePosition(x, y)) return null;
     return [new Phaser.Math.Vector2(x, y)];
+  }
+
+  private handleItemPlacementPoint(point: Phaser.Math.Vector2): void {
+    const placement = this.getItemPlacementAtPoint(point);
+    if (!placement) {
+      this.placementTarget = null;
+      this.updatePlacementHighlight();
+      this.syncHudState();
+      this.showToast('Choose a clear pavement square.', 1500);
+      return;
+    }
+    this.cancelTapWalk();
+    this.placementTarget = placement;
+    this.updatePlacementHighlight();
+    this.syncHudState();
+    this.showToast('Press B to put the item down.', 1500);
   }
 
   private isNearShopExit(point: Phaser.Math.Vector2): boolean {
@@ -1569,12 +2725,13 @@ export class GameScene extends Phaser.Scene {
     this.pendingInteraction = null;
     this.clearInteractionHighlight();
     if (interaction === 'pickup') this.collectPot();
+    if (interaction === 'pickup-placed-item') this.collectPlacedItem();
     if (interaction === 'select-broken-piece') this.selectBrokenPotPiece();
     if (interaction === 'pickup-repaired') this.collectRepairedPot();
     if (interaction === 'window-clean') {
-      this.windowFacingLocked = true;
-      this.faceDirection(new Phaser.Math.Vector2(0, -1));
-      this.showToast('HOMES display selected. Press B once per spray.', 1500);
+      this.windowFacePromptRequired = true;
+      this.windowFacingLocked = false;
+      this.faceDirection(new Phaser.Math.Vector2(0, 1));
     }
     if (interaction === 'enter-shop') this.enterShop();
     if (interaction === 'counter') this.openShopPanel();
@@ -1582,6 +2739,8 @@ export class GameScene extends Phaser.Scene {
     if (interaction === 'enter-home') this.enterHome();
     if (interaction === 'exit-home') this.exitHome();
     if (interaction === 'claim-starter-kit') this.claimStarterKit();
+    if (interaction === 'place-starter-pot') this.placeStarterPot();
+    if (interaction === 'select-basil-pot') this.selectBasilPot();
   }
 
   private collectPot(): void {
@@ -1589,6 +2748,7 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, POT_POSITION.x, POT_POSITION.y) > 110) return;
     this.inventoryHasPot = true;
     this.inventoryPot = 'ordinary';
+    this.inventoryInstanceId = OPENING_GOLDEN_POTHOS_INSTANCE_ID;
     this.pot.setVisible(false);
     this.progress.inventoryPot = 'ordinary';
     this.progress.inventoryItem = 'small-golden-pothos';
@@ -1599,6 +2759,37 @@ export class GameScene extends Phaser.Scene {
     this.syncHudState();
     this.hud.highlightBag();
     this.showToast('Found a Small Golden Pothos.');
+  }
+
+  private collectPlacedItem(): void {
+    const placed = this.progress.placedWorldItem;
+    if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !placed || !this.placedItemDisplay?.visible) return;
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, placed.x, placed.y) > 110) return;
+
+    this.inventoryHasPot = true;
+    this.inventoryPot = placed.condition;
+    this.inventoryInstanceId = placed.instanceId;
+    this.progress.inventoryPot = placed.condition;
+    this.progress.inventoryItem = placed.item;
+    this.progress.inventoryInstanceId = placed.instanceId;
+    this.progress.placedWorldItem = null;
+    if (placed.condition === 'broken') {
+      this.progress.brokenPotOwned = true;
+      this.progress.brokenPotAvailable = false;
+      this.progress.task = 'repair';
+    } else if (placed.condition === 'repaired') {
+      this.progress.task = 'sell-repaired';
+    }
+    this.placedItemDisplay.clear().setVisible(false);
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.highlightBag();
+    this.showToast(`${this.getPlacedItemLabel(placed)} picked up.`, 1800);
+  }
+
+  private getPlacedItemLabel(item: Pick<PlacedWorldItem, 'item' | 'condition'>): string {
+    if (item.item === 'small-golden-pothos') return 'Small Golden Pothos';
+    return item.condition === 'repaired' ? 'Repaired pot' : 'Broken pot';
   }
 
   private selectBrokenPotPiece(): void {
@@ -1633,6 +2824,7 @@ export class GameScene extends Phaser.Scene {
 
     this.inventoryHasPot = true;
     this.inventoryPot = 'broken';
+    this.inventoryInstanceId = SPECIAL_REPAIR_POT_INSTANCE_ID;
     this.progress.inventoryPot = 'broken';
     this.progress.inventoryItem = 'special-repair-pot';
     this.progress.brokenPotOwned = true;
@@ -1650,6 +2842,7 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.repairPotDisplay.x, this.repairPotDisplay.y) > 110) return;
     this.inventoryHasPot = true;
     this.inventoryPot = 'repaired';
+    this.inventoryInstanceId = this.inventoryInstanceId ?? SPECIAL_REPAIR_POT_INSTANCE_ID;
     this.progress.inventoryPot = 'repaired';
     this.progress.inventoryItem = 'special-repair-pot';
     this.progress.task = 'sell-repaired';
@@ -1659,7 +2852,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Repaired pot added to the Bag. Sell it at BUY / SELL for 75 coins.');
+    this.showToast(`Repaired pot added to the Bag. Sell it at BUY / SELL for ${REPAIRED_POT_SALE_PRICE} coins.`);
   }
 
   private openShopPanel(): void {
@@ -1670,6 +2863,7 @@ export class GameScene extends Phaser.Scene {
 
   private enterShop(): void {
     if (this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
@@ -1713,10 +2907,12 @@ export class GameScene extends Phaser.Scene {
     this.setShopCamera();
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
+    this.persistDevSession();
   }
 
   private enterHome(): void {
     if (this.shopInterior || this.homeInterior || this.shopTransitioning || !this.rentalBondPaid) return;
+    this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
@@ -1753,15 +2949,18 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects = [];
     this.drawHomeInterior();
     this.player.setPosition(HOME_PLAYER_START.x, HOME_PLAYER_START.y).setAlpha(1).setVisible(true);
+    this.basilPotSelected = false;
     this.destinationMarker.setVisible(false);
     this.clearInteractionHighlight();
     this.setHomeCamera();
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
+    this.persistDevSession();
   }
 
   private exitShop(): void {
     if (!this.shopInterior || this.shopTransitioning) return;
+    this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
@@ -1789,10 +2988,12 @@ export class GameScene extends Phaser.Scene {
     this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
+    this.persistDevSession();
   }
 
   private exitHome(): void {
     if (!this.homeInterior || this.shopTransitioning) return;
+    this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
@@ -1806,7 +3007,10 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.forEach((object) => object.destroy());
     this.homeObjects = [];
     this.homeStarterKitObjects = [];
+    this.basilPot = undefined;
+    this.basilWaterEffect = undefined;
     this.homeInterior = false;
+    this.basilPotSelected = false;
     this.setObjectsVisible(this.streetObjects, true);
     this.player.setPosition(APARTMENT_ENTRANCE.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.setRepairPickupPresentationVisible(this.repairPickupReady);
@@ -1819,6 +3023,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
+    this.persistDevSession();
   }
 
   private setShopCamera(): void {
@@ -1925,11 +3130,31 @@ export class GameScene extends Phaser.Scene {
     window.lineStyle(3, 0x858d8d, 1).lineBetween(705, 150, 705, 300).lineBetween(610, 225, 800, 225);
     this.homeObjects.push(window);
 
-    const growingSpot = this.add.graphics().setDepth(3);
-    growingSpot.fillStyle(0x111416, 1).fillRect(420, 438, 150, 64);
-    growingSpot.lineStyle(3, 0xf6f7f3, 0.95).strokeRect(420, 438, 150, 64);
-    growingSpot.fillStyle(0x697271, 1).fillRect(438, 454, 114, 25);
-    this.homeObjects.push(growingSpot);
+    const growTable = this.add.graphics().setDepth(3);
+    const firstSlot = HOME_GROWING_SPOTS[0];
+    const lastSlot = HOME_GROWING_SPOTS[HOME_GROWING_SPOTS.length - 1];
+    const tableLeft = firstSlot.x - 48;
+    const tableRight = lastSlot.x + 48;
+    growTable.fillStyle(0x111416, 1).fillRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
+    growTable.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
+    HOME_GROWING_SPOTS.forEach((spot) => {
+      growTable.fillStyle(0x697271, 1).fillRect(spot.x - 38, spot.y - 27, 76, 54);
+      growTable.lineStyle(3, 0xf6f7f3, 0.95).strokeRect(spot.x - 38, spot.y - 27, 76, 54);
+    });
+    this.homeObjects.push(growTable);
+    HOME_GROWING_SPOTS.forEach((spot, index) => {
+      const slotLabel = this.add.text(spot.x, spot.y + 31, `SLOT ${index + 1}`, {
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(7);
+      this.homeObjects.push(slotLabel);
+    });
+
+    const activeSpot = this.getActiveGrowingSpot();
+    this.basilPot = this.add.graphics().setDepth(5).setPosition(activeSpot.x, activeSpot.y);
+    this.homeObjects.push(this.basilPot);
+    this.basilWaterEffect = this.add.graphics().setDepth(6).setVisible(false);
+    this.homeObjects.push(this.basilWaterEffect);
+    this.updateBasilVisual();
 
     const exit = this.add.graphics().setDepth(4);
     exit.fillStyle(0x111416, 1).fillRect(HOME_EXIT.x - 48, HOME_EXIT.y - 72, 96, 78);
@@ -1938,7 +3163,7 @@ export class GameScene extends Phaser.Scene {
 
     const labels = [
       { text: 'YOUR RENTAL', x: HOME_WORLD_WIDTH / 2, y: 112, size: '26px' },
-      { text: 'GROWING SPACE', x: 495, y: 522, size: '14px' },
+      { text: 'GROW TABLE', x: HOME_WORLD_WIDTH / 2, y: firstSlot.y + 70, size: '14px' },
       { text: 'WINDOW', x: 705, y: 326, size: '14px' },
       { text: 'EXIT', x: HOME_EXIT.x, y: HOME_EXIT.y + 28, size: '14px' },
     ];
@@ -1970,7 +3195,7 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setDepth(7);
     this.homeStarterKitObjects.push(label);
     const contents = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y - 62,
-      'POT · USED MEDIUM\nBASIL SEEDS · WATERING CAN', {
+      'POT · USED MEDIUM\nSEEDS · WATERING CAN\n1 BASIC FERTILISER', {
         color: '#f6f7f3', fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold',
         align: 'center', lineSpacing: 2,
         backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
@@ -2066,26 +3291,46 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createShopGoldenPothosDisplay(): void {
-    if (!this.shopInterior || !this.progress.shopGoldenPothosStock || this.shopGoldenPothosDisplay.length > 0) return;
-    const item = this.add.graphics().setDepth(4);
-    drawGoldenPothos(item, 180, 405, 0.55);
-    const stockLabel = this.add.text(180, 376, 'SHOP STOCK', {
-      color: '#f6f7f3',
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      fontStyle: 'bold',
-      backgroundColor: '#111416',
-      padding: { left: 3, right: 3, top: 2, bottom: 2 },
-    }).setOrigin(0.5).setDepth(7);
-    const priceTag = this.add.text(180, 454, '7 COINS', {
-      color: '#111416',
-      fontFamily: 'monospace',
-      fontSize: '10px',
-      fontStyle: 'bold',
-      backgroundColor: '#f6f7f3',
-      padding: { left: 5, right: 5, top: 3, bottom: 3 },
-    }).setOrigin(0.5).setDepth(7);
-    this.shopGoldenPothosDisplay = [item, stockLabel, priceTag];
+    if (!this.shopInterior || this.shopGoldenPothosDisplay.length > 0) return;
+    const entries = this.progress.shopStock.filter((entry) => entry.quantity > 0);
+    const positions = [
+      { x: 180, y: 405 },
+      { x: 960, y: 405 },
+      { x: 180, y: 540 },
+    ];
+    entries.forEach((entry, index) => {
+      const position = positions[index] ?? { x: 960, y: 540 };
+      const item = this.add.graphics().setDepth(4);
+      if (entry.item === 'small-golden-pothos') {
+        drawGoldenPothos(item, position.x, position.y, 0.55);
+      } else if (entry.item === 'special-repair-pot') {
+        drawBrokenPot(item, position.x, position.y, 0.62, 10);
+      } else {
+        item.fillStyle(0x111416, 1).fillRect(position.x - 22, position.y - 12, 44, 8);
+        item.fillStyle(0xbfc5c3, 1).fillRect(position.x - 15, position.y - 4, 30, 30);
+        item.lineStyle(3, 0x111416, 1).strokeRect(position.x - 15, position.y - 4, 30, 30);
+        item.lineStyle(3, 0xf6f7f3, 1).lineBetween(position.x, position.y - 20, position.x - 13, position.y - 38);
+        item.lineBetween(position.x, position.y - 20, position.x + 14, position.y - 34);
+      }
+      const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : 'BASIL HARVEST';
+      const stockLabel = this.add.text(position.x, position.y - 40, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}`, {
+        color: '#f6f7f3',
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        fontStyle: 'bold',
+        backgroundColor: '#111416',
+        padding: { left: 3, right: 3, top: 2, bottom: 2 },
+      }).setOrigin(0.5).setDepth(7);
+      const priceTag = this.add.text(position.x, position.y + 48, `${this.getShopBuyPrice(entry.item)} COINS EACH`, {
+        color: '#111416',
+        fontFamily: 'monospace',
+        fontSize: '9px',
+        fontStyle: 'bold',
+        backgroundColor: '#f6f7f3',
+        padding: { left: 5, right: 5, top: 3, bottom: 3 },
+      }).setOrigin(0.5).setDepth(7);
+      this.shopGoldenPothosDisplay.push(item, stockLabel, priceTag);
+    });
     this.shopObjects.push(...this.shopGoldenPothosDisplay);
   }
 
@@ -2294,12 +3539,23 @@ export class GameScene extends Phaser.Scene {
     this.targetQueue = [];
     if (this.destinationMarker) this.destinationMarker.setVisible(false);
     this.pendingInteraction = null;
+    this.basilPotSelected = false;
+    this.windowFacePromptRequired = false;
     this.windowFacingLocked = false;
     this.clearInteractionHighlight();
     if (this.brokenPotPieceSelected) {
       this.brokenPotPieceSelected = false;
       this.syncHudState();
     }
+  }
+
+  private clearItemPlacement(): void {
+    const wasActive = this.itemPlacementMode || Boolean(this.placementTarget);
+    this.itemPlacementMode = false;
+    this.placementTarget = null;
+    this.placementOptionTargets = [];
+    this.updatePlacementHighlight();
+    if (wasActive) this.syncHudState();
   }
 
   private moveOnWalkableGround(nextX: number, nextY: number): void {
@@ -2379,11 +3635,31 @@ export class GameScene extends Phaser.Scene {
       this.hud.setAction('CLAIM STARTER KIT');
       return;
     }
+    if (!this.modalOpen && this.homeInterior && this.isNearGrowingSpotPlayer()) {
+      if (!this.starterKitClaimed) this.hud.setAction('CLAIM STARTER KIT');
+      else if (!this.progress.starterPotPlaced) this.hud.setAction('PLACE STARTER POT');
+      else if (this.basilPotSelected && this.getBasilStage() === 'planted') this.hud.setAction('WATER BASIL');
+      else if (this.getBasilStage() === 'mature') this.hud.setAction('HARVEST BASIL');
+      else this.hud.setAction('OPEN POT');
+      return;
+    }
+    if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.placedWorldItem
+      && this.placedItemDisplay?.visible
+      && !this.inventoryHasPot
+      && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.progress.placedWorldItem.x, this.progress.placedWorldItem.y) <= 110) {
+      this.hud.setAction(null);
+      return;
+    }
+    if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.itemPlacementMode && this.inventoryHasPot) {
+      this.hud.setAction(this.placementTarget ? 'PRESS B TO PUT DOWN' : 'TAP PAVEMENT TO PLACE');
+      return;
+    }
     if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.brokenPotPieceSelected) {
       this.hud.setAction('PRESS B TO PICK UP PIECE');
       return;
     }
-    if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted && this.isNearWindowApproach()) {
+    if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted
+      && this.isNearWindowApproach() && (this.windowFacePromptRequired || !this.isFacingWindow())) {
       this.hud.setAction('FACE HOMES WINDOW');
       return;
     }

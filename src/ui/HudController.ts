@@ -1,5 +1,6 @@
 import type { GameScene } from '../game/GameScene';
 import type { AudioController } from '../game/AudioController';
+import { getDevCheckpointOptions } from '../game/devCheckpoints';
 import {
   CITY_DISTRICTS,
   CITY_MAP_SIZE,
@@ -9,11 +10,22 @@ import {
   START_POSITION,
   STARTING_WALKABLE_MAX_X,
   STARTING_WALKABLE_MIN_X,
+  BASIL_HARVEST_PRICE,
+  BASIL_SEED_PRICE,
+  getShopBuybackPrice,
+  HOMES_WINDOW_CLEAN_SECTIONS,
+  OPENING_POTHOS_SALE_PRICE,
+  REPAIRED_POT_SALE_PRICE,
+  WINDOW_JOB_REWARD,
+  RENTAL_BOND_COST,
   WORLD_WIDTH,
   type PropertyListingKey,
   type ZoomMode,
 } from '../game/world';
-import type { InventoryItem, PotCondition, TaskState, EquippedTool } from '../game/progress';
+import { DEFAULT_SHOP_STOCK_QUALITY } from '../game/progress';
+import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool } from '../game/progress';
+
+const DEV_BUILD = import.meta.env.DEV;
 
 export class HudController {
   private scene: GameScene | null = null;
@@ -48,6 +60,7 @@ export class HudController {
   private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
   private shopFeedback = '';
   private propertyFeedback = '';
+  private basilFeedback = '';
   private coins = 0;
   private hasPot = false;
   private inventoryItem: InventoryItem | null = null;
@@ -55,8 +68,17 @@ export class HudController {
   private equippedTool: EquippedTool = null;
   private repairToolOwned = false;
   private cleanerOwned = false;
+  private wateringCanOwned = false;
+  private assignedToolSlots: EquippedTool[] = [null, null, null];
   private glueCharges = 0;
   private brokenPotPieceSelected = false;
+  private canPlaceItem = false;
+  private starterKitClaimed = false;
+  private starterPotPlaced = false;
+  private basilSeeds = 0;
+  private basilHarvests = 0;
+  private basilCycleCount = 0;
+  private basicFertilizerCharges = 0;
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
   private mapPositionY = START_POSITION.y;
   private cityMapZoom = 0.72;
@@ -67,6 +89,11 @@ export class HudController {
   private toolPointerId: number | null = null;
   private joystickSide: 'left' | 'right' = this.loadJoystickSide();
   private arcadeAPointerId: number | null = null;
+  private devTestMode = false;
+  private devCheckpointId = getDevCheckpointOptions()[0]?.id ?? '';
+  private devFeedback = '';
+  private activeActionLabel: string | null = null;
+  private actionHideTimer: number | null = null;
 
   constructor(audio: AudioController) {
     this.audio = audio;
@@ -153,23 +180,45 @@ export class HudController {
     this.rotateOverlay.hidden = !blocked;
   }
 
+  setDevTestMode(active: boolean, checkpointId: string | null): void {
+    this.devTestMode = DEV_BUILD && active;
+    if (checkpointId) this.devCheckpointId = checkpointId;
+  }
+
+  showDevFeedback(message: string): void {
+    this.devFeedback = message;
+    const feedback = this.panelBody.querySelector<HTMLElement>('[data-dev-feedback]');
+    if (feedback) feedback.textContent = message;
+    const finishCrop = this.panelBody.querySelector<HTMLButtonElement>('[data-dev-finish-crop]');
+    if (finishCrop) finishCrop.disabled = !this.scene?.canFinishCurrentCrop();
+  }
+
   bindZoomControls(zoomOut: () => void, zoomIn: () => void): void {
     this.zoomOutHandler = zoomOut;
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; glueCharges?: number; brokenPotPieceSelected?: boolean }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
     this.potCondition = state.inventoryPotCondition ?? (state.inventoryHasPot ? 'ordinary' : null);
     this.inventoryItem = state.inventoryItem ?? (this.potCondition === 'ordinary' ? 'small-golden-pothos' : this.potCondition ? 'special-repair-pot' : null);
     this.brokenPotPieceSelected = state.brokenPotPieceSelected ?? false;
+    this.canPlaceItem = state.canPlaceItem ?? false;
     this.setEquippedTool(state.equippedTool ?? null);
     this.repairToolOwned = state.repairToolOwned ?? this.repairToolOwned;
     this.cleanerOwned = state.cleanerOwned ?? this.cleanerOwned;
+    this.wateringCanOwned = state.wateringCanOwned ?? this.wateringCanOwned;
+    this.assignedToolSlots = state.toolSlots?.slice(0, 3) ?? this.assignedToolSlots;
     this.glueCharges = state.glueCharges ?? this.glueCharges;
     this.activeTask = state.task;
+    this.starterKitClaimed = state.starterKitClaimed ?? this.starterKitClaimed;
+    this.starterPotPlaced = state.starterPotPlaced ?? this.starterPotPlaced;
+    this.basilSeeds = state.basilSeeds ?? this.basilSeeds;
+    this.basilHarvests = state.basilHarvests ?? this.basilHarvests;
+    this.basilCycleCount = state.basilCycleCount ?? this.basilCycleCount;
+    this.basicFertilizerCharges = state.basicFertilizerCharges ?? this.basicFertilizerCharges;
     this.refreshToolPopup();
     const labels: Record<TaskState, string> = {
       find: 'Find a Small Golden Pothos',
@@ -178,18 +227,25 @@ export class HudController {
       repair: 'Repair the broken pot',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
+      'place-pot': 'Place your starter pot on the grow table',
+      'plant-basil': 'Plant basil in your starter pot',
+      'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
+      'grow-basil': 'Wait for the basil to grow',
+      'harvest-basil': 'Harvest the mature basil',
+      'sell-basil': 'Sell the basil harvest at BUY / SELL',
+      'buy-seeds': 'Buy 1 basil seed portion at BUY / SELL',
     };
     this.objectiveText.textContent = labels[state.task];
   }
 
   setEquippedTool(tool: EquippedTool): void {
     this.equippedTool = tool;
-    const label = tool === 'cleaner' ? 'CLEANER' : tool === 'repair' ? 'REPAIR TOOL' : 'NO TOOL EQUIPPED';
-    this.toolSelectorIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : '—';
+    const label = tool === 'cleaner' ? 'CLEANER' : tool === 'repair' ? 'REPAIR TOOL' : tool === 'watering-can' ? 'WATERING CAN' : 'NO TOOL EQUIPPED';
+    this.toolSelectorIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : tool === 'watering-can' ? '≈' : '—';
     this.toolSelector.classList.toggle('is-equipped', Boolean(tool));
     this.toolSelector.setAttribute('aria-label', tool ? `Open tool selector. Equipped ${label.toLowerCase()}` : 'Open tool selector. No tool equipped');
-    this.arcadeB.disabled = !tool && !this.brokenPotPieceSelected;
-    this.arcadeB.setAttribute('aria-label', this.brokenPotPieceSelected ? 'Pick up selected broken pot piece' : tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
+    this.arcadeB.disabled = !tool && !this.brokenPotPieceSelected && !this.canPlaceItem;
+    this.arcadeB.setAttribute('aria-label', this.brokenPotPieceSelected ? 'Pick up selected broken pot piece' : this.canPlaceItem ? 'Put down item on selected pavement square' : tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
     this.refreshToolPopup();
   }
 
@@ -204,8 +260,25 @@ export class HudController {
   }
 
   setAction(label: string | null): void {
-    this.interactButton.hidden = label === null;
-    if (label) this.interactLabel.textContent = label;
+    if (this.actionHideTimer !== null) {
+      window.clearTimeout(this.actionHideTimer);
+      this.actionHideTimer = null;
+    }
+    if (label === this.activeActionLabel) return;
+    this.activeActionLabel = label;
+    if (label) {
+      this.interactLabel.textContent = label;
+      this.interactButton.hidden = false;
+      requestAnimationFrame(() => {
+        if (this.activeActionLabel === label) this.interactButton.classList.add('is-visible');
+      });
+      return;
+    }
+    this.interactButton.classList.remove('is-visible');
+    this.actionHideTimer = window.setTimeout(() => {
+      this.actionHideTimer = null;
+      if (this.activeActionLabel === null) this.interactButton.hidden = true;
+    }, 180);
   }
 
   highlightBag(): void {
@@ -232,6 +305,17 @@ export class HudController {
 
   openPropertyDetails(listing: PropertyListingKey): void {
     this.openPanel(`property-${listing}`);
+  }
+
+  refreshBasilPanel(feedback = ''): void {
+    if (feedback) this.basilFeedback = feedback;
+    if (this.activePanelKind !== 'basil') return;
+    this.panelBody.innerHTML = this.basilPanelMarkup();
+    this.bindBasilPanel();
+  }
+
+  openBasilPanel(): void {
+    this.openPanel('basil');
   }
 
   setZoomMode(mode: ZoomMode): void {
@@ -312,24 +396,31 @@ export class HudController {
 
   private refreshToolPopup(): void {
     if (!this.toolSlots) return;
-    const slots: Array<{ key: 'cleaner' | 'repair' | null; label: string; icon: string; owned: boolean }> = [
-      { key: 'cleaner', label: 'CLEANER', icon: '▱', owned: this.cleanerOwned },
-      { key: 'repair', label: 'REPAIR TOOL', icon: '⚒', owned: this.repairToolOwned },
-      { key: null, label: 'EMPTY', icon: '—', owned: false },
-    ];
-    this.toolSlots.innerHTML = slots.map((slot) => {
-      const active = slot.key !== null && slot.key === this.equippedTool;
-      const disabled = slot.owned ? '' : ' disabled';
-      const classes = `tool-slot${slot.owned ? ' is-owned' : ''}${active ? ' is-active' : ''}`;
-      const key = slot.key ? ` data-tool="${slot.key}"` : '';
-      const label = slot.owned ? slot.label : 'EMPTY';
-      const icon = slot.owned ? slot.icon : '—';
-      return `<button class="${classes}" type="button"${key}${disabled} aria-label="${slot.owned ? `Equip ${slot.label.toLowerCase()}` : 'Empty tool slot'}"><strong>${icon}</strong><span>${active ? 'ACTIVE' : label}</span></button>`;
+    const definitions: Record<Exclude<EquippedTool, null>, { label: string; icon: string; owned: boolean }> = {
+      cleaner: { label: 'CLEANER', icon: '▱', owned: this.cleanerOwned },
+      repair: { label: 'REPAIR TOOL', icon: '⚒', owned: this.repairToolOwned },
+      'watering-can': { label: 'WATERING CAN', icon: '≈', owned: this.wateringCanOwned },
+    };
+    const slots = this.assignedToolSlots.length === 3 ? this.assignedToolSlots : [null, null, null];
+    const slotMarkup = slots.map((slot) => {
+      const definition = slot ? definitions[slot] : null;
+      const active = slot !== null && slot === this.equippedTool;
+      const owned = Boolean(definition?.owned);
+      const disabled = owned ? '' : ' disabled';
+      const classes = `tool-slot${owned ? ' is-owned' : ''}${active ? ' is-active' : ''}`;
+      const key = slot && owned ? ` data-tool="${slot}"` : '';
+      const label = owned && definition ? definition.label : 'EMPTY';
+      const icon = owned && definition ? definition.icon : '—';
+      return `<button class="${classes}" type="button"${key}${disabled} aria-label="${owned ? `Equip ${label.toLowerCase()}` : 'Empty tool slot'}"><strong>${icon}</strong><span>${active ? 'ACTIVE' : label}</span></button>`;
     }).join('');
+    const glueMarkup = this.glueCharges > 0
+      ? `<div class="tool-supply"><strong>GLUE</strong><span>${this.glueCharges} CHARGE${this.glueCharges === 1 ? '' : 'S'}</span></div>`
+      : '';
+    this.toolSlots.innerHTML = `${slotMarkup}${glueMarkup}`;
     this.toolSlots.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((button) => {
       this.bindButtonActivation(button, () => {
         const tool = button.dataset.tool;
-        if (tool !== 'cleaner' && tool !== 'repair') return;
+        if (tool !== 'cleaner' && tool !== 'repair' && tool !== 'watering-can') return;
         this.scene?.equipTool(tool);
         this.closeToolPopup();
       });
@@ -506,6 +597,8 @@ export class HudController {
       this.shopFeedback = '';
     }
     if (kind.startsWith('property-')) this.propertyFeedback = '';
+    if (kind === 'basil') this.basilFeedback = '';
+    if (kind === 'settings') this.devFeedback = '';
     const content = this.panelContent(kind);
     this.panelTitle.textContent = content.title;
     this.panelBody.innerHTML = content.body;
@@ -515,6 +608,7 @@ export class HudController {
     }
     if (kind === 'shop') this.bindShopPanel();
     if (kind.startsWith('property-')) this.bindPropertyPanel();
+    if (kind === 'basil') this.bindBasilPanel();
     if (kind === 'settings') this.bindSettingsPanel();
     if (kind === 'bag') {
       const repairButton = this.panelBody.querySelector<HTMLButtonElement>('[data-repair-pot]');
@@ -522,8 +616,16 @@ export class HudController {
         this.closePanel();
         this.scene?.beginPortableRepair();
       });
+      const putDownButton = this.panelBody.querySelector<HTMLButtonElement>('[data-put-down-item]');
+      if (putDownButton) this.bindButtonActivation(putDownButton, () => {
+        this.closePanel();
+        this.scene?.putDownCarriedItem();
+      });
       this.panelBody.querySelectorAll<HTMLButtonElement>('[data-equip-tool]').forEach((button) => {
-        this.bindButtonActivation(button, () => this.scene?.equipTool(button.dataset.equipTool === 'repair' ? 'repair' : 'cleaner'));
+        this.bindButtonActivation(button, () => {
+          const tool = button.dataset.equipTool;
+          if (tool === 'repair' || tool === 'watering-can' || tool === 'cleaner') this.scene?.equipTool(tool);
+        });
       });
     }
     this.panelBackdrop.classList.toggle('is-city-map', kind === 'map');
@@ -755,18 +857,29 @@ export class HudController {
       const potNote = this.potCondition === 'broken'
         ? 'Collect the pieces, then repair this special empty pot.'
         : this.potCondition === 'repaired'
-          ? 'Empty and ready to sell at BUY / SELL for 75 coins.'
-          : 'Opening delivery. Sell it at BUY / SELL for 5 coins.';
+          ? `Empty and ready to sell at BUY / SELL for ${REPAIRED_POT_SALE_PRICE} coins.`
+          : `Opening delivery. Sell it at BUY / SELL for ${OPENING_POTHOS_SALE_PRICE} coins.`;
       const repairButton = this.potCondition === 'broken'
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
+        : '';
+      const putDownButton = this.hasPot && this.scene?.canPutDownCarriedItem()
+        ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-put-down-item>PUT DOWN</button></div>'
         : '';
       const toolNote = [
         this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Press B once per spray.' : 'Equip it near the HOMES estate-agent window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
         this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining. Tap B 10 times beside a broken pot.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.wateringCanOwned ? `<div class="inventory-item"><span class="inventory-art">≈</span><div><strong>Basic watering can</strong><small>Reusable and essential. Select a planted basil pot, then press B.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="watering-can">${this.equippedTool === 'watering-can' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
       ].join('');
+      const itemBlocks = [
+        this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}${putDownButton}</div>` : '',
+        this.starterKitClaimed ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Starter pot · used medium</strong><small>${this.starterPotPlaced ? 'Placed on the starter apartment grow table. Essential and not for sale.' : 'Owned starter item. Place it on the starter apartment grow table.'}</small></div></div>` : '',
+        this.basilSeeds > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>Basil seed portions ×${this.basilSeeds}</strong><small>Plant one in the empty starter pot.</small></div></div>` : '',
+        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while basil is growing to skip 60 seconds. Plants shop stock arrives later.</small></div></div>` : '',
+        this.basilHarvests > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>Basil harvest ×${this.basilHarvests}</strong><small>Sell each harvest at BUY / SELL for ${BASIL_HARVEST_PRICE} coins.</small></div></div>` : '',
+      ].filter(Boolean).join('');
       return {
         title: 'Bag',
-        body: `${this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}</div>` : '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Find the Small Golden Pothos near BUY / SELL.</small></div>'}${toolNote}`,
+        body: `${itemBlocks || '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Find the Small Golden Pothos near BUY / SELL.</small></div>'}${toolNote}`,
       };
     }
     if (kind === 'map') {
@@ -786,6 +899,10 @@ export class HudController {
       const taskLabel: Record<TaskState, string> = {
         find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
         repair: 'Repair the broken pot', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
+        'place-pot': 'Place your starter pot on the grow table', 'plant-basil': 'Plant basil in your starter pot',
+        'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
+        'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
+        'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy 1 basil seed portion at BUY / SELL',
       };
       return {
         title: 'Tasks',
@@ -797,8 +914,8 @@ export class HudController {
       return {
         title: 'Home',
         body: rental.rentalBondPaid
-          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds and watering can.' : 'Starter kit ready inside: pot, used medium, basil seeds and watering can.'}</small><small>Planting is the next prototype feature.</small></div>`
-          : '<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at HOMES to review the 60-coin bond and access details.</small></div>',
+          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small><small>${rental.starterKitClaimed ? 'Place the pot and begin the repeatable basil growing loop.' : 'Enter the apartment to claim the one-time starter kit.'}</small></div>`
+          : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at HOMES to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
       };
     }
     if (kind.startsWith('property-')) {
@@ -807,17 +924,23 @@ export class HudController {
         body: this.propertyPanelMarkup(kind.slice('property-'.length) as PropertyListingKey),
       };
     }
+    if (kind === 'basil') {
+      return {
+        title: 'BASIL POT',
+        body: this.basilPanelMarkup(),
+      };
+    }
     if (kind === 'settings') {
       const musicOn = this.audio.musicEnabled;
       const sfxOn = this.audio.sfxEnabled;
       return {
         title: 'Settings',
-        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div><div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div></div>`,
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div><div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
       };
     }
     return {
       title: 'More',
-      body: '<div class="settings-list"><div><strong>Prototype help</strong><small>Stay on the pavement and use the contextual action button when Alex is close enough.</small></div><div><strong>Future features</strong><small>Planting, later homes, bills, and additional districts are intentionally not implemented.</small></div><button class="restart-button" type="button" data-restart>RESTART PROTOTYPE</button></div>',
+      body: '<div class="settings-list"><div><strong>Prototype help</strong><small>Stay on the pavement and use the contextual action button when Alex is close enough.</small></div><div><strong>Future features</strong><small>More crops, pests, upgrades, bills, and additional districts are intentionally not implemented.</small></div><button class="restart-button" type="button" data-restart>RESTART PROTOTYPE</button></div>',
     };
   }
 
@@ -829,10 +952,39 @@ export class HudController {
         this.refreshShopPanel();
       });
     });
-    const sellButton = this.panelBody.querySelector<HTMLButtonElement>('[data-shop-sell]');
-    if (sellButton) this.bindButtonActivation(sellButton, () => {
-      if (sellButton.dataset.shopSell === 'repaired') this.scene?.sellRepairedPot();
-      else this.scene?.sellOpeningPot();
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-sell]').forEach((sellButton) => {
+      this.bindButtonActivation(sellButton, () => {
+        const quantity = Number(sellButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
+        if (sellButton.dataset.shopSell === 'repaired') this.scene?.sellRepairedPot();
+        else if (sellButton.dataset.shopSell === 'basil') this.scene?.sellBasilHarvest(quantity);
+        else this.scene?.sellOpeningPot();
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-stock]').forEach((buyButton) => {
+      this.bindButtonActivation(buyButton, () => {
+        const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
+        const stockId = buyButton.dataset.shopBuyStock;
+        if (stockId) this.scene?.buyShopStock(stockId, quantity);
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy]').forEach((buyButton) => {
+      this.bindButtonActivation(buyButton, () => {
+        const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
+        if (buyButton.dataset.shopBuy === 'basil-seed') this.scene?.buyBasilSeed(quantity);
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLInputElement>('[data-shop-quantity]').forEach((quantityInput) => {
+      const updateTotal = (): void => {
+        const row = quantityInput.closest<HTMLElement>('.shop-offer');
+        const total = row?.querySelector<HTMLElement>('[data-shop-total]');
+        if (!total) return;
+        const maximum = Number(quantityInput.max) || Number.MAX_SAFE_INTEGER;
+        const quantity = Math.max(1, Math.min(maximum, Math.floor(Number(quantityInput.value) || 1)));
+        const unitPrice = Number(quantityInput.dataset.unitPrice) || 0;
+        total.textContent = `${quantityInput.dataset.transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice * quantity} COINS`;
+      };
+      quantityInput.addEventListener('input', updateTotal);
+      quantityInput.addEventListener('change', updateTotal);
     });
     const acceptJob = this.panelBody.querySelector<HTMLButtonElement>('[data-accept-window-job]');
     if (acceptJob) this.bindButtonActivation(acceptJob, () => this.scene?.acceptWindowJob());
@@ -841,6 +993,15 @@ export class HudController {
   private bindPropertyPanel(): void {
     const payBond = this.panelBody.querySelector<HTMLButtonElement>('[data-pay-bond]');
     if (payBond) this.bindButtonActivation(payBond, () => this.scene?.payRentalBond());
+  }
+
+  private bindBasilPanel(): void {
+    const plantButton = this.panelBody.querySelector<HTMLButtonElement>('[data-plant-basil]');
+    if (plantButton) this.bindButtonActivation(plantButton, () => this.scene?.plantBasil());
+    const fertilizerButton = this.panelBody.querySelector<HTMLButtonElement>('[data-use-basic-fertilizer]');
+    if (fertilizerButton) this.bindButtonActivation(fertilizerButton, () => this.scene?.useBasicFertilizer());
+    const harvestButton = this.panelBody.querySelector<HTMLButtonElement>('[data-harvest-basil]');
+    if (harvestButton) this.bindButtonActivation(harvestButton, () => this.scene?.harvestBasil());
   }
 
   private bindSettingsPanel(): void {
@@ -855,6 +1016,31 @@ export class HudController {
         this.refreshAudioSettingsButtons();
       });
     });
+    if (!DEV_BUILD) return;
+    const checkpointSelect = this.panelBody.querySelector<HTMLSelectElement>('[data-dev-checkpoint]');
+    const rememberCheckpoint = (): void => {
+      if (!checkpointSelect) return;
+      const id = checkpointSelect.value;
+      if (getDevCheckpointOptions().some((checkpoint) => checkpoint.id === id)) this.devCheckpointId = id;
+    };
+    checkpointSelect?.addEventListener('input', rememberCheckpoint);
+    checkpointSelect?.addEventListener('change', rememberCheckpoint);
+    const bindDev = (selector: string, action: () => void): void => {
+      const button = this.panelBody.querySelector<HTMLButtonElement>(selector);
+      if (button) this.bindButtonActivation(button, action);
+    };
+    bindDev('[data-dev-load-checkpoint]', () => {
+      // Read the live control at activation time as well as tracking events.
+      // This covers native mobile selects that commit their value immediately
+      // before the click reaches the Load button.
+      rememberCheckpoint();
+      this.scene?.loadDevCheckpoint(this.devCheckpointId);
+    });
+    bindDev('[data-dev-reset-save]', () => this.scene?.resetDevTestSave());
+    bindDev('[data-dev-return-normal]', () => this.scene?.returnToNormalSave());
+    bindDev('[data-dev-add-coins="10"]', () => this.scene?.addDevCoins(10));
+    bindDev('[data-dev-add-coins="100"]', () => this.scene?.addDevCoins(100));
+    bindDev('[data-dev-finish-crop]', () => this.scene?.finishCurrentCrop());
   }
 
   private refreshAudioSettingsButtons(): void {
@@ -876,24 +1062,53 @@ export class HudController {
       windowJobAccepted: false,
       windowCleaningProgress: 0,
       windowJobComplete: false,
+      basilHarvests: this.basilHarvests,
+      basilSeeds: this.basilSeeds,
+      starterKitClaimed: this.starterKitClaimed,
+      shopStock: [] as ShopStockEntry[],
     };
-    const sellContent = shop.inventoryPot === 'ordinary'
-      ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Opening delivery in Alex’s bag</small></div><strong class="shop-price">5 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR 5 COINS</button></div>'
-      : shop.inventoryPot === 'repaired'
-        ? '<div class="shop-content-heading">SELL</div><div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Eligible item in Alex’s bag</small></div><strong class="shop-price">75 COINS</strong><button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR 75 COINS</button></div>'
-        : '<div class="shop-content-heading">SELL</div><div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or repair a pot before selling.</small></div>';
-    const buyContent = '<div class="shop-content-heading">BUY</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Displayed shelf items, including the 7-coin Pothos, are display-only.</small></div>';
-    const openingPotCollected = shop.inventoryPot === 'ordinary' || shop.saleComplete;
+    const windowSprayTotal = HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0);
+    const sectionSprays = new Set(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => section.spraysRequired));
+    const windowRequirement = sectionSprays.size === 1
+      ? `${HOMES_WINDOW_CLEAN_SECTIONS.length} sections · ${HOMES_WINDOW_CLEAN_SECTIONS[0].spraysRequired} sprays each`
+      : `${HOMES_WINDOW_CLEAN_SECTIONS.length} sections · ${windowSprayTotal} sprays total`;
+    const quantityControl = (maximum: number, unitPrice: number, transaction: 'buy' | 'sell'): string => maximum > 1
+      ? `<div class="shop-quantity-row"><label>QUANTITY <input type="number" min="1" max="${maximum}" value="1" inputmode="numeric" data-shop-quantity data-unit-price="${unitPrice}" data-transaction="${transaction}"></label><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`
+      : `<div class="shop-quantity-row"><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`;
+    const stockName = (entry: ShopStockEntry): string => entry.item === 'small-golden-pothos'
+      ? 'Small Golden Pothos'
+      : entry.item === 'special-repair-pot' ? 'Empty repaired pot' : 'Basil harvest';
+    const stockCondition = (entry: ShopStockEntry): string => entry.item === 'basil-harvest'
+      ? 'Fresh harvest stack'
+      : entry.condition === 'repaired' ? 'Repaired · empty' : 'Ordinary condition';
+    const stockQuality = (entry: ShopStockEntry): string => entry.quality === DEFAULT_SHOP_STOCK_QUALITY ? '' : ` · ${this.escapeHtml(entry.quality)}`;
+    const sellOffers = [
+      shop.inventoryPot === 'ordinary' ? `<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Sell for ${OPENING_POTHOS_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE)} coins</small></div>${quantityControl(1, OPENING_POTHOS_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR ${OPENING_POTHOS_SALE_PRICE} COINS</button></div>` : '',
+      shop.inventoryPot === 'repaired' ? `<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Sell for ${REPAIRED_POT_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(REPAIRED_POT_SALE_PRICE)} coins</small></div>${quantityControl(1, REPAIRED_POT_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR ${REPAIRED_POT_SALE_PRICE} COINS</button></div>` : '',
+      shop.basilHarvests > 0 ? `<div class="shop-offer"><div class="inventory-art">✦</div><div class="shop-offer-copy"><strong>Basil harvest ×${shop.basilHarvests}</strong><small>Fresh stack · Sell for ${BASIL_HARVEST_PRICE} coins each · Buy back for ${getShopBuybackPrice(BASIL_HARVEST_PRICE)} coins each</small></div>${quantityControl(shop.basilHarvests, BASIL_HARVEST_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="basil">SELL SELECTED</button></div>` : '',
+    ].filter(Boolean).join('');
+    const sellContent = `<div class="shop-content-heading">SELL</div>${sellOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or grow an item before selling.</small></div>'}`;
+    const stockOffers = shop.shopStock.map((entry) => {
+      const unitPrice = getShopBuybackPrice(entry.item === 'small-golden-pothos' ? OPENING_POTHOS_SALE_PRICE : entry.item === 'special-repair-pot' ? REPAIRED_POT_SALE_PRICE : BASIL_HARVEST_PRICE);
+      const quantity = entry.quantity > 1 ? ` ×${entry.quantity}` : '';
+      return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'special-repair-pot' ? '◈' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
+    }).join('');
+    const seedContent = shop.starterKitClaimed
+      ? `<div class="shop-section-label">BASIL SEEDS</div><div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>Basil seed portions</strong><small>Independently priced stock · ${BASIL_SEED_PRICE} coins each</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, BASIL_SEED_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="basil-seed">BUY SELECTED</button></div>`
+      : '<div class="shop-section-label">BASIL SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying basil seeds.</small></div>';
+    const buyContent = `<div class="shop-content-heading">BUY</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}`;
     const deliveryContent = shop.saleComplete
-      ? '<div class="shop-request is-complete"><strong>No deliveries wanted</strong><small>The opening Small Golden Pothos has already been delivered.</small><span class="shop-status">COMPLETED</span></div>'
-      : '<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>5 COINS</strong></div><span class="shop-status">WANTED</span></div>';
-    const jobContent = shop.windowJobComplete
-      ? '<div class="job-card is-complete"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Completed 8 sprays</b></span><span>STATUS <b>COMPLETED</b></span></div><small>Return to the street to continue with the broken pot job.</small></div>'
-      : shop.windowJobAccepted
-        ? `<div class="job-card is-active"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Complete 8 sprays</b></span><span>STATUS <b>IN PROGRESS · ${shop.windowCleaningProgress} / 8</b></span></div><small>Tap the REAL ESTATE window, face it, then press B once per spray.</small></div>`
-        : `<div class="job-card ${openingPotCollected ? 'is-available' : 'is-locked'}"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>3 COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>Deliver the opening Pothos, then complete 8 sprays</b></span><span>STATUS <b>${openingPotCollected ? 'AVAILABLE' : 'LOCKED'}</b></span></div><small>${openingPotCollected ? 'Accept this job to borrow the cleaner.' : 'Deliver the Small Golden Pothos first.'}</small>${openingPotCollected ? '<button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button>' : ''}</div>`;
-    const wantedContent = `<div class="shop-content-heading">WANTED</div><div class="shop-section-label">DELIVERY REQUEST</div>${deliveryContent}<div class="shop-section-label">WINDOW-CLEANING JOB</div>${jobContent}`;
-    const tab = (key: 'buy' | 'sell' | 'wanted', label: string): string => `<button type="button" data-shop-tab="${key}" class="${this.shopTab === key ? 'is-active' : ''}" role="tab" aria-selected="${this.shopTab === key}" aria-controls="shop-panel-content">${label}</button>`;
+      ? ''
+      : `<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>${OPENING_POTHOS_SALE_PRICE} COINS</strong></div><span class="shop-status">WANTED</span></div>`;
+    const jobContent = shop.windowJobAccepted || shop.windowJobComplete
+      ? ''
+      : `<div class="job-card is-available"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>${WINDOW_JOB_REWARD} COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>${windowRequirement}</b></span><span>STATUS <b>AVAILABLE</b></span></div><small>Accept this job to borrow the cleaner.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>`;
+    const futureJob = (title: string, role: string): string => `<div class="job-card is-locked"><strong>${title}</strong><div class="shop-detail-list"><span>ROLE <b>${role}</b></span><span>REWARD <b>NOT SET</b></span><span>REQUIREMENTS <b>FUTURE JOB</b></span><span>STATUS <b>LOCKED</b></span></div><small>Not accessible yet. This role will be available in a future update.</small></div>`;
+    const futureJobs = `${futureJob('Wanted: Full-time cleaner', 'FULL-TIME CLEANER')}${futureJob('Wanted: Cleaning contract', 'CLEANING CONTRACT')}${futureJob('Wanted: Service robot nursery worker', 'NURSERY WORKER')}`;
+    const actionableWanted = !shop.saleComplete || (!shop.windowJobAccepted && !shop.windowJobComplete);
+    const currentRequests = `${deliveryContent}${jobContent}` || '<div class="empty-state"><span class="empty-mark">—</span><strong>No active requests</strong><small>Check back when another accessible job is available.</small></div>';
+    const wantedContent = `<div class="shop-content-heading">WANTED</div><div class="shop-section-label">CURRENT REQUESTS</div>${currentRequests}<div class="shop-section-label">FUTURE OPPORTUNITIES</div>${futureJobs}`;
+    const tab = (key: 'buy' | 'sell' | 'wanted', label: string): string => `<button type="button" data-shop-tab="${key}" class="${this.shopTab === key ? 'is-active' : ''}${key === 'wanted' && actionableWanted && this.shopTab !== 'wanted' ? ' is-attention' : ''}" role="tab" aria-selected="${this.shopTab === key}" aria-controls="shop-panel-content">${label}</button>`;
     const content = this.shopTab === 'sell' ? sellContent : this.shopTab === 'buy' ? buyContent : wantedContent;
     return `<div class="shop-tabs" role="tablist" aria-label="Buy and Sell tabs">${tab('buy', 'BUY')}${tab('sell', 'SELL')}${tab('wanted', 'WANTED')}</div><div id="shop-panel-content" class="shop-panel-content">${content}</div><p class="shop-feedback ${this.shopFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
   }
@@ -910,11 +1125,60 @@ export class HudController {
     if (listing === 'high-property') {
       return '<div class="property-details"><div class="property-heading">FOR SALE <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Future property preview"><span>HOUSE</span><span>LAND</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>High-level property</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A future property listing. Price, unlock conditions and interior access are not available in this prototype.</p></div>';
     }
-    const shortfall = Math.max(0, 60 - state.coins);
+    const shortfall = Math.max(0, RENTAL_BOND_COST - state.coins);
     const rentalContent = state.rentalBondPaid
-      ? '<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Use the STARTER APARTMENT door on the street to enter. The one-time starter kit is waiting inside.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can</small></div>'
-      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : '<p class="property-note">The 60-coin bond unlocks the apartment and its one-time starter kit together.</p>'}<button class="property-action" type="button" data-pay-bond>PAY 60-COIN BOND</button>`;
-    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>60 COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
+      ? '<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Use the STARTER APARTMENT door on the street to enter. The one-time starter kit is waiting inside.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can · basic fertiliser</small></div>'
+      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time starter kit together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
+    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
+  }
+
+  private basilPanelMarkup(): string {
+    const state = this.scene?.getBasilPanelState() ?? {
+      starterKitClaimed: this.starterKitClaimed,
+      starterPotPlaced: this.starterPotPlaced,
+      stage: 'empty' as BasilStage,
+      seeds: this.basilSeeds,
+      harvests: this.basilHarvests,
+      timeRemainingMs: 0,
+      wateringCanOwned: this.wateringCanOwned,
+      basilCycleCount: this.basilCycleCount,
+      basicFertilizerCharges: this.basicFertilizerCharges,
+    };
+    const stageLabels: Record<BasilStage, string> = {
+      empty: 'EMPTY POT', planted: 'PLANTED', seedling: 'SEEDLING', mature: 'MATURE BASIL',
+    };
+    const minutes = Math.floor(state.timeRemainingMs / 60000);
+    const seconds = Math.ceil((state.timeRemainingMs % 60000) / 1000);
+    const timeLabel = state.timeRemainingMs > 0 ? `${minutes}:${String(seconds).padStart(2, '0')} remaining` : '';
+    let status = '';
+    let action = '';
+    if (!state.starterKitClaimed) {
+      status = 'Claim the starter kit inside your rental first.';
+    } else if (!state.starterPotPlaced) {
+      status = 'Select one of the three grow-table slots to place the owned starter pot.';
+    } else if (state.stage === 'empty') {
+      status = `Used medium ready · ${state.seeds} basil seed portion${state.seeds === 1 ? '' : 's'} available.`;
+      action = `<button class="basil-action" type="button" data-plant-basil${state.seeds < 1 ? ' disabled' : ''}>PLANT BASIL</button>`;
+    } else if (state.stage === 'planted') {
+      status = 'Basil is planted but needs one completed watering pour.';
+    } else if (state.stage === 'seedling') {
+      status = `Basil is growing · ${timeLabel}. Basic fertiliser skips the full 60 seconds.`;
+      action = state.basicFertilizerCharges > 0
+        ? '<button class="basil-action" type="button" data-use-basic-fertilizer>USE BASIC FERTILISER · INSTANT GROW</button>'
+        : '';
+    } else {
+      status = 'Mature basil is ready to harvest.';
+      action = '<button class="basil-action" type="button" data-harvest-basil>HARVEST BASIL</button>';
+    }
+    return `<div class="basil-panel"><div class="basil-stage"><span class="basil-stage-art">${state.stage === 'mature' ? '♣' : state.stage === 'seedling' ? '⌁' : '▱'}</span><div><strong>${stageLabels[state.stage]}</strong><small>${status}</small></div></div><div class="basil-details"><span>SEED PORTIONS <b>${state.seeds}</b></span><span>HARVESTS IN BAG <b>${state.harvests}</b></span><span>GROWTH CYCLES <b>${state.basilCycleCount}</b></span><span>BASIC FERTILISER <b>${state.basicFertilizerCharges}</b></span><span>WATERING CAN <b>${state.wateringCanOwned ? 'OWNED' : 'MISSING'}</b></span></div>${action}<p class="basil-note">${state.stage === 'planted' ? 'Close this panel, select the pot, equip the watering can and press B.' : 'The pot and used medium stay in place for repeated basil crops.'}</p><p class="basil-feedback ${this.basilFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.basilFeedback)}</p></div>`;
+  }
+
+  private devToolsMarkup(): string {
+    const options = getDevCheckpointOptions();
+    const optionsMarkup = options.map((checkpoint) => `<option value="${this.escapeHtml(checkpoint.id)}"${checkpoint.id === this.devCheckpointId ? ' selected' : ''}>${this.escapeHtml(checkpoint.label)}</option>`).join('');
+    const testDisabled = this.devTestMode ? '' : ' disabled';
+    const cropDisabled = this.scene?.canFinishCurrentCrop() ? '' : ' disabled';
+    return `<section class="dev-tools" aria-label="Developer tools"><div class="dev-tools-heading"><strong>DEVELOPER TOOLS</strong><span class="dev-save-badge">DEV ONLY</span></div><p class="dev-tools-note">Development builds only. Checkpoints use a separate test save and never alter the normal save.</p><label class="dev-checkpoint-label" for="dev-checkpoint">CHECKPOINT<select id="dev-checkpoint" data-dev-checkpoint>${optionsMarkup}</select></label><div class="dev-action-grid"><button type="button" data-dev-load-checkpoint>LOAD CHECKPOINT</button><button type="button" data-dev-reset-save>RESET TEST SAVE</button><button type="button" data-dev-return-normal${testDisabled}>RETURN TO NORMAL SAVE</button></div><div class="dev-action-grid dev-small-actions"><button type="button" data-dev-add-coins="10"${testDisabled}>+10 COINS</button><button type="button" data-dev-add-coins="100"${testDisabled}>+100 COINS</button><button type="button" data-dev-finish-crop${cropDisabled}>FINISH CURRENT CROP</button></div><p class="dev-feedback" data-dev-feedback aria-live="polite">${this.escapeHtml(this.devFeedback)}</p>${this.devTestMode ? '<p class="dev-active-state">DEV TEST SAVE ACTIVE</p>' : '<p class="dev-inactive-state">NORMAL SAVE ACTIVE</p>'}</section>`;
   }
 
   private cityMapMarkup(): string {

@@ -20,7 +20,12 @@
         <button class="icon-button" id="settings-button" type="button" aria-label="Open settings">⚙</button>
       </header>
 
-      <section id="game-stage" aria-label="Indoor Jungle street"></section>
+      <section id="game-stage" aria-label="Indoor Jungle street">
+        <button id="interact-button" class="interact-button" type="button" hidden>
+          <span class="interact-dot" aria-hidden="true"></span>
+          <span id="interact-label">INTERACT</span>
+        </button>
+      </section>
 
       <section id="phone-control-panel" class="phone-control-panel" aria-label="Phone movement and camera controls">
         <div id="joystick" class="joystick" role="application" aria-label="Move Alex with the joystick">
@@ -43,11 +48,6 @@
           <small>Portrait gameplay is supported in this prototype.</small>
         </div>
       </div>
-
-      <button id="interact-button" class="interact-button" type="button" hidden>
-        <span class="interact-dot" aria-hidden="true"></span>
-        <span id="interact-label">INTERACT</span>
-      </button>
 
       <nav class="hud hud-bottom" aria-label="Game navigation">
         <button class="nav-button" data-panel="bag" type="button"><span class="nav-icon">▣</span><span>BAG</span></button>

@@ -9,6 +9,7 @@ import {
   BUY_SELL_WINDOW,
   CROSSING_END_X,
   CROSSING_START_X,
+  HOMES_WINDOW_CLEAN_SECTIONS,
   PAVEMENT_HEIGHT,
   PAVEMENT_Y,
   FUTURE_ZONES,
@@ -318,9 +319,17 @@ function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building
   const y = building.y;
   g.fillStyle(0x15191b, 1).fillRect(x + 20, y + 102, building.width - 40, 184);
   g.lineStyle(5, WHITE, 0.9).strokeRect(x + 20, y + 102, building.width - 40, 184);
-  drawMiniHome(g, x + 40, y + 147, 112, 90, true);
-  drawMiniHome(g, x + 170, y + 147, 78, 90, false);
-  drawMiniHome(g, x + 263, y + 147, 78, 90, false);
+  // Three matching silhouettes sit inside three distinct display panes. The
+  // first remains the nearby starter apartment listing through its lighter
+  // treatment, but its silhouette and scale match the future homes.
+  HOMES_WINDOW_CLEAN_SECTIONS.forEach((section, index) => {
+    const paneCentre = section.x + section.width / 2;
+    g.lineStyle(3, 0x6e7677, 0.75).strokeRect(section.x, section.y, section.width, section.height);
+    drawMiniHome(g, paneCentre - 39, y + 147, 78, 90, index === 0);
+  });
+  g.lineStyle(3, 0x6e7677, 0.8);
+  g.lineBetween(HOMES_WINDOW_CLEAN_SECTIONS[0].x + HOMES_WINDOW_CLEAN_SECTIONS[0].width + 7, y + 106, HOMES_WINDOW_CLEAN_SECTIONS[0].x + HOMES_WINDOW_CLEAN_SECTIONS[0].width + 7, y + 282);
+  g.lineBetween(HOMES_WINDOW_CLEAN_SECTIONS[1].x + HOMES_WINDOW_CLEAN_SECTIONS[1].width + 7, y + 106, HOMES_WINDOW_CLEAN_SECTIONS[1].x + HOMES_WINDOW_CLEAN_SECTIONS[1].width + 7, y + 282);
   addWorldLabel(scene, x + 96, y + 115, 'TO RENT', WHITE, 10, true);
   addWorldLabel(scene, x + 209, y + 115, 'TO RENT', WHITE, 9, true);
   addWorldLabel(scene, x + 302, y + 115, 'FOR SALE', WHITE, 9, true);
@@ -460,6 +469,34 @@ export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: n
     .lineBetween(x - 2 * scale, y - 53 * scale, x - 31 * scale, y - 68 * scale)
     .lineBetween(x + 2 * scale, y - 54 * scale, x + 30 * scale, y - 68 * scale)
     .lineBetween(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale);
+}
+
+export type BasilVisualStage = 'empty' | 'planted' | 'seedling' | 'mature';
+
+export function drawBasilCrop(
+  g: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  stage: BasilVisualStage,
+  scale = 1,
+): void {
+  drawPot(g, x, y, scale);
+  if (stage === 'empty') return;
+
+  g.fillStyle(0x697173, 1).fillCircle(x, y - 31 * scale, 4 * scale);
+  if (stage === 'planted') return;
+
+  const height = stage === 'mature' ? 66 : 38;
+  g.lineStyle(3, INK, 1).lineBetween(x, y - 31 * scale, x, y - height * scale);
+  g.lineBetween(x, y - (height - 10) * scale, x - 15 * scale, y - (height - 23) * scale);
+  g.lineBetween(x, y - (height - 19) * scale, x + 16 * scale, y - (height - 35) * scale);
+  g.fillStyle(stage === 'mature' ? 0xbfc5c3 : 0x929b99, 1);
+  g.fillTriangle(x - 2 * scale, y - (height - 3) * scale, x - 27 * scale, y - (height - 17) * scale, x - 8 * scale, y - (height - 28) * scale);
+  g.fillTriangle(x + 2 * scale, y - (height - 19) * scale, x + 28 * scale, y - (height - 34) * scale, x + 9 * scale, y - (height - 43) * scale);
+  if (stage === 'mature') {
+    g.lineBetween(x, y - 48 * scale, x - 18 * scale, y - 66 * scale);
+    g.fillTriangle(x - 2 * scale, y - 49 * scale, x - 29 * scale, y - 61 * scale, x - 12 * scale, y - 72 * scale);
+  }
 }
 
 export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0): void {

@@ -180,6 +180,22 @@ export const BUY_SELL_ENTRANCE = { x: 1165, y: 864 };
 export const BUY_SELL_WINDOW = { x: 895, y: 590, width: 222, height: 190 };
 export const HOMES_WINDOW = { x: 1280, y: 592, width: 340, height: 184 };
 export const HOMES_WINDOW_CLEAN_ZONE = { x: 1280, y: 592, width: 340, height: 36 };
+export interface WindowCleanSection {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  spraysRequired: number;
+}
+
+// Keep section effort in the world definition so larger future windows can
+// use more sprays per section without changing the cleaning system.
+export const HOMES_WINDOW_CLEAN_SECTIONS: WindowCleanSection[] = [
+  { id: 'homes-left', x: 1280, y: 592, width: 104, height: 184, spraysRequired: 3 },
+  { id: 'homes-centre', x: 1398, y: 592, width: 104, height: 184, spraysRequired: 3 },
+  { id: 'homes-right', x: 1516, y: 592, width: 104, height: 184, spraysRequired: 3 },
+];
 export const HOMES_LISTINGS: Array<{ key: PropertyListingKey; x: number; y: number; width: number; height: number }> = [
   { key: 'cheap-rental', x: 1300, y: 637, width: 112, height: 90 },
   { key: 'mid-rental', x: 1430, y: 637, width: 78, height: 90 },
@@ -189,7 +205,9 @@ export const APARTMENT_DOOR_WIDTH = 60;
 export const APARTMENT_DOOR_TOP = 683;
 export const APARTMENT_DOOR_BOTTOM = 769;
 export const APARTMENT_ENTRANCE = { x: 2275, y: 864 };
-export const POT_POSITION = { x: 1648, y: 910 };
+// The collectible sits on the lower edge of the front pavement: with its
+// existing drawing scale, the pot base meets the road-edge line at y=944.
+export const POT_POSITION = { x: 1648, y: 930 };
 export const START_POSITION = { x: STARTING_WALKABLE_MIN_X + 20, y: 890 };
 
 export const SHOP_WORLD_WIDTH = 1200;
@@ -202,4 +220,31 @@ export const HOME_WORLD_WIDTH = 900;
 export const HOME_WORLD_HEIGHT = 700;
 export const HOME_PLAYER_START = { x: 220, y: 560 };
 export const HOME_EXIT = { x: 115, y: 560 };
-export const HOME_STARTER_KIT = { x: 560, y: 470 };
+export const HOME_STARTER_KIT = { x: 250, y: 300 };
+export const HOME_GROWING_SPOTS = [
+  { x: 380, y: 470 },
+  { x: 495, y: 470 },
+  { x: 610, y: 470 },
+] as const;
+// Backwards-compatible centre reference for callers that do not need slot
+// selection. The active pot uses HOME_GROWING_SPOTS[starterPotSlot].
+export const HOME_GROWING_SPOT = HOME_GROWING_SPOTS[1];
+// Match the HOMES window's 96-world-unit interaction lane so contextual
+// popups use a consistent distance from their target. The approach point is
+// placed at the edge of this ring beside the pot.
+export const BASIL_POT_INTERACTION_RADIUS = 96;
+export const BASIL_GROWTH_DURATION_MS = 60_000;
+export const BASIL_HARVEST_PRICE = 5;
+export const BASIL_SEED_PRICE = 2;
+export const OPENING_POTHOS_SALE_PRICE = 5;
+export const WINDOW_JOB_REWARD = 9;
+export const REPAIRED_POT_SALE_PRICE = 75;
+export const RENTAL_BOND_COST = 60;
+export const SHOP_BUYBACK_MARKUP_NUMERATOR = 140;
+export const SHOP_BUYBACK_MARKUP_DENOMINATOR = 100;
+
+export function getShopBuybackPrice(normalShopPrice: number): number {
+  const price = Math.max(0, Math.floor(normalShopPrice));
+  return Math.floor((price * SHOP_BUYBACK_MARKUP_NUMERATOR + SHOP_BUYBACK_MARKUP_DENOMINATOR - 1)
+    / SHOP_BUYBACK_MARKUP_DENOMINATOR);
+}
