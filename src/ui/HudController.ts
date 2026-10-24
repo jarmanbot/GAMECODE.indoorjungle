@@ -18,12 +18,15 @@ import {
   REPAIRED_POT_SALE_PRICE,
   WINDOW_JOB_REWARD,
   RENTAL_BOND_COST,
+  SMALL_BASIC_PLASTIC_POT_PRICE,
   WORLD_WIDTH,
   type PropertyListingKey,
   type ZoomMode,
 } from '../game/world';
 import { DEFAULT_SHOP_STOCK_QUALITY } from '../game/progress';
 import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool } from '../game/progress';
+import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
+import type { GrowingPotState } from '../game/growing';
 
 const DEV_BUILD = import.meta.env.DEV;
 
@@ -79,6 +82,9 @@ export class HudController {
   private basilHarvests = 0;
   private basilCycleCount = 0;
   private basicFertilizerCharges = 0;
+  private seedQuantities: Record<PlantSpecies, number> = { basil: 0, mint: 0 };
+  private harvestQuantities: Record<PlantSpecies, number> = { basil: 0, mint: 0 };
+  private growingPots: GrowingPotState[] = [];
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
   private mapPositionY = START_POSITION.y;
   private cityMapZoom = 0.72;
@@ -198,7 +204,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[] }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -219,6 +225,9 @@ export class HudController {
     this.basilHarvests = state.basilHarvests ?? this.basilHarvests;
     this.basilCycleCount = state.basilCycleCount ?? this.basilCycleCount;
     this.basicFertilizerCharges = state.basicFertilizerCharges ?? this.basicFertilizerCharges;
+    this.seedQuantities = state.seedQuantities ? { ...this.seedQuantities, ...state.seedQuantities } : { ...this.seedQuantities, basil: this.basilSeeds };
+    this.harvestQuantities = state.harvestQuantities ? { ...this.harvestQuantities, ...state.harvestQuantities } : { ...this.harvestQuantities, basil: this.basilHarvests };
+    this.growingPots = state.growingPots?.map((pot) => ({ ...pot, crop: pot.crop ? { ...pot.crop } : null })) ?? this.growingPots;
     this.refreshToolPopup();
     const labels: Record<TaskState, string> = {
       find: 'Find a Small Golden Pothos',
@@ -227,13 +236,18 @@ export class HudController {
       repair: 'Repair the broken pot',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
-      'place-pot': 'Place your starter pot on the grow table',
+      'place-pot': 'Place an owned pot on an empty grow-table slot',
       'plant-basil': 'Plant basil in your starter pot',
       'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
       'grow-basil': 'Wait for the basil to grow',
       'harvest-basil': 'Harvest the mature basil',
       'sell-basil': 'Sell the basil harvest at BUY / SELL',
-      'buy-seeds': 'Buy 1 basil seed portion at BUY / SELL',
+      'buy-seeds': 'Buy seed portions for another grow-table crop',
+      'plant-mint': 'Plant mint in an empty grow-table pot',
+      'water-mint': 'Water the planted mint',
+      'grow-mint': 'Wait for the mint to grow',
+      'harvest-mint': 'Harvest the mature mint',
+      'sell-mint': 'Sell the mint harvest at BUY / SELL',
     };
     this.objectiveText.textContent = labels[state.task];
   }
@@ -868,14 +882,14 @@ export class HudController {
       const toolNote = [
         this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Press B once per spray.' : 'Equip it near the HOMES estate-agent window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
         this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining. Tap B 10 times beside a broken pot.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
-        this.wateringCanOwned ? `<div class="inventory-item"><span class="inventory-art">≈</span><div><strong>Basic watering can</strong><small>Reusable and essential. Select a planted basil pot, then press B.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="watering-can">${this.equippedTool === 'watering-can' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.wateringCanOwned ? `<div class="inventory-item"><span class="inventory-art">≈</span><div><strong>Basic watering can</strong><small>Reusable and essential. Select a planted pot, then press B.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="watering-can">${this.equippedTool === 'watering-can' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
       ].join('');
       const itemBlocks = [
         this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}${putDownButton}</div>` : '',
-        this.starterKitClaimed ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Starter pot · used medium</strong><small>${this.starterPotPlaced ? 'Placed on the starter apartment grow table. Essential and not for sale.' : 'Owned starter item. Place it on the starter apartment grow table.'}</small></div></div>` : '',
-        this.basilSeeds > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>Basil seed portions ×${this.basilSeeds}</strong><small>Plant one in the empty starter pot.</small></div></div>` : '',
-        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while basil is growing to skip 60 seconds. Plants shop stock arrives later.</small></div></div>` : '',
-        this.basilHarvests > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>Basil harvest ×${this.basilHarvests}</strong><small>Sell each harvest at BUY / SELL for ${BASIL_HARVEST_PRICE} coins.</small></div></div>` : '',
+        this.starterKitClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
+        ...PLANT_SPECIES.map((species) => this.seedQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>${getPlantDefinition(species).seedLabel} ×${this.seedQuantities[species]}</strong><small>Plant one in any empty placed pot.</small></div></div>` : ''),
+        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its 60 seconds.</small></div></div>` : '',
+        ...PLANT_SPECIES.map((species) => this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>${getPlantDefinition(species).harvestLabel} ×${this.harvestQuantities[species]}</strong><small>Sell each harvest at BUY / SELL for ${getPlantDefinition(species).harvestPrice} coins.</small></div></div>` : ''),
       ].filter(Boolean).join('');
       return {
         title: 'Bag',
@@ -899,10 +913,12 @@ export class HudController {
       const taskLabel: Record<TaskState, string> = {
         find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
         repair: 'Repair the broken pot', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
-        'place-pot': 'Place your starter pot on the grow table', 'plant-basil': 'Plant basil in your starter pot',
+        'place-pot': 'Place an owned pot on an empty grow-table slot', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
-        'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy 1 basil seed portion at BUY / SELL',
+        'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy seed portions for another grow-table crop',
+        'plant-mint': 'Plant mint in an empty grow-table pot', 'water-mint': 'Water the planted mint',
+        'grow-mint': 'Wait for the mint to grow', 'harvest-mint': 'Harvest the mature mint', 'sell-mint': 'Sell the mint harvest at BUY / SELL',
       };
       return {
         title: 'Tasks',
@@ -956,7 +972,7 @@ export class HudController {
       this.bindButtonActivation(sellButton, () => {
         const quantity = Number(sellButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
         if (sellButton.dataset.shopSell === 'repaired') this.scene?.sellRepairedPot();
-        else if (sellButton.dataset.shopSell === 'basil') this.scene?.sellBasilHarvest(quantity);
+        else if (sellButton.dataset.shopSell === 'basil' || sellButton.dataset.shopSell === 'mint') this.scene?.sellPlantHarvest(sellButton.dataset.shopSell, quantity);
         else this.scene?.sellOpeningPot();
       });
     });
@@ -970,7 +986,14 @@ export class HudController {
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy]').forEach((buyButton) => {
       this.bindButtonActivation(buyButton, () => {
         const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
-        if (buyButton.dataset.shopBuy === 'basil-seed') this.scene?.buyBasilSeed(quantity);
+        const seedSpecies = buyButton.dataset.shopBuy?.replace('seed-', '');
+        if (seedSpecies === 'basil' || seedSpecies === 'mint') this.scene?.buyPlantSeed(seedSpecies, quantity);
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-growing-pot]').forEach((buyButton) => {
+      this.bindButtonActivation(buyButton, () => {
+        const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
+        this.scene?.buyAdditionalGrowingPot(quantity);
       });
     });
     this.panelBody.querySelectorAll<HTMLInputElement>('[data-shop-quantity]').forEach((quantityInput) => {
@@ -996,12 +1019,20 @@ export class HudController {
   }
 
   private bindBasilPanel(): void {
-    const plantButton = this.panelBody.querySelector<HTMLButtonElement>('[data-plant-basil]');
-    if (plantButton) this.bindButtonActivation(plantButton, () => this.scene?.plantBasil());
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-plant-species]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        const species = button.dataset.plantSpecies;
+        if (species === 'basil' || species === 'mint') this.scene?.plantSelectedCrop(species);
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-select-growing-pot]').forEach((button) => {
+      this.bindButtonActivation(button, () => { const id = button.dataset.selectGrowingPot; if (id) this.scene?.selectGrowingPot(id); });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-place-growing-pot]').forEach((button) => this.bindButtonActivation(button, () => this.scene?.placeSelectedGrowingPot()));
     const fertilizerButton = this.panelBody.querySelector<HTMLButtonElement>('[data-use-basic-fertilizer]');
     if (fertilizerButton) this.bindButtonActivation(fertilizerButton, () => this.scene?.useBasicFertilizer());
-    const harvestButton = this.panelBody.querySelector<HTMLButtonElement>('[data-harvest-basil]');
-    if (harvestButton) this.bindButtonActivation(harvestButton, () => this.scene?.harvestBasil());
+    const harvestButton = this.panelBody.querySelector<HTMLButtonElement>('[data-harvest-crop]');
+    if (harvestButton) this.bindButtonActivation(harvestButton, () => this.scene?.harvestSelectedCrop());
   }
 
   private bindSettingsPanel(): void {
@@ -1064,6 +1095,9 @@ export class HudController {
       windowJobComplete: false,
       basilHarvests: this.basilHarvests,
       basilSeeds: this.basilSeeds,
+      seedQuantities: { ...this.seedQuantities },
+      harvestQuantities: { ...this.harvestQuantities },
+      additionalGrowingPotsAvailable: 0,
       starterKitClaimed: this.starterKitClaimed,
       shopStock: [] as ShopStockEntry[],
     };
@@ -1077,26 +1111,32 @@ export class HudController {
       : `<div class="shop-quantity-row"><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`;
     const stockName = (entry: ShopStockEntry): string => entry.item === 'small-golden-pothos'
       ? 'Small Golden Pothos'
-      : entry.item === 'special-repair-pot' ? 'Empty repaired pot' : 'Basil harvest';
-    const stockCondition = (entry: ShopStockEntry): string => entry.item === 'basil-harvest'
+      : entry.item === 'special-repair-pot' ? 'Empty repaired pot'
+        : entry.item === 'fresh-mint-leaves' ? 'Fresh mint leaves' : 'Fresh basil leaves';
+    const stockCondition = (entry: ShopStockEntry): string => entry.item === 'fresh-basil-leaves' || entry.item === 'fresh-mint-leaves'
       ? 'Fresh harvest stack'
       : entry.condition === 'repaired' ? 'Repaired · empty' : 'Ordinary condition';
     const stockQuality = (entry: ShopStockEntry): string => entry.quality === DEFAULT_SHOP_STOCK_QUALITY ? '' : ` · ${this.escapeHtml(entry.quality)}`;
     const sellOffers = [
       shop.inventoryPot === 'ordinary' ? `<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Sell for ${OPENING_POTHOS_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE)} coins</small></div>${quantityControl(1, OPENING_POTHOS_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR ${OPENING_POTHOS_SALE_PRICE} COINS</button></div>` : '',
       shop.inventoryPot === 'repaired' ? `<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Sell for ${REPAIRED_POT_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(REPAIRED_POT_SALE_PRICE)} coins</small></div>${quantityControl(1, REPAIRED_POT_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR ${REPAIRED_POT_SALE_PRICE} COINS</button></div>` : '',
-      shop.basilHarvests > 0 ? `<div class="shop-offer"><div class="inventory-art">✦</div><div class="shop-offer-copy"><strong>Basil harvest ×${shop.basilHarvests}</strong><small>Fresh stack · Sell for ${BASIL_HARVEST_PRICE} coins each · Buy back for ${getShopBuybackPrice(BASIL_HARVEST_PRICE)} coins each</small></div>${quantityControl(shop.basilHarvests, BASIL_HARVEST_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="basil">SELL SELECTED</button></div>` : '',
+      ...PLANT_SPECIES.map((species) => {
+        const definition = getPlantDefinition(species);
+        const amount = shop.harvestQuantities[species] ?? (species === 'basil' ? shop.basilHarvests : 0);
+        return amount > 0 ? `<div class="shop-offer"><div class="inventory-art">✦</div><div class="shop-offer-copy"><strong>${definition.harvestLabel} ×${amount}</strong><small>Fresh stack · Sell for ${definition.harvestPrice} coins each · Buy back for ${getShopBuybackPrice(definition.harvestPrice)} coins each</small></div>${quantityControl(amount, definition.harvestPrice, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="${species}">SELL SELECTED</button></div>` : '';
+      }),
     ].filter(Boolean).join('');
     const sellContent = `<div class="shop-content-heading">SELL</div>${sellOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or grow an item before selling.</small></div>'}`;
     const stockOffers = shop.shopStock.map((entry) => {
-      const unitPrice = getShopBuybackPrice(entry.item === 'small-golden-pothos' ? OPENING_POTHOS_SALE_PRICE : entry.item === 'special-repair-pot' ? REPAIRED_POT_SALE_PRICE : BASIL_HARVEST_PRICE);
+      const unitPrice = getShopBuybackPrice(entry.item === 'small-golden-pothos' ? OPENING_POTHOS_SALE_PRICE : entry.item === 'special-repair-pot' ? REPAIRED_POT_SALE_PRICE : entry.item === 'fresh-mint-leaves' ? getPlantDefinition('mint').harvestPrice : getPlantDefinition('basil').harvestPrice);
       const quantity = entry.quantity > 1 ? ` ×${entry.quantity}` : '';
       return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'special-repair-pot' ? '◈' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
     }).join('');
     const seedContent = shop.starterKitClaimed
-      ? `<div class="shop-section-label">BASIL SEEDS</div><div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>Basil seed portions</strong><small>Independently priced stock · ${BASIL_SEED_PRICE} coins each</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, BASIL_SEED_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="basil-seed">BUY SELECTED</button></div>`
-      : '<div class="shop-section-label">BASIL SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying basil seeds.</small></div>';
-    const buyContent = `<div class="shop-content-heading">BUY</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}`;
+      ? `<div class="shop-section-label">SEEDS</div>${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); return `<div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>${definition.seedLabel}</strong><small>Independent stock · ${definition.seedPrice} coins each</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, definition.seedPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="seed-${species}">BUY SELECTED</button></div>`; }).join('')}`
+      : '<div class="shop-section-label">SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying seeds.</small></div>';
+    const potContent = shop.starterKitClaimed && shop.additionalGrowingPotsAvailable > 0 ? `<div class="shop-section-label">GROWING POTS</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small basic plastic pot</strong><small>Usable medium · ${shop.additionalGrowingPotsAvailable} available · ${SMALL_BASIC_PLASTIC_POT_PRICE} coins each</small></div>${quantityControl(shop.additionalGrowingPotsAvailable, SMALL_BASIC_PLASTIC_POT_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-growing-pot>BUY SELECTED</button></div>` : '';
+    const buyContent = `<div class="shop-content-heading">BUY</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${potContent}`;
     const deliveryContent = shop.saleComplete
       ? ''
       : `<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>${OPENING_POTHOS_SALE_PRICE} COINS</strong></div><span class="shop-status">WANTED</span></div>`;
@@ -1143,9 +1183,13 @@ export class HudController {
       wateringCanOwned: this.wateringCanOwned,
       basilCycleCount: this.basilCycleCount,
       basicFertilizerCharges: this.basicFertilizerCharges,
+      selectedPotId: null,
+      growingPots: this.growingPots,
+      seedQuantities: this.seedQuantities,
+      harvestQuantities: this.harvestQuantities,
     };
     const stageLabels: Record<BasilStage, string> = {
-      empty: 'EMPTY POT', planted: 'PLANTED', seedling: 'SEEDLING', mature: 'MATURE BASIL',
+      empty: 'EMPTY POT', planted: 'PLANTED', seedling: 'SEEDLING', mature: 'MATURE CROP',
     };
     const minutes = Math.floor(state.timeRemainingMs / 60000);
     const seconds = Math.ceil((state.timeRemainingMs % 60000) / 1000);
@@ -1154,23 +1198,33 @@ export class HudController {
     let action = '';
     if (!state.starterKitClaimed) {
       status = 'Claim the starter kit inside your rental first.';
-    } else if (!state.starterPotPlaced) {
-      status = 'Select one of the three grow-table slots to place the owned starter pot.';
+    } else if (!state.selectedPotId) {
+      status = 'Select a placed pot on the grow table.';
     } else if (state.stage === 'empty') {
-      status = `Used medium ready · ${state.seeds} basil seed portion${state.seeds === 1 ? '' : 's'} available.`;
-      action = `<button class="basil-action" type="button" data-plant-basil${state.seeds < 1 ? ' disabled' : ''}>PLANT BASIL</button>`;
+      status = 'Empty pot with usable medium. Choose one seed type.';
+      action = `<div class="seed-choice-row">${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); const available = state.seedQuantities[species] ?? 0; return `<button class="basil-action" type="button" data-plant-species="${species}"${available < 1 ? ' disabled' : ''}>PLANT ${definition.label.toUpperCase()} <small>×${available}</small></button>`; }).join('')}</div>`;
     } else if (state.stage === 'planted') {
-      status = 'Basil is planted but needs one completed watering pour.';
+      status = 'The planted crop needs one completed watering pour.';
     } else if (state.stage === 'seedling') {
-      status = `Basil is growing · ${timeLabel}. Basic fertiliser skips the full 60 seconds.`;
+      status = `Crop is growing · ${timeLabel}. Basic fertiliser skips the full 60 seconds.`;
       action = state.basicFertilizerCharges > 0
         ? '<button class="basil-action" type="button" data-use-basic-fertilizer>USE BASIC FERTILISER · INSTANT GROW</button>'
         : '';
     } else {
-      status = 'Mature basil is ready to harvest.';
-      action = '<button class="basil-action" type="button" data-harvest-basil>HARVEST BASIL</button>';
+      status = 'The mature crop is ready to harvest.';
+      action = '<button class="basil-action" type="button" data-harvest-crop>HARVEST SELECTED CROP</button>';
     }
-    return `<div class="basil-panel"><div class="basil-stage"><span class="basil-stage-art">${state.stage === 'mature' ? '♣' : state.stage === 'seedling' ? '⌁' : '▱'}</span><div><strong>${stageLabels[state.stage]}</strong><small>${status}</small></div></div><div class="basil-details"><span>SEED PORTIONS <b>${state.seeds}</b></span><span>HARVESTS IN BAG <b>${state.harvests}</b></span><span>GROWTH CYCLES <b>${state.basilCycleCount}</b></span><span>BASIC FERTILISER <b>${state.basicFertilizerCharges}</b></span><span>WATERING CAN <b>${state.wateringCanOwned ? 'OWNED' : 'MISSING'}</b></span></div>${action}<p class="basil-note">${state.stage === 'planted' ? 'Close this panel, select the pot, equip the watering can and press B.' : 'The pot and used medium stay in place for repeated basil crops.'}</p><p class="basil-feedback ${this.basilFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.basilFeedback)}</p></div>`;
+    const potButtons = state.growingPots.filter((pot) => pot.slot !== null).map((pot) => {
+      const species = pot.crop?.species;
+      const potStage = pot.crop ? (pot.crop.stage === 'planted' ? 'PLANTED' : pot.crop.stage === 'mature' || pot.crop.growthStartedAt && Date.now() - pot.crop.growthStartedAt >= getPlantDefinition(species!).growthDurationMs ? 'MATURE' : 'GROWING') : 'EMPTY';
+      const label = species ? `${getPlantDefinition(species).label} · ${potStage}` : potStage;
+      return `<button class="growing-pot-choice ${pot.id === state.selectedPotId ? 'is-selected' : ''}" type="button" data-select-growing-pot="${this.escapeHtml(pot.id)}">SLOT ${(pot.slot ?? 0) + 1}<strong>${label}</strong></button>`;
+    }).join('');
+    const unplaced = state.growingPots.filter((pot) => pot.slot === null).length;
+    const potSummary = `${potButtons || '<small>No pots are placed yet.</small>'}${unplaced > 0 ? `<small class="pot-placement-note">${unplaced} owned pot${unplaced === 1 ? '' : 's'} ready. Close this panel and tap an empty grow-table slot to place one.</small>` : ''}`;
+    const selectedCrop = state.growingPots.find((pot) => pot.id === state.selectedPotId)?.crop;
+    const selectedLabel = selectedCrop ? getPlantDefinition(selectedCrop.species).label : 'pot';
+    return `<div class="basil-panel"><div class="basil-stage"><span class="basil-stage-art">${state.stage === 'mature' ? '♣' : state.stage === 'seedling' ? '⌁' : '▱'}</span><div><strong>${selectedLabel.toUpperCase()} · ${stageLabels[state.stage]}</strong><small>${status}</small></div></div><div class="growing-pot-list"><strong>GROW TABLE · SELECT A POT</strong>${potSummary}</div><div class="basil-details"><span>BASIL SEEDS <b>${state.seedQuantities.basil}</b></span><span>MINT SEEDS <b>${state.seedQuantities.mint}</b></span><span>BASIL LEAVES <b>${state.harvestQuantities.basil}</b></span><span>MINT LEAVES <b>${state.harvestQuantities.mint}</b></span><span>BASIC FERTILISER <b>${state.basicFertilizerCharges}</b></span><span>WATERING CAN <b>${state.wateringCanOwned ? 'OWNED' : 'MISSING'}</b></span></div>${action}<p class="basil-note">${state.stage === 'planted' ? 'Close this panel, equip the watering can and press B beside the selected pot.' : 'Each pot grows independently. The used medium remains after harvest.'}</p><p class="basil-feedback ${this.basilFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.basilFeedback)}</p></div>`;
   }
 
   private devToolsMarkup(): string {

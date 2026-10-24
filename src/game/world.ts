@@ -236,6 +236,7 @@ export const BASIL_POT_INTERACTION_RADIUS = 96;
 export const BASIL_GROWTH_DURATION_MS = 60_000;
 export const BASIL_HARVEST_PRICE = 5;
 export const BASIL_SEED_PRICE = 2;
+export const SMALL_BASIC_PLASTIC_POT_PRICE = 10;
 export const OPENING_POTHOS_SALE_PRICE = 5;
 export const WINDOW_JOB_REWARD = 9;
 export const REPAIRED_POT_SALE_PRICE = 75;

@@ -473,10 +473,23 @@ export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: n
 
 export type BasilVisualStage = 'empty' | 'planted' | 'seedling' | 'mature';
 
+export type GrowingCropVisualSpecies = 'basil' | 'mint';
+
 export function drawBasilCrop(
   g: Phaser.GameObjects.Graphics,
   x: number,
   y: number,
+  stage: BasilVisualStage,
+  scale = 1,
+): void {
+  drawGrowingCrop(g, x, y, 'basil', stage, scale);
+}
+
+export function drawGrowingCrop(
+  g: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  species: GrowingCropVisualSpecies,
   stage: BasilVisualStage,
   scale = 1,
 ): void {
@@ -486,16 +499,33 @@ export function drawBasilCrop(
   g.fillStyle(0x697173, 1).fillCircle(x, y - 31 * scale, 4 * scale);
   if (stage === 'planted') return;
 
-  const height = stage === 'mature' ? 66 : 38;
+  const height = stage === 'mature' ? (species === 'mint' ? 60 : 66) : 38;
   g.lineStyle(3, INK, 1).lineBetween(x, y - 31 * scale, x, y - height * scale);
-  g.lineBetween(x, y - (height - 10) * scale, x - 15 * scale, y - (height - 23) * scale);
-  g.lineBetween(x, y - (height - 19) * scale, x + 16 * scale, y - (height - 35) * scale);
+  if (species === 'mint') {
+    g.lineBetween(x, y - (height - 9) * scale, x - 11 * scale, y - (height - 25) * scale);
+    g.lineBetween(x, y - (height - 18) * scale, x + 12 * scale, y - (height - 35) * scale);
+    g.lineBetween(x, y - (height - 28) * scale, x - 13 * scale, y - (height - 42) * scale);
+  } else {
+    g.lineBetween(x, y - (height - 10) * scale, x - 15 * scale, y - (height - 23) * scale);
+    g.lineBetween(x, y - (height - 19) * scale, x + 16 * scale, y - (height - 35) * scale);
+  }
   g.fillStyle(stage === 'mature' ? 0xbfc5c3 : 0x929b99, 1);
-  g.fillTriangle(x - 2 * scale, y - (height - 3) * scale, x - 27 * scale, y - (height - 17) * scale, x - 8 * scale, y - (height - 28) * scale);
-  g.fillTriangle(x + 2 * scale, y - (height - 19) * scale, x + 28 * scale, y - (height - 34) * scale, x + 9 * scale, y - (height - 43) * scale);
+  if (species === 'mint') {
+    g.fillEllipse(x - 14 * scale, y - (height - 16) * scale, 17 * scale, 9 * scale);
+    g.fillEllipse(x + 14 * scale, y - (height - 30) * scale, 17 * scale, 9 * scale);
+    if (stage === 'mature') g.fillEllipse(x - 14 * scale, y - (height - 38) * scale, 17 * scale, 9 * scale);
+  } else {
+    g.fillTriangle(x - 2 * scale, y - (height - 3) * scale, x - 27 * scale, y - (height - 17) * scale, x - 8 * scale, y - (height - 28) * scale);
+    g.fillTriangle(x + 2 * scale, y - (height - 19) * scale, x + 28 * scale, y - (height - 34) * scale, x + 9 * scale, y - (height - 43) * scale);
+  }
   if (stage === 'mature') {
-    g.lineBetween(x, y - 48 * scale, x - 18 * scale, y - 66 * scale);
-    g.fillTriangle(x - 2 * scale, y - 49 * scale, x - 29 * scale, y - 61 * scale, x - 12 * scale, y - 72 * scale);
+    if (species === 'mint') {
+      g.lineBetween(x, y - 43 * scale, x + 12 * scale, y - 58 * scale);
+      g.fillEllipse(x + 14 * scale, y - 61 * scale, 18 * scale, 9 * scale);
+    } else {
+      g.lineBetween(x, y - 48 * scale, x - 18 * scale, y - 66 * scale);
+      g.fillTriangle(x - 2 * scale, y - 49 * scale, x - 29 * scale, y - 61 * scale, x - 12 * scale, y - 72 * scale);
+    }
   }
 }
 

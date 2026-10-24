@@ -6,9 +6,9 @@ Workspace: /Users/jarmandonohue/GAMECODE.indoorjungle
 
 Branch: first-basil-sold-and-seeds-bought
 
-Latest commit: edfe33d
+Latest commit before this implementation: 7c1b266
 
-Working tree at audit: clean
+Working tree at audit: growing-system implementation changes in progress
 
 Remote: https://github.com/jarmanbot/GAMECODE.indoorjungle.git
 
@@ -26,8 +26,9 @@ The game currently contains:
 - HOMES estate-agent window-cleaning job.
 - Broken-pot collection and repair loop.
 - Starter apartment rental.
-- Starter kit and reusable grow table.
-- Basil growing, harvesting, selling and seed purchasing.
+- Starter kit and a three-slot grow table.
+- Three independent growing pots with stable IDs, reusable medium, basil and mint crops, growth timing, fertiliser and harvest state.
+- Basil and mint seed purchasing, fresh-leaf selling and species-specific shop stacks.
 - City map with locked future districts.
 - Phone hybrid controls with joystick and A/B buttons.
 - Desktop keyboard, mouse, tap-to-walk and zoom controls.
@@ -40,7 +41,7 @@ The current implemented progression reaches:
 
 > First basil harvest sold → ready to buy more basil seeds.
 
-Not implemented: house expansion, Plants shop stock, district unlock
+Not implemented: house expansion, PLANTS shop stock, district unlock
 progression, fast travel, accounts, backend services or additional playable
 districts.
 
@@ -911,11 +912,14 @@ does not explicitly assign the cleaner to a tool slot. The repair tool is
 explicitly assigned after job completion. This should be checked when testing
 the Tools popup after accepting the job.
 
-### Single starter pot
+### Growing-system migration
 
-The grow table has three selectable positions, but only one starter pot is
-currently supported. The other two positions are prepared for future
-expansion.
+The authoritative growing state is now `growingPots`, `seedQuantities`,
+`harvestQuantities` and `growingEvents` in `src/game/progress.ts`. The old
+single-basil fields remain only as derived compatibility mirrors. Existing
+saves migrate their starter pot, slot, crop timing, basil seeds and harvests;
+legacy `basil-harvest` stock is renamed to `fresh-basil-leaves` without
+awarding a duplicate item.
 
 ### Future Plants shop
 
@@ -941,11 +945,14 @@ Verified during the read-only audit:
 - Git branch, commit, remote and clean working tree.
 - git diff --check.
 - TypeScript/Vite production build using npm run build.
+- Source-level checkpoint builders for fresh start, the opening loop,
+  apartment/starter-kit stages, three ready pots, basil crop stages and
+  second-pot mint stages.
 
 The production build completed successfully. Vite emitted only the existing
 large JavaScript chunk warning.
 
-Not visually re-tested during this audit:
+Not visually re-tested during this implementation:
 
 - Real iPhone touch behaviour.
 - Safari safe-area behaviour.
@@ -954,6 +961,8 @@ Not visually re-tested during this audit:
 - Camera appearance at actual phone dimensions.
 - Audio playback on a physical device.
 - End-to-end gameplay through every checkpoint.
+- Real-device validation of buying both extra pots, selecting mint, and
+  running three simultaneous crop timers.
 
 ## Running locally
 

@@ -1,14 +1,16 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawBasilCrop, setBuySellDoorOpen, type BasilVisualStage } from './art';
+import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, setBuySellDoorOpen, type BasilVisualStage } from './art';
 import { AudioController } from './AudioController';
 import { PHONE_HYBRID_CONTROLS } from './config';
 import { createDevCheckpoint, type DevCheckpointScene } from './devCheckpoints';
 import {
   BASIL_HARVEST_STOCK_ID,
+  MINT_HARVEST_STOCK_ID,
   DEFAULT_SHOP_STOCK_QUALITY,
   DEFAULT_PROGRESS,
   OPENING_GOLDEN_POTHOS_INSTANCE_ID,
   sanitizeProgress,
+  syncProgressLegacyMirrors,
   SPECIAL_REPAIR_POT_INSTANCE_ID,
   type BasilStage,
   type EquippedTool,
@@ -21,6 +23,8 @@ import {
   type ShopStockItem,
   type TaskState,
 } from './progress';
+import { GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, createEmptyGrowingPot, type GrowingPotState } from './growing';
+import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from './plants';
 import {
   BUILDINGS,
   APARTMENT_DOOR_BOTTOM,
@@ -47,6 +51,7 @@ import {
   BASIL_POT_INTERACTION_RADIUS,
   BASIL_HARVEST_PRICE,
   BASIL_SEED_PRICE,
+  SMALL_BASIC_PLASTIC_POT_PRICE,
   getShopBuybackPrice,
   OPENING_POTHOS_SALE_PRICE,
   WINDOW_JOB_REWARD,
@@ -82,7 +87,7 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit' | 'place-starter-pot' | 'select-basil-pot';
+type PendingInteraction = 'pickup' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot';
 type PlayerFacing = 'front' | 'back' | 'left' | 'right';
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
@@ -146,6 +151,7 @@ export class GameScene extends Phaser.Scene {
   private homeObjects: Phaser.GameObjects.GameObject[] = [];
   private homeStarterKitObjects: Phaser.GameObjects.GameObject[] = [];
   private basilPot?: Phaser.GameObjects.Graphics;
+  private growingPotDisplays = new Map<string, Phaser.GameObjects.Graphics>();
   private basilWaterEffect?: Phaser.GameObjects.Graphics;
   private toastTimer?: Phaser.Time.TimerEvent;
   private lastWorldInputAt = 0;
@@ -186,6 +192,8 @@ export class GameScene extends Phaser.Scene {
   private basilWaterElapsed = 0;
   private readonly basilWaterDuration = 720;
   private basilStageCache: BasilStage = 'empty';
+  private selectedGrowingPotId: string | null = null;
+  private growingSlotReadyToPlace = false;
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -268,8 +276,8 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.updateCars(delta);
-    this.updateBasilGrowth();
-    this.updateBasilWatering(delta);
+    this.updateGrowingCrops();
+    this.updateGrowingWatering(delta);
     this.updateWindowSpray(delta);
 
     if (this.modalOpen && !this.mapMovementAllowed) {
@@ -436,14 +444,22 @@ export class GameScene extends Phaser.Scene {
       this.showToast(this.placementTarget ? 'Press B to put the item down.' : 'Tap a clear pavement square first.', 1500);
       return;
     }
+    if (this.growingSlotReadyToPlace) {
+      this.placeSelectedGrowingPot();
+      return;
+    }
     if (this.pendingInteraction && !this.target) this.completePendingInteraction();
     else if (this.shopInterior && this.isWithinShopCounterRange()) this.openShopPanel();
     else if (this.homeInterior && this.isNearHomeExit()) this.selectPendingInteraction('exit-home', new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT.y));
     else if (this.homeInterior && this.isNearStarterKit()) this.claimStarterKit();
     else if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
       if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
-      else if (!this.progress.starterPotPlaced) this.placeStarterPot();
-      else if (this.basilPotSelected && this.getBasilStage() === 'planted') this.startBasilWatering();
+      else if (!this.getSelectedGrowingPot()) {
+        const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);
+        if (nearbyPot) this.selectGrowingPot(nearbyPot.id);
+        else if (this.progress.growingPots.some((pot) => pot.slot === null)) this.placeSelectedGrowingPot();
+      }
+      else if (this.basilPotSelected && this.getSelectedGrowingPot() && this.getCropStage(this.getSelectedGrowingPot()!) === 'planted') this.startGrowingWatering();
       else this.hud.openPanel('basil');
     }
     else if (!this.shopInterior && !this.homeInterior && this.isPlayerNearBuySellEntrance()) this.selectPendingInteraction(
@@ -556,7 +572,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.homeInterior) {
       if (this.progress.equippedTool !== 'watering-can') {
-        this.showToast('Equip the watering can, then select the basil pot.', 1500);
+        this.showToast('Equip the watering can, then select a growing pot.', 1500);
         return;
       }
       this.startBasilWatering();
@@ -591,7 +607,7 @@ export class GameScene extends Phaser.Scene {
     this.toolHeld = false;
   }
 
-  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; basilHarvests: number; basilSeeds: number; starterKitClaimed: boolean; shopStock: ShopStockEntry[] } {
+  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; basilHarvests: number; basilSeeds: number; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number>; additionalGrowingPotsAvailable: number; starterKitClaimed: boolean; shopStock: ShopStockEntry[] } {
     return {
       inventoryPot: this.inventoryPot,
       inventoryItem: this.progress.inventoryItem,
@@ -601,22 +617,30 @@ export class GameScene extends Phaser.Scene {
       windowJobComplete: this.progress.windowJobComplete,
       basilHarvests: this.progress.basilHarvests,
       basilSeeds: this.progress.basilSeeds,
+      seedQuantities: { ...this.progress.seedQuantities },
+      harvestQuantities: { ...this.progress.harvestQuantities },
+      additionalGrowingPotsAvailable: Math.max(0, MAX_ADDITIONAL_GROWING_POTS - this.progress.additionalGrowingPotsPurchased),
       starterKitClaimed: this.starterKitClaimed,
       shopStock: this.progress.shopStock.map((entry) => ({ ...entry, instanceIds: [...entry.instanceIds] })),
     };
   }
 
-  getBasilPanelState(): { starterKitClaimed: boolean; starterPotPlaced: boolean; stage: BasilStage; seeds: number; harvests: number; timeRemainingMs: number; wateringCanOwned: boolean; basilCycleCount: number; basicFertilizerCharges: number } {
+  getBasilPanelState(): { starterKitClaimed: boolean; starterPotPlaced: boolean; stage: BasilStage; seeds: number; harvests: number; timeRemainingMs: number; wateringCanOwned: boolean; basilCycleCount: number; basicFertilizerCharges: number; selectedPotId: string | null; growingPots: GrowingPotState[]; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number> } {
+    const selected = this.getSelectedGrowingPot();
     return {
       starterKitClaimed: this.starterKitClaimed,
       starterPotPlaced: this.progress.starterPotPlaced,
-      stage: this.getBasilStage(),
+      stage: selected?.crop ? this.getCropStage(selected) : 'empty',
       seeds: this.progress.basilSeeds,
       harvests: this.progress.basilHarvests,
-      timeRemainingMs: this.getBasilTimeRemaining(),
+      timeRemainingMs: selected ? this.getCropTimeRemaining(selected) : this.getBasilTimeRemaining(),
       wateringCanOwned: this.progress.wateringCanOwned,
       basilCycleCount: this.progress.basilCycleCount,
       basicFertilizerCharges: this.progress.basicFertilizerCharges,
+      seedQuantities: { ...this.progress.seedQuantities },
+      harvestQuantities: { ...this.progress.harvestQuantities },
+      growingPots: this.progress.growingPots.map((pot) => ({ ...pot, crop: pot.crop ? { ...pot.crop } : null })),
+      selectedPotId: this.selectedGrowingPotId,
     };
   }
 
@@ -683,7 +707,7 @@ export class GameScene extends Phaser.Scene {
     // Older saves predate the starter-kit fertiliser. Award it only while the
     // first basil cycle has not begun, so a consumed charge cannot respawn.
     if (this.progress.starterKitClaimed && this.progress.starterKitGranted
-      && this.progress.basilCycleCount === 0 && this.progress.basicFertilizerCharges === 0) {
+      && this.progress.growingEvents.basil === 0 && this.progress.basicFertilizerCharges === 0) {
       this.progress.basicFertilizerCharges = 1;
       this.saveProgress();
     }
@@ -719,6 +743,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private saveProgress(): void {
+    syncProgressLegacyMirrors(this.progress);
     this.progress.coins = this.coins;
     this.progress.inventoryPot = this.inventoryPot;
     this.progress.inventoryInstanceId = this.inventoryPot ? (this.inventoryInstanceId ?? (this.inventoryPot === 'ordinary' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID)) : null;
@@ -800,17 +825,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   public canFinishCurrentCrop(): boolean {
-    return DEV_BUILD && this.testSaveMode && this.progress.basilPlanted
-      && this.progress.basilGrowthStartedAt !== null && this.getBasilStage() === 'seedling';
+    const pot = this.getSelectedGrowingPot() ?? this.progress.growingPots.find((candidate) => candidate.crop?.growthStartedAt !== null && this.getCropStage(candidate) === 'seedling');
+    return DEV_BUILD && this.testSaveMode && Boolean(pot?.crop?.growthStartedAt !== null && pot?.crop && this.getCropStage(pot) === 'seedling');
   }
 
   public finishCurrentCrop(): void {
     if (!this.canFinishCurrentCrop()) return;
-    this.progress.basilGrowthStartedAt = Date.now() - BASIL_GROWTH_DURATION_MS - 1;
-    this.basilStageCache = 'seedling';
+    const pot = this.getSelectedGrowingPot() ?? this.progress.growingPots.find((candidate) => candidate.crop?.growthStartedAt !== null && this.getCropStage(candidate) === 'seedling');
+    if (!pot?.crop) return;
+    pot.crop.growthStartedAt = Date.now() - getPlantDefinition(pot.crop.species).growthDurationMs - 1;
+    pot.crop.stage = 'seedling';
     // Let the normal growth-completion path promote the objective and visual;
     // this never grants the harvest itself.
-    this.updateBasilGrowth();
+    this.updateGrowingCrops();
     this.hud.showDevFeedback('Current crop is mature and ready to harvest.');
   }
 
@@ -857,6 +884,8 @@ export class GameScene extends Phaser.Scene {
     this.homeInterior = false;
     this.basilPot = undefined;
     this.basilWaterEffect = undefined;
+    this.growingPotDisplays.clear();
+    this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
     if (this.buySellDoor) setBuySellDoorOpen(this.buySellDoor, false);
     this.player.setAlpha(1).setVisible(true);
@@ -932,9 +961,12 @@ export class GameScene extends Phaser.Scene {
 
   private grantStarterKitState(): void {
     this.progress.starterKitGranted = true;
-    this.progress.basilSeeds = Math.max(1, this.progress.basilSeeds);
+    this.progress.seedQuantities.basil = Math.max(1, this.progress.seedQuantities.basil);
     this.progress.basicFertilizerCharges = Math.max(1, this.progress.basicFertilizerCharges);
     this.progress.wateringCanOwned = true;
+    if (!this.progress.growingPots.some((pot) => pot.id === STARTER_GROWING_POT_ID)) {
+      this.progress.growingPots.push(createEmptyGrowingPot(STARTER_GROWING_POT_ID));
+    }
     this.assignToolToSlot('watering-can');
   }
 
@@ -1434,6 +1466,10 @@ export class GameScene extends Phaser.Scene {
 
   private handleKeyboardInteraction(): void {
     if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.growingSlotReadyToPlace) {
+      this.placeSelectedGrowingPot();
+      return;
+    }
     if (this.shopInterior && this.isWithinShopCounterRange()) {
       this.openShopPanel();
       return;
@@ -1448,8 +1484,12 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
       if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
-      else if (!this.progress.starterPotPlaced) this.placeStarterPot();
-      else if (this.basilPotSelected && this.getBasilStage() === 'planted') this.startBasilWatering();
+      else if (!this.getSelectedGrowingPot()) {
+        const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);
+        if (nearbyPot) this.selectGrowingPot(nearbyPot.id);
+        else if (this.progress.growingPots.some((pot) => pot.slot === null)) this.placeSelectedGrowingPot();
+      }
+      else if (this.basilPotSelected && this.getSelectedGrowingPot() && this.getCropStage(this.getSelectedGrowingPot()!) === 'planted') this.startGrowingWatering();
       else this.hud.openPanel('basil');
       return;
     }
@@ -1474,7 +1514,7 @@ export class GameScene extends Phaser.Scene {
   private getShopSalePrice(item: ShopStockItem): number {
     if (item === 'small-golden-pothos') return OPENING_POTHOS_SALE_PRICE;
     if (item === 'special-repair-pot') return REPAIRED_POT_SALE_PRICE;
-    return BASIL_HARVEST_PRICE;
+    return getPlantDefinition(item === 'fresh-mint-leaves' ? 'mint' : 'basil').harvestPrice;
   }
 
   private getShopBuyPrice(item: ShopStockItem): number {
@@ -1490,10 +1530,11 @@ export class GameScene extends Phaser.Scene {
   private addShopStock(item: ShopStockItem, condition: ShopStockCondition, quantity: number, instanceId?: string, quality = DEFAULT_SHOP_STOCK_QUALITY): boolean {
     const amount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
     if (!amount) return false;
-    if (item === 'basil-harvest') {
+    if (item === 'fresh-basil-leaves' || item === 'fresh-mint-leaves') {
       const existing = this.progress.shopStock.find((entry) => entry.item === item && entry.quality === quality && entry.condition === condition);
+      const stockId = item === 'fresh-basil-leaves' ? BASIL_HARVEST_STOCK_ID : MINT_HARVEST_STOCK_ID;
       if (existing) existing.quantity += amount;
-      else this.progress.shopStock.push({ stockId: quality === DEFAULT_SHOP_STOCK_QUALITY ? BASIL_HARVEST_STOCK_ID : `${BASIL_HARVEST_STOCK_ID}:${quality}`, item, quality, condition, quantity: amount, instanceIds: [] });
+      else this.progress.shopStock.push({ stockId: quality === DEFAULT_SHOP_STOCK_QUALITY ? stockId : `${stockId}:${quality}`, item, quality, condition, quantity: amount, instanceIds: [] });
       return true;
     }
 
@@ -1588,8 +1629,9 @@ export class GameScene extends Phaser.Scene {
     }
     const amount = this.normalizeTransactionQuantity(quantity, entry.quantity);
     if (!amount) return;
-    if (entry.item !== 'basil-harvest' && amount !== 1) return;
-    if (entry.item !== 'basil-harvest' && (this.inventoryHasPot || this.progress.placedWorldItem)) {
+    const isHarvest = entry.item === 'fresh-basil-leaves' || entry.item === 'fresh-mint-leaves';
+    if (!isHarvest && amount !== 1) return;
+    if (!isHarvest && (this.inventoryHasPot || this.progress.placedWorldItem)) {
       this.hud.refreshShopPanel('Carry or place only one loose display pot at a time.');
       return;
     }
@@ -1604,8 +1646,9 @@ export class GameScene extends Phaser.Scene {
     const removed = this.removeShopStock(stockId, amount);
     if (!removed) return;
     this.coins -= total;
-    if (removed.item === 'basil-harvest') {
-      this.progress.basilHarvests += amount;
+    if (removed.item === 'fresh-basil-leaves' || removed.item === 'fresh-mint-leaves') {
+      const species = removed.item === 'fresh-basil-leaves' ? 'basil' : 'mint';
+      this.progress.harvestQuantities[species] += amount;
     } else {
       this.inventoryHasPot = true;
       this.inventoryPot = removed.condition === 'ordinary' ? 'ordinary' : 'repaired';
@@ -1618,7 +1661,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.refreshShopStockDisplay();
-    const label = removed.item === 'basil-harvest' ? 'Basil harvest' : removed.item === 'small-golden-pothos' ? 'Small Golden Pothos' : 'Empty repaired pot';
+    const label = removed.item === 'fresh-basil-leaves' ? 'Fresh basil leaves' : removed.item === 'fresh-mint-leaves' ? 'Fresh mint leaves' : removed.item === 'small-golden-pothos' ? 'Small Golden Pothos' : 'Empty repaired pot';
     this.hud.refreshShopPanel(`Bought ${amount} ${label}${amount === 1 ? '' : 's'} for ${total} coins.`);
     this.showToast(`${label} added to the Bag.`, 1600);
   }
@@ -1673,312 +1716,349 @@ export class GameScene extends Phaser.Scene {
     this.syncHudState();
   }
 
-  plantBasil(): void {
-    const state = this.getBasilStage();
-    if (!this.homeInterior || !this.progress.starterPotPlaced) {
-      this.hud.refreshBasilPanel('Place the starter pot on the grow table first.');
+  plantBasil(): void { this.plantSelectedCrop('basil'); }
+
+  plantSelectedCrop(species: PlantSpecies): void {
+    const pot = this.getSelectedGrowingPot();
+    const definition = getPlantDefinition(species);
+    if (!this.homeInterior || !pot || pot.slot === null) {
+      this.hud.refreshBasilPanel('Select an empty placed pot on the grow table first.');
       return;
     }
-    if (state !== 'empty') {
-      this.hud.refreshBasilPanel(state === 'mature' ? 'Basil is ready to harvest.' : 'This pot is already occupied.');
+    if (pot.crop) {
+      this.hud.refreshBasilPanel('This pot is already occupied.');
       return;
     }
-    if (this.progress.basilSeeds < 1) {
-      this.hud.refreshBasilPanel('No basil seed portions available. Buy one at BUY / SELL.');
+    if (this.progress.seedQuantities[species] < 1) {
+      this.hud.refreshBasilPanel(`No ${definition.label.toLowerCase()} seed portions available. Buy one at BUY / SELL.`);
       return;
     }
-    this.progress.basilSeeds -= 1;
-    this.progress.basilPlanted = true;
-    this.progress.basilGrowthStartedAt = null;
-    this.progress.basilCycleCount += 1;
-    this.progress.task = 'water-basil';
+    pot.crop = { species, stage: 'planted', wateredAt: null, growthStartedAt: null };
+    this.progress.seedQuantities[species] -= 1;
+    this.progress.growingEvents[species] += 1;
+    this.progress.task = species === 'basil' ? 'water-basil' : 'water-mint';
     this.basilPotSelected = true;
-    this.basilStageCache = 'planted';
     this.saveProgress();
     this.updateBasilVisual();
     this.syncHudState();
-    this.hud.refreshBasilPanel('Basil planted. Close this panel, select the pot, equip the watering can and press B.');
-    this.showToast('Basil planted. Select the pot, equip the watering can and press B.', 2600);
+    this.hud.refreshBasilPanel(`${definition.label} planted. Select this pot, equip the watering can and press B.`);
+    this.showToast(`${definition.label} planted. Select this pot, equip the watering can and press B.`, 2600);
   }
 
   useBasicFertilizer(): void {
-    if (!this.homeInterior || !this.progress.starterPotPlaced) {
-      this.hud.refreshBasilPanel('Use the fertiliser beside the planted basil pot.');
+    const pot = this.getSelectedGrowingPot();
+    const species = pot?.crop?.species;
+    const definition = species ? getPlantDefinition(species) : null;
+    if (!this.homeInterior || !pot || !pot.crop || !species) {
+      this.hud.refreshBasilPanel('Select a planted growing pot before using fertiliser.');
       return;
     }
-    if (this.getBasilStage() !== 'seedling' || this.progress.basilGrowthStartedAt === null) {
-      this.hud.refreshBasilPanel('Basic fertiliser is only used while basil is growing.');
+    if (this.getCropStage(pot) !== 'seedling' || pot.crop.growthStartedAt === null) {
+      this.hud.refreshBasilPanel('Basic fertiliser is only used while a crop is growing.');
       return;
     }
     if (this.progress.basicFertilizerCharges < 1) {
       this.hud.refreshBasilPanel('No basic fertiliser remains. Plants shop stock will arrive later.');
       return;
     }
-
+    const targetId = pot.id;
     this.progress.basicFertilizerCharges -= 1;
-    // The current basil growth period is 60 seconds. Move its timestamp back
-    // by that full period and let the normal maturity path update the task,
-    // visual and save state without granting a harvest.
-    this.progress.basilGrowthStartedAt = Date.now() - BASIL_GROWTH_DURATION_MS - 1;
-    this.basilStageCache = 'seedling';
+    pot.crop.growthStartedAt = Date.now() - (definition?.growthDurationMs ?? BASIL_GROWTH_DURATION_MS) - 1;
+    pot.crop.stage = 'seedling';
+    this.selectedGrowingPotId = targetId;
     this.saveProgress();
-    this.updateBasilGrowth();
+    this.updateGrowingCrops();
     this.updateBasilVisual();
     this.syncHudState();
-    this.hud.refreshBasilPanel('Basic fertiliser used. Basil is mature and ready to harvest.');
-    this.showToast('Basic fertiliser used. Basil grew instantly.', 2200);
+    this.hud.refreshBasilPanel(`Basic fertiliser used. ${definition?.label ?? 'Crop'} is mature and ready to harvest.`);
+    this.showToast('Basic fertiliser used. Crop grew instantly.', 2200);
   }
 
-  harvestBasil(): void {
-    if (!this.homeInterior || this.getBasilStage() !== 'mature' || !this.progress.starterPotPlaced) {
-      this.hud.refreshBasilPanel('Basil is not ready to harvest yet.');
+  harvestBasil(): void { this.harvestSelectedCrop(); }
+
+  harvestSelectedCrop(): void {
+    const pot = this.getSelectedGrowingPot();
+    const species = pot?.crop?.species;
+    if (!this.homeInterior || !pot || !species || this.getCropStage(pot) !== 'mature') {
+      this.hud.refreshBasilPanel('The selected crop is not ready to harvest yet.');
       return;
     }
-    this.progress.basilHarvests += 1;
-    this.progress.basilPlanted = false;
-    this.progress.basilGrowthStartedAt = null;
-    this.progress.task = 'sell-basil';
-    // Harvest leaves the reusable starter pot empty and unselected so the
-    // nearby contextual action returns to opening the basic pot.
+    const definition = getPlantDefinition(species);
+    pot.crop = null;
+    this.progress.harvestQuantities[species] += 1;
+    this.progress.task = species === 'basil' ? 'sell-basil' : 'sell-mint';
     this.basilPotSelected = false;
-    this.basilStageCache = 'empty';
+    this.selectedGrowingPotId = null;
     this.saveProgress();
     this.updateBasilVisual();
     this.syncHudState();
     this.updateInteraction();
     this.hud.highlightBag();
-    this.hud.refreshBasilPanel(`Basil harvested and added to the Bag. Sell it at BUY / SELL for ${BASIL_HARVEST_PRICE} coins.`);
-    this.showToast(`Basil harvested. Sell it at BUY / SELL for ${BASIL_HARVEST_PRICE} coins.`, 2400);
+    this.hud.refreshBasilPanel(`${definition.label} harvested and added to the Bag. Sell it at BUY / SELL for ${definition.harvestPrice} coins.`);
+    this.showToast(`${definition.label} harvested. Sell it at BUY / SELL for ${definition.harvestPrice} coins.`, 2400);
   }
 
-  sellBasilHarvest(quantity = 1): void {
+  sellBasilHarvest(quantity = 1): void { this.sellPlantHarvest('basil', quantity); }
+
+  sellPlantHarvest(species: PlantSpecies, quantity = 1): void {
     if (!this.shopInterior) return;
-    const amount = this.normalizeTransactionQuantity(quantity, this.progress.basilHarvests);
-    if (!amount || !this.addShopStock('basil-harvest', 'fresh', amount)) return;
-    const total = BASIL_HARVEST_PRICE * amount;
-    this.progress.basilHarvests -= amount;
+    const definition = getPlantDefinition(species);
+    const amount = this.normalizeTransactionQuantity(quantity, this.progress.harvestQuantities[species]);
+    if (!amount || !this.addShopStock(definition.harvestItem, 'fresh', amount)) return;
+    const total = definition.harvestPrice * amount;
+    this.progress.harvestQuantities[species] -= amount;
     this.coins += total;
-    this.progress.task = 'buy-seeds';
+    this.progress.task = species === 'basil' && this.progress.additionalGrowingPotsPurchased < 2 ? 'place-pot' : 'buy-seeds';
     this.saveProgress();
     this.syncHudState();
     this.refreshShopStockDisplay();
-    this.hud.refreshShopPanel(`Basil harvest ×${amount} sold for ${total} coins. Buy another seed portion to grow again.`);
-    this.showToast(`Basil harvest ×${amount} sold for ${total} coins.`, 1800);
+    this.hud.refreshShopPanel(`${definition.harvestLabel} ×${amount} sold for ${total} coins. Buy another seed portion to grow again.`);
+    this.showToast(`${definition.harvestLabel} ×${amount} sold for ${total} coins.`, 1800);
   }
 
-  buyBasilSeed(quantity = 1): void {
+  buyBasilSeed(quantity = 1): void { this.buyPlantSeed('basil', quantity); }
+
+  buyPlantSeed(species: PlantSpecies, quantity = 1): void {
     if (!this.shopInterior || !this.starterKitClaimed) return;
+    const definition = getPlantDefinition(species);
     const amount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
     if (!amount) return;
-    const total = BASIL_SEED_PRICE * amount;
+    const total = definition.seedPrice * amount;
     if (this.coins < total) {
       const shortfall = total - this.coins;
       this.hud.refreshShopPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${amount} seed portion${amount === 1 ? '' : 's'}.`);
-      this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for basil seeds.`, 1600);
+      this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${definition.label.toLowerCase()} seeds.`, 1600);
       return;
     }
     this.coins -= total;
-    this.progress.basilSeeds += amount;
-    this.progress.task = 'plant-basil';
+    this.progress.seedQuantities[species] += amount;
+    this.progress.task = species === 'basil' ? 'plant-basil' : 'plant-mint';
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel(`${amount} basil seed portion${amount === 1 ? '' : 's'} added to the Bag.`);
-    this.showToast(`Bought ${amount} basil seed portion${amount === 1 ? '' : 's'} for ${total} coins.`, 1600);
+    this.hud.refreshShopPanel(`${amount} ${definition.label.toLowerCase()} seed portion${amount === 1 ? '' : 's'} added to the Bag.`);
+    this.showToast(`Bought ${amount} ${definition.label.toLowerCase()} seed portion${amount === 1 ? '' : 's'} for ${total} coins.`, 1600);
+  }
+
+  buyAdditionalGrowingPot(quantity = 1): void {
+    if (!this.shopInterior || !this.starterKitClaimed) {
+      if (this.shopInterior) this.hud.refreshShopPanel('Claim the starter kit before buying additional growing pots.');
+      return;
+    }
+    const amount = this.normalizeTransactionQuantity(quantity, Math.max(0, MAX_ADDITIONAL_GROWING_POTS - this.progress.additionalGrowingPotsPurchased));
+    if (!amount) return;
+    const total = SMALL_BASIC_PLASTIC_POT_PRICE * amount;
+    if (this.coins < total) { this.hud.refreshShopPanel(`Need ${total - this.coins} more coin${total - this.coins === 1 ? '' : 's'} for another growing pot.`); return; }
+    for (let index = 0; index < amount; index += 1) {
+      const id = `growing-pot-${this.progress.additionalGrowingPotsPurchased + 2}`;
+      if (!this.progress.growingPots.some((pot) => pot.id === id)) this.progress.growingPots.push(createEmptyGrowingPot(id));
+      this.progress.additionalGrowingPotsPurchased += 1;
+    }
+    this.coins -= total;
+    this.progress.task = 'place-pot';
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.refreshShopPanel(`Bought ${amount} Small basic plastic pot${amount === 1 ? '' : 's'} for ${total} coins. Place them on the grow table.`);
+    this.showToast('Growing pot added to the Bag.', 1700);
+  }
+
+  private getCropStage(pot: GrowingPotState): BasilStage {
+    if (!pot.crop) return 'empty';
+    if (pot.crop.stage === 'planted' || pot.crop.growthStartedAt === null) return 'planted';
+    const elapsed = Math.max(0, Date.now() - pot.crop.growthStartedAt);
+    return elapsed >= getPlantDefinition(pot.crop.species).growthDurationMs ? 'mature' : 'seedling';
+  }
+
+  private getCropTimeRemaining(pot: GrowingPotState | null): number {
+    if (!pot?.crop?.growthStartedAt) return 0;
+    return Math.max(0, getPlantDefinition(pot.crop.species).growthDurationMs - Math.max(0, Date.now() - pot.crop.growthStartedAt));
   }
 
   private getBasilStage(): BasilStage {
-    if (!this.progress.starterPotPlaced || !this.progress.basilPlanted) return 'empty';
-    if (this.progress.basilGrowthStartedAt === null) return 'planted';
-    const elapsed = Math.max(0, Date.now() - this.progress.basilGrowthStartedAt);
-    if (elapsed >= BASIL_GROWTH_DURATION_MS) return 'mature';
-    return 'seedling';
+    const starter = this.progress.growingPots.find((pot) => pot.id === STARTER_GROWING_POT_ID);
+    return starter ? this.getCropStage(starter) : 'empty';
   }
 
   private getBasilTimeRemaining(): number {
-    if (this.progress.basilGrowthStartedAt === null) return 0;
-    return Math.max(0, BASIL_GROWTH_DURATION_MS - Math.max(0, Date.now() - this.progress.basilGrowthStartedAt));
+    return this.getCropTimeRemaining(this.progress.growingPots.find((pot) => pot.id === STARTER_GROWING_POT_ID) ?? null);
   }
 
-  private updateBasilGrowth(): void {
-    if (this.progress.basilGrowthStartedAt === null) return;
-    const stage = this.getBasilStage();
-    if (stage !== this.basilStageCache) {
-      this.basilStageCache = stage;
-      if (stage === 'mature') {
-        this.progress.task = 'harvest-basil';
-        this.saveProgress();
-        this.syncHudState();
-        this.showToast('Mature basil is ready to harvest.', 2200);
-      }
-      this.updateBasilVisual();
+  private updateGrowingCrops(): void {
+    let changed = false;
+    for (const pot of this.progress.growingPots) {
+      if (!pot.crop || pot.crop.growthStartedAt === null) continue;
+      const stage = this.getCropStage(pot);
+      if (stage !== 'mature' || pot.crop.stage === 'mature') continue;
+      pot.crop.stage = 'mature';
+      const task = pot.crop.species === 'basil' ? 'harvest-basil' : 'harvest-mint';
+      if (this.progress.task === (pot.crop.species === 'basil' ? 'grow-basil' : 'grow-mint')) this.progress.task = task;
+      changed = true;
+      if (this.selectedGrowingPotId === pot.id) this.showToast(`Mature ${pot.crop.species} is ready to harvest.`, 2200);
     }
+    if (changed) { this.saveProgress(); this.syncHudState(); this.updateBasilVisual(); }
   }
 
-  private startBasilWatering(): void {
-    if (!this.homeInterior || !this.basilPotSelected) {
-      this.showToast('Select the planted basil pot first.', 1500);
-      return;
-    }
-    if (!this.progress.wateringCanOwned || this.progress.equippedTool !== 'watering-can') {
-      this.showToast('Equip the watering can before pressing B.', 1500);
-      return;
-    }
-    if (this.getBasilStage() === 'mature') {
-      this.showToast('Basil is ready to harvest.', 1500);
-      return;
-    }
-    if (this.progress.basilGrowthStartedAt !== null || this.basilWaterAnimating) {
-      this.showToast('This basil has already been watered.', 1400);
-      return;
-    }
-    const growingSpot = this.getActiveGrowingSpot();
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 115) {
-      this.showToast('Move beside the basil pot before watering.', 1500);
-      return;
-    }
+  private startBasilWatering(): void { this.startGrowingWatering(); }
+
+  private startGrowingWatering(): void {
+    const pot = this.getSelectedGrowingPot();
+    if (!this.homeInterior || !pot?.crop || this.getCropStage(pot) !== 'planted') { this.showToast('Select a planted growing pot first.', 1500); return; }
+    if (!this.progress.wateringCanOwned || this.progress.equippedTool !== 'watering-can') { this.showToast('Equip the watering can before pressing B.', 1500); return; }
+    if (pot.crop.growthStartedAt !== null || this.basilWaterAnimating) { this.showToast('This crop has already been watered.', 1400); return; }
+    const growingSpot = this.getGrowingSpotForPot(pot);
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 115) { this.showToast('Move beside the growing pot before watering.', 1500); return; }
     this.audio.playToolUse();
+    this.selectedGrowingPotId = pot.id;
     this.basilWaterAnimating = true;
     this.basilWaterElapsed = 0;
     this.drawBasilWatering(0);
     this.showToast('WATERING…', 900);
   }
 
-  private stopBasilWatering(): void {
-    this.basilWaterAnimating = false;
-    this.basilWaterElapsed = 0;
-    this.basilWaterEffect?.clear().setVisible(false);
-  }
+  private stopBasilWatering(): void { this.basilWaterAnimating = false; this.basilWaterElapsed = 0; this.basilWaterEffect?.clear().setVisible(false); }
 
-  private updateBasilWatering(delta: number): void {
+  private updateBasilWatering(delta: number): void { this.updateGrowingWatering(delta); }
+
+  private updateGrowingWatering(delta: number): void {
     if (!this.basilWaterAnimating) return;
-    const movementHeld = this.joystickSteering
-      || this.cursorKeys?.left.isDown || this.cursorKeys?.right.isDown
-      || this.cursorKeys?.up.isDown || this.cursorKeys?.down.isDown
-      || this.keys?.W.isDown || this.keys?.A.isDown || this.keys?.S.isDown || this.keys?.D.isDown;
-    const stillValid = this.homeInterior && !this.modalOpen && !this.phoneLandscapeBlocked
-      && !this.shopTransitioning && !this.hopActive && !this.target && !movementHeld
-      && this.basilPotSelected && this.progress.equippedTool === 'watering-can'
-      && this.progress.basilGrowthStartedAt === null
-      && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getActiveGrowingSpot().x, this.getActiveGrowingSpot().y) <= 115;
-    if (!stillValid) {
-      this.stopBasilWatering();
-      return;
-    }
+    const targetId = this.selectedGrowingPotId;
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === targetId);
+    const movementHeld = this.joystickSteering || this.cursorKeys?.left.isDown || this.cursorKeys?.right.isDown || this.cursorKeys?.up.isDown || this.cursorKeys?.down.isDown || this.keys?.W.isDown || this.keys?.A.isDown || this.keys?.S.isDown || this.keys?.D.isDown;
+    const stillValid = this.homeInterior && !this.modalOpen && !this.phoneLandscapeBlocked && !this.shopTransitioning && !this.hopActive && !this.target && !movementHeld && Boolean(pot?.crop) && pot?.crop?.growthStartedAt === null && this.progress.equippedTool === 'watering-can' && targetId === this.selectedGrowingPotId && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot!).x, this.getGrowingSpotForPot(pot!).y) <= 115;
+    if (!stillValid) { this.stopBasilWatering(); return; }
     this.basilWaterElapsed = Math.min(this.basilWaterDuration, this.basilWaterElapsed + Math.min(delta, 32));
     const progress = this.basilWaterElapsed / this.basilWaterDuration;
     this.drawBasilWatering(progress);
     if (progress < 1) return;
     this.stopBasilWatering();
-    this.progress.basilGrowthStartedAt = Date.now();
-    this.progress.task = 'grow-basil';
-    this.basilStageCache = 'seedling';
-    this.saveProgress();
-    this.updateBasilVisual();
-    this.syncHudState();
-    this.showToast('Basil watered. It will mature in about 60 seconds.', 2200);
+    const species = pot!.crop!.species;
+    pot!.crop!.wateredAt = Date.now();
+    pot!.crop!.growthStartedAt = Date.now();
+    pot!.crop!.stage = 'seedling';
+    this.progress.task = species === 'basil' ? 'grow-basil' : 'grow-mint';
+    this.saveProgress(); this.updateBasilVisual(); this.syncHudState();
+    this.showToast(`${getPlantDefinition(species).label} watered. It will mature in about 60 seconds.`, 2200);
   }
 
   private drawBasilWatering(progress: number): void {
     if (!this.basilWaterEffect) return;
-    const sourceX = this.player.x;
-    const sourceY = this.player.y - 40;
-    const growingSpot = this.getActiveGrowingSpot();
-    const targetX = growingSpot.x;
-    const targetY = growingSpot.y - 34;
-    const travel = Math.min(1, progress / 0.8);
-    this.basilWaterEffect.clear();
-    this.basilWaterEffect.lineStyle(3, 0xd8dddc, 0.9);
-    this.basilWaterEffect.lineBetween(sourceX, sourceY, targetX - 14, targetY);
-    this.basilWaterEffect.fillStyle(0xf6f7f3, 0.95);
-    for (let index = 0; index < 6; index += 1) {
-      const offset = (index % 3 - 1) * 11;
-      const x = sourceX + (targetX + offset - sourceX) * Math.max(0, travel - (index % 3) * 0.08);
-      const y = sourceY + (targetY + offset * 0.2 - sourceY) * Math.max(0, travel - (index % 3) * 0.08);
-      this.basilWaterEffect.fillCircle(x, y, 3 + index % 2);
-    }
-    if (progress >= 0.8) {
-      this.basilWaterEffect.lineStyle(2, 0xf6f7f3, 0.9).strokeCircle(targetX, targetY, 8 + (progress - 0.8) * 20);
-    }
+    const targetPot = this.getSelectedGrowingPot();
+    const growingSpot = targetPot ? this.getGrowingSpotForPot(targetPot) : this.getActiveGrowingSpot();
+    const sourceX = this.player.x; const sourceY = this.player.y - 40; const targetX = growingSpot.x; const targetY = growingSpot.y - 34; const travel = Math.min(1, progress / 0.8);
+    this.basilWaterEffect.clear(); this.basilWaterEffect.lineStyle(3, 0xd8dddc, 0.9).lineBetween(sourceX, sourceY, targetX - 14, targetY); this.basilWaterEffect.fillStyle(0xf6f7f3, 0.95);
+    for (let index = 0; index < 6; index += 1) { const offset = (index % 3 - 1) * 11; const x = sourceX + (targetX + offset - sourceX) * Math.max(0, travel - (index % 3) * 0.08); const y = sourceY + (targetY + offset * 0.2 - sourceY) * Math.max(0, travel - (index % 3) * 0.08); this.basilWaterEffect.fillCircle(x, y, 3 + index % 2); }
+    if (progress >= 0.8) this.basilWaterEffect.lineStyle(2, 0xf6f7f3, 0.9).strokeCircle(targetX, targetY, 8 + (progress - 0.8) * 20);
     this.basilWaterEffect.setVisible(true);
   }
 
   private updateBasilVisual(): void {
-    if (!this.basilPot) return;
-    const stage = this.getBasilStage();
-    const growingSpot = this.getActiveGrowingSpot();
-    this.basilPot.setPosition(growingSpot.x, growingSpot.y);
-    this.basilPot.clear();
-    this.basilPot.setVisible(this.starterKitClaimed && this.progress.starterPotPlaced);
-    if (this.basilPot.visible) drawBasilCrop(this.basilPot, 0, 0, stage as BasilVisualStage, 0.9);
+    for (const pot of this.progress.growingPots) {
+      let display = this.growingPotDisplays.get(pot.id);
+      if (!display && this.homeInterior) {
+        display = this.add.graphics().setDepth(5);
+        this.growingPotDisplays.set(pot.id, display);
+        this.homeObjects.push(display);
+        if (pot.id === STARTER_GROWING_POT_ID) this.basilPot = display;
+      }
+      if (!display || pot.slot === null) { display?.setVisible(false); continue; }
+      const spot = HOME_GROWING_SPOTS[pot.slot];
+      display.setPosition(spot.x, spot.y).clear().setVisible(this.starterKitClaimed);
+      const stage = this.getCropStage(pot);
+      drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9);
+      display.setAlpha(this.selectedGrowingPotId === pot.id ? 1 : 0.94);
+    }
   }
 
-  private isNearGrowingSpot(point: Phaser.Math.Vector2): boolean {
-    return this.getGrowingSpotIndexAtPoint(point) !== null;
-  }
+  private isNearGrowingSpot(point: Phaser.Math.Vector2): boolean { return this.getGrowingSpotIndexAtPoint(point) !== null; }
 
   private isNearGrowingSpotPlayer(): boolean {
+    const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null
+      && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);
+    if (nearbyPot) return true;
     const growingSpot = this.getActiveGrowingSpot();
-    return Phaser.Math.Distance.Between(
-      this.player.x,
-      this.player.y,
-      growingSpot.x,
-      growingSpot.y,
-    ) <= BASIL_POT_INTERACTION_RADIUS;
+    return Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) <= BASIL_POT_INTERACTION_RADIUS;
   }
 
   private getBasilApproachPoint(): Phaser.Math.Vector2 {
-    const growingSpot = this.getActiveGrowingSpot();
-    // Stop Alex close to the pot's edge so the contextual OPEN POT action is
-    // available beside the selected slot rather than at a distant approach.
-    return new Phaser.Math.Vector2(growingSpot.x - 54, growingSpot.y);
+    const spot = this.getActiveGrowingSpot();
+    return new Phaser.Math.Vector2(spot.x - 54, spot.y);
   }
+
+  private getGrowingSpotForPot(pot: GrowingPotState): { x: number; y: number } { return HOME_GROWING_SPOTS[Phaser.Math.Clamp(pot.slot ?? this.selectedGrowingSpotIndex ?? 1, 0, HOME_GROWING_SPOTS.length - 1)] ?? HOME_GROWING_SPOTS[1]; }
 
   private getActiveGrowingSpot(): { x: number; y: number } {
-    const index = this.progress.starterPotPlaced
-      ? this.progress.starterPotSlot
-      : this.selectedGrowingSpotIndex ?? 1;
-    return HOME_GROWING_SPOTS[Phaser.Math.Clamp(index, 0, HOME_GROWING_SPOTS.length - 1)] ?? HOME_GROWING_SPOTS[1];
+    const selected = this.getSelectedGrowingPot();
+    return selected ? this.getGrowingSpotForPot(selected) : HOME_GROWING_SPOTS[Phaser.Math.Clamp(this.selectedGrowingSpotIndex ?? 1, 0, HOME_GROWING_SPOTS.length - 1)] ?? HOME_GROWING_SPOTS[1];
   }
 
+  private getSelectedGrowingPot(): GrowingPotState | null { return this.selectedGrowingPotId ? this.progress.growingPots.find((pot) => pot.id === this.selectedGrowingPotId) ?? null : null; }
+
+  private getPotAtGrowingSpotIndex(index: number): GrowingPotState | null { return this.progress.growingPots.find((pot) => pot.slot === index) ?? null; }
+
   private getGrowingSpotIndexAtPoint(point: Phaser.Math.Vector2): number | null {
-    const index = HOME_GROWING_SPOTS.findIndex((spot) => Math.abs(point.x - spot.x) <= 42
-      // Include the visible pot/leaves above the compact table slot without
-      // widening the neighbouring slot targets.
-      && point.y >= spot.y - 78
-      && point.y <= spot.y + 34);
+    const index = HOME_GROWING_SPOTS.findIndex((spot) => Math.abs(point.x - spot.x) <= 42 && point.y >= spot.y - 78 && point.y <= spot.y + 34);
     return index >= 0 ? index : null;
   }
 
-  private placeStarterPot(): void {
-    if (!this.homeInterior || !this.starterKitClaimed || this.progress.starterPotPlaced) return;
-    const growingSpot = this.getActiveGrowingSpot();
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 120) return;
-    this.progress.starterPotSlot = this.selectedGrowingSpotIndex ?? this.progress.starterPotSlot;
-    this.progress.starterPotPlaced = true;
-    this.progress.task = 'plant-basil';
+  private placeStarterPot(): void { this.placeSelectedGrowingPot(); }
+
+  private prepareGrowingSlotPlacement(): void {
+    if (!this.homeInterior || !this.starterKitClaimed) return;
+    const index = this.selectedGrowingSpotIndex;
+    if (index === null) {
+      this.showToast('Select an empty grow-table square first.', 1700);
+      return;
+    }
+    if (this.getPotAtGrowingSpotIndex(index)) {
+      this.showToast('That grow-table square is already occupied.', 1700);
+      return;
+    }
+    const pot = this.progress.growingPots.find((candidate) => candidate.slot === null);
+    const spot = HOME_GROWING_SPOTS[index];
+    if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) > 120) return;
+    this.pendingInteraction = null;
+    this.growingSlotReadyToPlace = true;
+    this.showInteractionHighlight('place-growing-pot', new Phaser.Math.Vector2(spot.x, spot.y));
+    this.hud.setAction('ADD POT TO THIS SQUARE');
+    this.showToast('Add pot to this square.', 2600);
+    this.updateInteraction();
+  }
+
+  public placeSelectedGrowingPot(): void {
+    if (!this.homeInterior || !this.starterKitClaimed) return;
+    if (!this.growingSlotReadyToPlace) {
+      this.showToast('Tap an empty grow-table square first.', 1700);
+      return;
+    }
+    const index = this.selectedGrowingSpotIndex;
+    if (index === null || this.getPotAtGrowingSpotIndex(index)) { this.showToast('Choose an empty grow-table slot.', 1500); return; }
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === STARTER_GROWING_POT_ID && candidate.slot === null)
+      ?? this.progress.growingPots.find((candidate) => candidate.slot === null);
+    const spot = HOME_GROWING_SPOTS[index];
+    if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) > 120) return;
+    pot.slot = index;
+    this.growingSlotReadyToPlace = false;
+    this.selectedGrowingPotId = pot.id;
     this.basilPotSelected = true;
-    this.saveProgress();
-    this.updateBasilVisual();
-    this.syncHudState();
-    this.selectedGrowingSpotIndex = null;
-    this.showToast('Starter pot placed. Select it to plant basil.', 1900);
+    this.progress.task = this.progress.growingPots.every((candidate) => candidate.slot !== null) ? 'plant-mint' : 'place-pot';
+    this.saveProgress(); this.updateBasilVisual(); this.syncHudState(); this.selectedGrowingSpotIndex = null;
+    this.showToast('Pot placed. Select it to choose a seed.', 1900);
     this.hud.openPanel('basil');
   }
 
   private selectBasilPot(): void {
-    if (!this.homeInterior || !this.progress.starterPotPlaced) return;
-    if (!this.isNearGrowingSpotPlayer()) {
-      this.showToast('Move closer to the growing pot first.', 1400);
-      return;
-    }
-    this.basilPotSelected = true;
-    const stage = this.getBasilStage();
-    if (stage === 'empty' || stage === 'mature') {
-      this.hud.openPanel('basil');
-    } else {
-      this.showToast('Basil selected. Equip the watering can and press B.', 1900);
-    }
-    this.updateInteraction();
+    const starter = this.progress.growingPots.find((pot) => pot.id === STARTER_GROWING_POT_ID);
+    if (starter) this.selectGrowingPot(starter.id);
+  }
+
+  public selectGrowingPot(id: string): void {
+    if (!this.homeInterior) return;
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === id && candidate.slot !== null);
+    if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) > BASIL_POT_INTERACTION_RADIUS) { this.showToast('Move closer to the growing pot first.', 1400); return; }
+    this.selectedGrowingPotId = id; this.basilPotSelected = true;
+    const stage = this.getCropStage(pot);
+    if (stage === 'empty' || stage === 'mature') this.hud.openPanel('basil');
+    else this.showToast(`${pot.crop?.species === 'mint' ? 'Mint' : 'Basil'} selected. Equip the watering can and press B.`, 1900);
+    this.updateBasilVisual(); this.updateInteraction();
   }
 
   restartPrototype(): void {
@@ -1994,6 +2074,7 @@ export class GameScene extends Phaser.Scene {
     this.repairPickupReady = false;
     this.windowFacePromptRequired = false;
     this.basilPotSelected = false;
+    this.selectedGrowingPotId = null;
     this.basilStageCache = 'empty';
     this.stopBasilWatering();
     this.repairPotDisplay?.destroy();
@@ -2479,6 +2560,9 @@ export class GameScene extends Phaser.Scene {
     this.selectedWindowSectionIndex = null;
     this.windowFacePromptRequired = false;
     this.basilPotSelected = false;
+    this.selectedGrowingPotId = null;
+    this.selectedGrowingSpotIndex = null;
+    this.growingSlotReadyToPlace = false;
     this.windowFacingLocked = false;
     this.clearInteractionHighlight();
     this.target = path.shift() ?? null;
@@ -2573,15 +2657,14 @@ export class GameScene extends Phaser.Scene {
         this.showToast('Claim the starter kit before using the grow table.', 1700);
         return;
       }
-      if (this.progress.starterPotPlaced && growingSpotIndex !== this.progress.starterPotSlot) {
-        this.cancelTapWalk();
-        this.showToast('That grow-table slot is empty. Another pot can use it later.', 1800);
-        return;
-      }
       this.selectedGrowingSpotIndex = growingSpotIndex;
-      const approach = this.getBasilApproachPoint();
-      const interaction: PendingInteraction = this.progress.starterPotPlaced ? 'select-basil-pot' : 'place-starter-pot';
-      if (this.isNearGrowingSpotPlayer()) {
+      const pot = this.getPotAtGrowingSpotIndex(growingSpotIndex);
+      const spot = HOME_GROWING_SPOTS[growingSpotIndex];
+      const approach = new Phaser.Math.Vector2(spot.x - 54, spot.y);
+      const unplacedPot = this.progress.growingPots.find((candidate) => candidate.slot === null);
+      const interaction: PendingInteraction = pot ? 'select-growing-pot' : unplacedPot ? 'place-growing-pot' : 'select-growing-pot';
+      this.selectedGrowingPotId = pot?.id ?? null;
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) <= BASIL_POT_INTERACTION_RADIUS) {
         this.selectPendingInteraction(interaction, approach);
       } else {
         const path = this.getHomeTapPath(approach.x, approach.y);
@@ -2708,6 +2791,10 @@ export class GameScene extends Phaser.Scene {
       this.interactionHighlight.strokeRect(point.x - 58, point.y - 62, 116, 70);
     } else if (interaction === 'window-clean') {
       this.interactionHighlight.strokeRect(1274, 596, 332, 188);
+    } else if (interaction === 'place-growing-pot') {
+      const index = this.selectedGrowingSpotIndex;
+      const spot = index === null ? point : HOME_GROWING_SPOTS[index];
+      this.interactionHighlight.strokeRect(spot.x - 48, spot.y - 34, 96, 68);
     } else {
       this.interactionHighlight.strokeCircle(point.x, point.y, 42);
     }
@@ -2741,6 +2828,8 @@ export class GameScene extends Phaser.Scene {
     if (interaction === 'claim-starter-kit') this.claimStarterKit();
     if (interaction === 'place-starter-pot') this.placeStarterPot();
     if (interaction === 'select-basil-pot') this.selectBasilPot();
+    if (interaction === 'place-growing-pot') this.prepareGrowingSlotPlacement();
+    if (interaction === 'select-growing-pot' && this.selectedGrowingPotId) this.selectGrowingPot(this.selectedGrowingPotId);
   }
 
   private collectPot(): void {
@@ -2950,6 +3039,7 @@ export class GameScene extends Phaser.Scene {
     this.drawHomeInterior();
     this.player.setPosition(HOME_PLAYER_START.x, HOME_PLAYER_START.y).setAlpha(1).setVisible(true);
     this.basilPotSelected = false;
+    this.selectedGrowingPotId = null;
     this.destinationMarker.setVisible(false);
     this.clearInteractionHighlight();
     this.setHomeCamera();
@@ -3011,6 +3101,7 @@ export class GameScene extends Phaser.Scene {
     this.basilWaterEffect = undefined;
     this.homeInterior = false;
     this.basilPotSelected = false;
+    this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
     this.player.setPosition(APARTMENT_ENTRANCE.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.setRepairPickupPresentationVisible(this.repairPickupReady);
@@ -3149,9 +3240,13 @@ export class GameScene extends Phaser.Scene {
       this.homeObjects.push(slotLabel);
     });
 
-    const activeSpot = this.getActiveGrowingSpot();
-    this.basilPot = this.add.graphics().setDepth(5).setPosition(activeSpot.x, activeSpot.y);
-    this.homeObjects.push(this.basilPot);
+    this.growingPotDisplays.clear();
+    this.progress.growingPots.forEach((pot) => {
+      const display = this.add.graphics().setDepth(5);
+      this.growingPotDisplays.set(pot.id, display);
+      this.homeObjects.push(display);
+      if (pot.id === STARTER_GROWING_POT_ID) this.basilPot = display;
+    });
     this.basilWaterEffect = this.add.graphics().setDepth(6).setVisible(false);
     this.homeObjects.push(this.basilWaterEffect);
     this.updateBasilVisual();
@@ -3306,13 +3401,9 @@ export class GameScene extends Phaser.Scene {
       } else if (entry.item === 'special-repair-pot') {
         drawBrokenPot(item, position.x, position.y, 0.62, 10);
       } else {
-        item.fillStyle(0x111416, 1).fillRect(position.x - 22, position.y - 12, 44, 8);
-        item.fillStyle(0xbfc5c3, 1).fillRect(position.x - 15, position.y - 4, 30, 30);
-        item.lineStyle(3, 0x111416, 1).strokeRect(position.x - 15, position.y - 4, 30, 30);
-        item.lineStyle(3, 0xf6f7f3, 1).lineBetween(position.x, position.y - 20, position.x - 13, position.y - 38);
-        item.lineBetween(position.x, position.y - 20, position.x + 14, position.y - 34);
+        drawGrowingCrop(item, position.x, position.y, entry.item === 'fresh-mint-leaves' ? 'mint' : 'basil', 'mature', 0.55);
       }
-      const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : 'BASIL HARVEST';
+      const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : entry.item === 'fresh-mint-leaves' ? 'FRESH MINT' : 'FRESH BASIL';
       const stockLabel = this.add.text(position.x, position.y - 40, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}`, {
         color: '#f6f7f3',
         fontFamily: 'monospace',
@@ -3539,6 +3630,7 @@ export class GameScene extends Phaser.Scene {
     this.targetQueue = [];
     if (this.destinationMarker) this.destinationMarker.setVisible(false);
     this.pendingInteraction = null;
+    this.growingSlotReadyToPlace = false;
     this.basilPotSelected = false;
     this.windowFacePromptRequired = false;
     this.windowFacingLocked = false;
@@ -3635,12 +3727,21 @@ export class GameScene extends Phaser.Scene {
       this.hud.setAction('CLAIM STARTER KIT');
       return;
     }
+    if (!this.modalOpen && this.homeInterior && this.growingSlotReadyToPlace) {
+      this.hud.setAction('ADD POT TO THIS SQUARE');
+      return;
+    }
     if (!this.modalOpen && this.homeInterior && this.isNearGrowingSpotPlayer()) {
       if (!this.starterKitClaimed) this.hud.setAction('CLAIM STARTER KIT');
-      else if (!this.progress.starterPotPlaced) this.hud.setAction('PLACE STARTER POT');
-      else if (this.basilPotSelected && this.getBasilStage() === 'planted') this.hud.setAction('WATER BASIL');
-      else if (this.getBasilStage() === 'mature') this.hud.setAction('HARVEST BASIL');
-      else this.hud.setAction('OPEN POT');
+      else {
+        const selectedPot = this.getSelectedGrowingPot();
+        const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);
+        const pot = selectedPot ?? nearbyPot;
+        if (!pot) this.hud.setAction(this.progress.growingPots.some((candidate) => candidate.slot === null) ? 'TAP EMPTY SLOT' : null);
+        else if (this.basilPotSelected && pot.crop && this.getCropStage(pot) === 'planted') this.hud.setAction(`WATER ${pot.crop.species === 'mint' ? 'MINT' : 'BASIL'}`);
+        else if (pot.crop && this.getCropStage(pot) === 'mature') this.hud.setAction(`HARVEST ${pot.crop.species === 'mint' ? 'MINT' : 'BASIL'}`);
+        else this.hud.setAction('OPEN POT');
+      }
       return;
     }
     if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.placedWorldItem
