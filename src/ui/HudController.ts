@@ -942,7 +942,7 @@ export class HudController {
     }
     if (kind === 'basil') {
       return {
-        title: 'BASIL POT',
+        title: 'GROWING POT',
         body: this.basilPanelMarkup(),
       };
     }
@@ -1029,6 +1029,8 @@ export class HudController {
       this.bindButtonActivation(button, () => { const id = button.dataset.selectGrowingPot; if (id) this.scene?.selectGrowingPot(id); });
     });
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-place-growing-pot]').forEach((button) => this.bindButtonActivation(button, () => this.scene?.placeSelectedGrowingPot()));
+    const waterButton = this.panelBody.querySelector<HTMLButtonElement>('[data-water-crop]');
+    if (waterButton) this.bindButtonActivation(waterButton, () => this.scene?.waterSelectedCrop());
     const fertilizerButton = this.panelBody.querySelector<HTMLButtonElement>('[data-use-basic-fertilizer]');
     if (fertilizerButton) this.bindButtonActivation(fertilizerButton, () => this.scene?.useBasicFertilizer());
     const harvestButton = this.panelBody.querySelector<HTMLButtonElement>('[data-harvest-crop]');
@@ -1189,42 +1191,42 @@ export class HudController {
       harvestQuantities: this.harvestQuantities,
     };
     const stageLabels: Record<BasilStage, string> = {
-      empty: 'EMPTY POT', planted: 'PLANTED', seedling: 'SEEDLING', mature: 'MATURE CROP',
+      empty: 'EMPTY', planted: 'NEEDS WATER', seedling: 'GROWING', mature: 'READY TO HARVEST',
     };
     const minutes = Math.floor(state.timeRemainingMs / 60000);
     const seconds = Math.ceil((state.timeRemainingMs % 60000) / 1000);
     const timeLabel = state.timeRemainingMs > 0 ? `${minutes}:${String(seconds).padStart(2, '0')} remaining` : '';
+    const selectedPot = state.growingPots.find((pot) => pot.id === state.selectedPotId) ?? null;
+    const potName = 'Small basic plastic pot';
+    const speciesLabel = selectedPot?.crop ? getPlantDefinition(selectedPot.crop.species).label : '';
     let status = '';
     let action = '';
     if (!state.starterKitClaimed) {
       status = 'Claim the starter kit inside your rental first.';
-    } else if (!state.selectedPotId) {
-      status = 'Select a placed pot on the grow table.';
+    } else if (!selectedPot) {
+      status = 'No pot selected.';
     } else if (state.stage === 'empty') {
-      status = 'Empty pot with usable medium. Choose one seed type.';
-      action = `<div class="seed-choice-row">${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); const available = state.seedQuantities[species] ?? 0; return `<button class="basil-action" type="button" data-plant-species="${species}"${available < 1 ? ' disabled' : ''}>PLANT ${definition.label.toUpperCase()} <small>×${available}</small></button>`; }).join('')}</div>`;
+      status = 'Choose a seed type.';
+      const seedButtons = PLANT_SPECIES.map((species) => {
+        const definition = getPlantDefinition(species);
+        const available = state.seedQuantities[species] ?? 0;
+        return `<button class="basil-action" type="button" data-plant-species="${species}"${available < 1 ? ' disabled' : ''}>PLANT ${definition.label.toUpperCase()} <small>×${available}</small></button>`;
+      }).join('');
+      const hasSeed = PLANT_SPECIES.some((species) => (state.seedQuantities[species] ?? 0) > 0);
+      action = hasSeed ? `<div class="seed-choice-row">${seedButtons}</div>` : '<p class="basil-action-note">No seed portions owned. Buy basil or mint seeds at BUY / SELL.</p>';
     } else if (state.stage === 'planted') {
-      status = 'The planted crop needs one completed watering pour.';
+      action = state.wateringCanOwned
+        ? '<button class="basil-action" type="button" data-water-crop>WATER CROP</button>'
+        : '<p class="basil-action-note">A basic watering can is required.</p>';
     } else if (state.stage === 'seedling') {
-      status = `Crop is growing · ${timeLabel}. Basic fertiliser skips the full 60 seconds.`;
+      status = timeLabel;
       action = state.basicFertilizerCharges > 0
-        ? '<button class="basil-action" type="button" data-use-basic-fertilizer>USE BASIC FERTILISER · INSTANT GROW</button>'
-        : '';
+        ? `<button class="basil-action" type="button" data-use-basic-fertilizer>FERTILISE CROP <small>×${state.basicFertilizerCharges}</small></button>`
+        : '<p class="basil-action-note">No basic fertiliser remains.</p>';
     } else {
-      status = 'The mature crop is ready to harvest.';
-      action = '<button class="basil-action" type="button" data-harvest-crop>HARVEST SELECTED CROP</button>';
+      action = '<button class="basil-action" type="button" data-harvest-crop>HARVEST CROP</button>';
     }
-    const potButtons = state.growingPots.filter((pot) => pot.slot !== null).map((pot) => {
-      const species = pot.crop?.species;
-      const potStage = pot.crop ? (pot.crop.stage === 'planted' ? 'PLANTED' : pot.crop.stage === 'mature' || pot.crop.growthStartedAt && Date.now() - pot.crop.growthStartedAt >= getPlantDefinition(species!).growthDurationMs ? 'MATURE' : 'GROWING') : 'EMPTY';
-      const label = species ? `${getPlantDefinition(species).label} · ${potStage}` : potStage;
-      return `<button class="growing-pot-choice ${pot.id === state.selectedPotId ? 'is-selected' : ''}" type="button" data-select-growing-pot="${this.escapeHtml(pot.id)}">SLOT ${(pot.slot ?? 0) + 1}<strong>${label}</strong></button>`;
-    }).join('');
-    const unplaced = state.growingPots.filter((pot) => pot.slot === null).length;
-    const potSummary = `${potButtons || '<small>No pots are placed yet.</small>'}${unplaced > 0 ? `<small class="pot-placement-note">${unplaced} owned pot${unplaced === 1 ? '' : 's'} ready. Close this panel and tap an empty grow-table slot to place one.</small>` : ''}`;
-    const selectedCrop = state.growingPots.find((pot) => pot.id === state.selectedPotId)?.crop;
-    const selectedLabel = selectedCrop ? getPlantDefinition(selectedCrop.species).label : 'pot';
-    return `<div class="basil-panel"><div class="basil-stage"><span class="basil-stage-art">${state.stage === 'mature' ? '♣' : state.stage === 'seedling' ? '⌁' : '▱'}</span><div><strong>${selectedLabel.toUpperCase()} · ${stageLabels[state.stage]}</strong><small>${status}</small></div></div><div class="growing-pot-list"><strong>GROW TABLE · SELECT A POT</strong>${potSummary}</div><div class="basil-details"><span>BASIL SEEDS <b>${state.seedQuantities.basil}</b></span><span>MINT SEEDS <b>${state.seedQuantities.mint}</b></span><span>BASIL LEAVES <b>${state.harvestQuantities.basil}</b></span><span>MINT LEAVES <b>${state.harvestQuantities.mint}</b></span><span>BASIC FERTILISER <b>${state.basicFertilizerCharges}</b></span><span>WATERING CAN <b>${state.wateringCanOwned ? 'OWNED' : 'MISSING'}</b></span></div>${action}<p class="basil-note">${state.stage === 'planted' ? 'Close this panel, equip the watering can and press B beside the selected pot.' : 'Each pot grows independently. The used medium remains after harvest.'}</p><p class="basil-feedback ${this.basilFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.basilFeedback)}</p></div>`;
+    return `<div class="basil-panel"><div class="basil-pot-header"><span class="basil-stage-art">${state.stage === 'mature' ? '♣' : state.stage === 'seedling' ? '⌁' : '▱'}</span><div><strong>${potName.toUpperCase()}</strong>${speciesLabel ? `<small>${this.escapeHtml(speciesLabel)}</small>` : ''}<b>${stageLabels[state.stage]}</b>${status ? `<small>${this.escapeHtml(status)}</small>` : ''}</div></div>${action}<p class="basil-feedback ${this.basilFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.basilFeedback)}</p></div>`;
   }
 
   private devToolsMarkup(): string {

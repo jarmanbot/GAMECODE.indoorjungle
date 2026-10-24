@@ -226,6 +226,11 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .property-feedback { min-height: 0; margin: 0; color: #f6f7f3; font-size: 11px; font-weight: 900; }
 .property-feedback:not(.is-visible) { display: none; }
 .basil-panel { display: grid; gap: 12px; }
+.basil-pot-header { display: flex; align-items: center; gap: 12px; padding: 12px; background: #202729; border: 2px solid #697271; }
+.basil-pot-header > div { display: grid; gap: 4px; min-width: 0; }
+.basil-pot-header strong { color: #f6f7f3; font-size: 15px; letter-spacing: .06em; }
+.basil-pot-header b { color: #f6f7f3; font-size: 11px; letter-spacing: .08em; }
+.basil-pot-header small { color: #b9c0be; font-size: 11px; line-height: 1.25; }
 .basil-stage { display: flex; align-items: center; gap: 12px; padding: 12px; background: #202729; border: 2px solid #697271; }
 .basil-stage-art { width: 52px; height: 52px; display: grid; place-items: center; border: 2px solid #f6f7f3; color: #f6f7f3; font-size: 30px; }
 .basil-stage strong { display: block; font-size: 15px; letter-spacing: .06em; }
@@ -236,6 +241,8 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .basil-action { min-height: 46px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-size: 12px; font-weight: 900; }
 .basil-action:hover { background: #f6f7f3; color: #111416; }
 .basil-action:disabled { opacity: .45; cursor: not-allowed; }
+.basil-action small { display: inline-block; margin-left: 7px; color: #b9c0be; font-size: 10px; }
+.basil-action-note { margin: 0; padding: 10px; border-left: 4px solid #f6f7f3; background: #202729; color: #b9c0be; font-size: 11px; line-height: 1.35; }
 .basil-note, .basil-feedback { margin: 0; color: #b9c0be; font-size: 11px; line-height: 1.45; }
 .basil-feedback { color: #f6f7f3; font-weight: 900; }
 .basil-feedback:not(.is-visible) { display: none; }

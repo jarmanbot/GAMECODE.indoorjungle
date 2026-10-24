@@ -87,8 +87,15 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot';
+type PendingInteraction = 'pickup' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-home' | 'exit-home' | 'claim-starter-kit' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot' | 'gardening-action';
 type PlayerFacing = 'front' | 'back' | 'left' | 'right';
+type GardeningActionType = 'plant' | 'water' | 'fertilize' | 'harvest';
+interface GardeningAction {
+  potId: string;
+  type: GardeningActionType;
+  species?: PlantSpecies;
+  requiredTool?: EquippedTool;
+}
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
 
@@ -194,6 +201,12 @@ export class GameScene extends Phaser.Scene {
   private basilStageCache: BasilStage = 'empty';
   private selectedGrowingPotId: string | null = null;
   private growingSlotReadyToPlace = false;
+  private pendingGardeningAction: GardeningAction | null = null;
+  private activeGardeningAction: GardeningAction | null = null;
+  private gardeningActionElapsed = 0;
+  private gardeningActionApplied = false;
+  private readonly gardeningActionDuration = 760;
+  private gardeningPanelRefreshAt = 0;
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -274,11 +287,17 @@ export class GameScene extends Phaser.Scene {
     this.updateInteraction();
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
     this.updateCars(delta);
     this.updateGrowingCrops();
     this.updateGrowingWatering(delta);
+    this.updateGardeningAction(delta);
     this.updateWindowSpray(delta);
+
+    if (this.modalOpen && time - this.gardeningPanelRefreshAt >= 500) {
+      this.gardeningPanelRefreshAt = time;
+      this.hud.refreshBasilPanel();
+    }
 
     if (this.modalOpen && !this.mapMovementAllowed) {
       this.updateInteraction();
@@ -289,6 +308,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.shopTransitioning) {
+      this.updateInteraction();
+      return;
+    }
+    if (this.activeGardeningAction) {
       this.updateInteraction();
       return;
     }
@@ -475,6 +498,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   setJoystickInput(x: number, y: number, pointerHeld: boolean): void {
+    if (this.activeGardeningAction) {
+      this.joystickPointerHeld = pointerHeld;
+      this.joystickInput.set(0, 0);
+      this.joystickSteering = false;
+      return;
+    }
     this.joystickPointerHeld = pointerHeld;
     if (!pointerHeld) {
       this.joystickInput.set(0, 0);
@@ -543,7 +572,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   pressHop(): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive || this.activeGardeningAction) return;
     this.clearItemPlacement();
     this.audio.unlock();
     this.audio.playJump();
@@ -557,7 +586,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   pressTool(): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive || this.activeGardeningAction) return;
     if (this.toolHeld) return;
     this.toolHeld = true;
     this.audio.unlock();
@@ -598,6 +627,7 @@ export class GameScene extends Phaser.Scene {
     this.assignToolToSlot(tool);
     this.saveProgress();
     this.syncHudState();
+    this.drawPlayer();
     const label = tool === 'cleaner' ? 'Cleaner' : tool === 'repair' ? 'Repair tool' : 'Watering can';
     this.hud.refreshShopPanel(`${label} equipped.`);
     this.showToast(`${label} equipped.`, 1200);
@@ -1033,6 +1063,7 @@ export class GameScene extends Phaser.Scene {
     this.releaseTool();
     this.stopSprayEffect();
     this.stopBasilWatering();
+    if (this.activeGardeningAction) this.cancelGardeningAction('Gardening action cancelled.');
     if (cancelRepair && this.repairPresentationActive) this.cancelRepairPresentation();
   }
 
@@ -1733,22 +1764,25 @@ export class GameScene extends Phaser.Scene {
       this.hud.refreshBasilPanel(`No ${definition.label.toLowerCase()} seed portions available. Buy one at BUY / SELL.`);
       return;
     }
-    pot.crop = { species, stage: 'planted', wateredAt: null, growthStartedAt: null };
-    this.progress.seedQuantities[species] -= 1;
-    this.progress.growingEvents[species] += 1;
-    this.progress.task = species === 'basil' ? 'water-basil' : 'water-mint';
-    this.basilPotSelected = true;
-    this.saveProgress();
-    this.updateBasilVisual();
-    this.syncHudState();
-    this.hud.refreshBasilPanel(`${definition.label} planted. Select this pot, equip the watering can and press B.`);
-    this.showToast(`${definition.label} planted. Select this pot, equip the watering can and press B.`, 2600);
+    this.requestGardeningAction({ potId: pot.id, type: 'plant', species });
+  }
+
+  waterSelectedCrop(): void {
+    const pot = this.getSelectedGrowingPot();
+    if (!pot?.crop || this.getCropStage(pot) !== 'planted' || pot.crop.growthStartedAt !== null) {
+      this.hud.refreshBasilPanel('This pot does not need water.');
+      return;
+    }
+    if (!this.progress.wateringCanOwned) {
+      this.hud.refreshBasilPanel('A basic watering can is required.');
+      return;
+    }
+    this.requestGardeningAction({ potId: pot.id, type: 'water', requiredTool: 'watering-can' }, true);
   }
 
   useBasicFertilizer(): void {
     const pot = this.getSelectedGrowingPot();
     const species = pot?.crop?.species;
-    const definition = species ? getPlantDefinition(species) : null;
     if (!this.homeInterior || !pot || !pot.crop || !species) {
       this.hud.refreshBasilPanel('Select a planted growing pot before using fertiliser.');
       return;
@@ -1761,17 +1795,7 @@ export class GameScene extends Phaser.Scene {
       this.hud.refreshBasilPanel('No basic fertiliser remains. Plants shop stock will arrive later.');
       return;
     }
-    const targetId = pot.id;
-    this.progress.basicFertilizerCharges -= 1;
-    pot.crop.growthStartedAt = Date.now() - (definition?.growthDurationMs ?? BASIL_GROWTH_DURATION_MS) - 1;
-    pot.crop.stage = 'seedling';
-    this.selectedGrowingPotId = targetId;
-    this.saveProgress();
-    this.updateGrowingCrops();
-    this.updateBasilVisual();
-    this.syncHudState();
-    this.hud.refreshBasilPanel(`Basic fertiliser used. ${definition?.label ?? 'Crop'} is mature and ready to harvest.`);
-    this.showToast('Basic fertiliser used. Crop grew instantly.', 2200);
+    this.requestGardeningAction({ potId: pot.id, type: 'fertilize' });
   }
 
   harvestBasil(): void { this.harvestSelectedCrop(); }
@@ -1784,18 +1808,222 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const definition = getPlantDefinition(species);
-    pot.crop = null;
-    this.progress.harvestQuantities[species] += 1;
-    this.progress.task = species === 'basil' ? 'sell-basil' : 'sell-mint';
-    this.basilPotSelected = false;
-    this.selectedGrowingPotId = null;
+    this.requestGardeningAction({ potId: pot.id, type: 'harvest', species });
+  }
+
+  private requestGardeningAction(action: GardeningAction, autoEquip = false): void {
+    if (this.activeGardeningAction || this.pendingGardeningAction) return;
+    const initialError = this.getGardeningActionError(action, false, !autoEquip);
+    if (initialError) {
+      this.hud.refreshBasilPanel(initialError);
+      this.showToast(initialError, 1700);
+      return;
+    }
+
+    this.hud.closePanel();
+    if (autoEquip && action.requiredTool && this.progress.equippedTool !== action.requiredTool) {
+      this.equipTool(action.requiredTool);
+    }
+    this.pendingGardeningAction = { ...action };
+    this.selectedGrowingPotId = action.potId;
+    this.basilPotSelected = true;
+    const pot = this.getSelectedGrowingPot();
+    if (!pot || pot.slot === null) {
+      this.pendingGardeningAction = null;
+      this.showToast('That growing pot is no longer available.', 1700);
+      return;
+    }
+    const spot = this.getGrowingSpotForPot(pot);
+    const approach = new Phaser.Math.Vector2(spot.x - 54, spot.y);
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
+      this.selectPendingInteraction('gardening-action', approach);
+      return;
+    }
+    const path = this.getHomeTapPath(approach.x, approach.y);
+    if (path) this.selectPendingInteraction('gardening-action', approach, path);
+    else {
+      this.pendingGardeningAction = null;
+      this.showToast('That growing pot cannot be reached.', 1700);
+    }
+  }
+
+  private getGardeningActionError(action: GardeningAction, checkDistance: boolean, checkTool = true): string | null {
+    if (!this.homeInterior) return 'Gardening actions are only available inside the apartment.';
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === action.potId);
+    if (!pot || pot.slot === null) return 'That growing pot is no longer available.';
+    const spot = this.getGrowingSpotForPot(pot);
+    if (checkDistance && Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) > 115) return 'Move beside the selected growing pot first.';
+    if (checkTool && action.requiredTool && this.progress.equippedTool !== action.requiredTool) {
+      return `Equip the ${action.requiredTool === 'watering-can' ? 'watering can' : action.requiredTool} first.`;
+    }
+    if (action.type === 'plant') {
+      if (!action.species) return 'Choose a seed type first.';
+      if (pot.crop) return 'This pot is already occupied.';
+      if ((this.progress.seedQuantities[action.species] ?? 0) < 1) return `No ${getPlantDefinition(action.species).label.toLowerCase()} seed portions remain.`;
+    } else if (action.type === 'water') {
+      if (!pot.crop || this.getCropStage(pot) !== 'planted' || pot.crop.growthStartedAt !== null) return 'This pot does not need water.';
+      if (!this.progress.wateringCanOwned) return 'A basic watering can is required.';
+    } else if (action.type === 'fertilize') {
+      if (!pot.crop || this.getCropStage(pot) !== 'seedling' || pot.crop.growthStartedAt === null) return 'Basic fertiliser is only used while a crop is growing.';
+      if (this.progress.basicFertilizerCharges < 1) return 'No basic fertiliser remains.';
+    } else if (action.type === 'harvest') {
+      if (!pot.crop || this.getCropStage(pot) !== 'mature') return 'The selected crop is not ready to harvest.';
+    }
+    return null;
+  }
+
+  private startGardeningAction(): void {
+    const action = this.pendingGardeningAction;
+    if (!action) return;
+    const error = this.getGardeningActionError(action, true);
+    if (error) {
+      this.pendingGardeningAction = null;
+      this.showToast(error, 1700);
+      return;
+    }
+    this.pendingGardeningAction = null;
+    this.activeGardeningAction = action;
+    this.basilPotSelected = true;
+    this.gardeningActionElapsed = 0;
+    this.gardeningActionApplied = false;
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === action.potId)!;
+    const spot = this.getGrowingSpotForPot(pot);
+    this.faceDirection(new Phaser.Math.Vector2(spot.x - this.player.x, spot.y - this.player.y));
+    this.audio.playToolUse();
+    this.drawGardeningAction(0);
+    this.showToast(action.type === 'plant' ? 'SOWING…' : action.type === 'water' ? 'WATERING…' : action.type === 'fertilize' ? 'FERTILISING…' : 'HARVESTING…', 900);
+  }
+
+  private updateGardeningAction(delta: number): void {
+    const action = this.activeGardeningAction;
+    if (!action) return;
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === action.potId);
+    const spot = pot?.slot === null || !pot ? null : this.getGrowingSpotForPot(pot);
+    const stillInRange = this.homeInterior && !this.modalOpen && !this.phoneLandscapeBlocked && !this.shopTransitioning
+      && !this.hopActive && Boolean(spot)
+      && Phaser.Math.Distance.Between(this.player.x, this.player.y, spot!.x, spot!.y) <= 115;
+    if (!stillInRange) {
+      this.cancelGardeningAction('Gardening action cancelled.');
+      return;
+    }
+    if (!this.gardeningActionApplied) {
+      const error = this.getGardeningActionError(action, true);
+      if (error) {
+        this.cancelGardeningAction(error);
+        return;
+      }
+    }
+    this.gardeningActionElapsed = Math.min(this.gardeningActionDuration, this.gardeningActionElapsed + Math.min(delta, 32));
+    const progress = this.gardeningActionElapsed / this.gardeningActionDuration;
+    this.drawGardeningAction(progress);
+    if (!this.gardeningActionApplied && progress >= 0.58) this.applyGardeningAction(action);
+    if (progress >= 1) {
+      this.activeGardeningAction = null;
+      this.basilWaterEffect?.clear().setVisible(false);
+      this.drawPlayer();
+      this.updateInteraction();
+    }
+  }
+
+  private applyGardeningAction(action: GardeningAction): void {
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === action.potId);
+    if (!pot || pot.slot === null || this.getGardeningActionError(action, true)) {
+      this.cancelGardeningAction('Gardening action could not be completed.');
+      return;
+    }
+    if (action.type === 'plant' && action.species) {
+      pot.crop = { species: action.species, stage: 'planted', wateredAt: null, growthStartedAt: null };
+      this.progress.seedQuantities[action.species] -= 1;
+      this.progress.growingEvents[action.species] += 1;
+      this.progress.task = action.species === 'basil' ? 'water-basil' : 'water-mint';
+      this.showToast(`${getPlantDefinition(action.species).label} planted.`, 1400);
+    } else if (action.type === 'water' && pot.crop) {
+      const now = Date.now();
+      pot.crop.wateredAt = now;
+      pot.crop.growthStartedAt = now;
+      pot.crop.stage = 'seedling';
+      this.progress.task = pot.crop.species === 'basil' ? 'grow-basil' : 'grow-mint';
+      this.showToast(`${getPlantDefinition(pot.crop.species).label} watered. It will mature in about 60 seconds.`, 2200);
+    } else if (action.type === 'fertilize' && pot.crop) {
+      const duration = getPlantDefinition(pot.crop.species).growthDurationMs;
+      this.progress.basicFertilizerCharges -= 1;
+      pot.crop.growthStartedAt = Date.now() - duration - 1;
+      pot.crop.stage = 'seedling';
+      this.updateGrowingCrops();
+      this.showToast('Basic fertiliser used. Crop grew instantly.', 2200);
+    } else if (action.type === 'harvest' && pot.crop) {
+      const species = pot.crop.species;
+      const definition = getPlantDefinition(species);
+      pot.crop = null;
+      this.progress.harvestQuantities[species] += 1;
+      this.progress.task = species === 'basil' ? 'sell-basil' : 'sell-mint';
+      this.basilPotSelected = false;
+      this.hud.highlightBag();
+      this.showToast(`${definition.label} harvested. Sell it at BUY / SELL for ${definition.harvestPrice} coins.`, 2400);
+    }
+    this.gardeningActionApplied = true;
     this.saveProgress();
     this.updateBasilVisual();
     this.syncHudState();
-    this.updateInteraction();
-    this.hud.highlightBag();
-    this.hud.refreshBasilPanel(`${definition.label} harvested and added to the Bag. Sell it at BUY / SELL for ${definition.harvestPrice} coins.`);
-    this.showToast(`${definition.label} harvested. Sell it at BUY / SELL for ${definition.harvestPrice} coins.`, 2400);
+  }
+
+  private cancelGardeningAction(message: string): void {
+    const hadAction = Boolean(this.pendingGardeningAction || this.activeGardeningAction);
+    this.pendingGardeningAction = null;
+    this.activeGardeningAction = null;
+    this.gardeningActionElapsed = 0;
+    this.gardeningActionApplied = false;
+    this.basilWaterEffect?.clear().setVisible(false);
+    this.drawPlayer();
+    if (hadAction && message) this.showToast(message, 1700);
+  }
+
+  private drawGardeningAction(progress: number): void {
+    const action = this.activeGardeningAction;
+    if (!action || !this.basilWaterEffect) return;
+    const pot = this.progress.growingPots.find((candidate) => candidate.id === action.potId);
+    if (!pot || pot.slot === null) return;
+    const spot = this.getGrowingSpotForPot(pot);
+    const sourceX = this.player.x + (this.playerFacing === 'left' ? -16 : 16);
+    const sourceY = this.player.y - 28;
+    const targetX = spot.x;
+    const targetY = spot.y - 28;
+    const travel = Math.min(1, progress / 0.78);
+    const lerp = (start: number, end: number, amount: number): number => start + (end - start) * amount;
+    this.basilWaterEffect.clear();
+    if (action.type === 'water') {
+      this.basilWaterEffect.lineStyle(3, 0xd8dddc, 0.9).lineBetween(sourceX, sourceY, targetX, targetY);
+      for (let index = 0; index < 7; index += 1) {
+        const offset = (index % 3 - 1) * 10;
+        const amount = Math.max(0, Math.min(1, travel - (index % 4) * 0.08));
+        this.basilWaterEffect.fillStyle(index % 2 === 0 ? 0xf6f7f3 : 0xbfc5c3, 0.95).fillCircle(lerp(sourceX, targetX + offset, amount), lerp(sourceY, targetY + offset * 0.25, amount), 3 + index % 2);
+      }
+    } else if (action.type === 'fertilize') {
+      this.basilWaterEffect.fillStyle(0x111416, 1).fillRect(sourceX - 10, sourceY - 13, 20, 15);
+      this.basilWaterEffect.lineStyle(2, 0xf6f7f3, 1).strokeRect(sourceX - 10, sourceY - 13, 20, 15);
+      for (let index = 0; index < 6; index += 1) {
+        const amount = Math.max(0, Math.min(1, travel - index * 0.07));
+        this.basilWaterEffect.fillStyle(0xf6f7f3, 0.95).fillRect(lerp(sourceX, targetX + (index % 3 - 1) * 12, amount), lerp(sourceY, targetY - 8 + (index % 2) * 8, amount), 4, 4);
+      }
+    } else if (action.type === 'plant') {
+      this.basilWaterEffect.fillStyle(0xf6f7f3, 1).fillRect(sourceX - 11, sourceY - 15, 22, 18);
+      this.basilWaterEffect.lineStyle(2, 0x111416, 1).strokeRect(sourceX - 11, sourceY - 15, 22, 18);
+      this.basilWaterEffect.fillStyle(0x111416, 1).fillRect(sourceX - 5, sourceY - 8, 10, 3);
+      for (let index = 0; index < 4; index += 1) {
+        const amount = Math.max(0, Math.min(1, travel - index * 0.1));
+        this.basilWaterEffect.fillStyle(0xf6f7f3, 1).fillCircle(lerp(sourceX, targetX + (index - 1.5) * 8, amount), lerp(sourceY, targetY - 3 + (index % 2) * 8, amount), 3);
+      }
+    } else {
+      for (let index = 0; index < 5; index += 1) {
+        const amount = Math.max(0, Math.min(1, travel - index * 0.08));
+        this.basilWaterEffect.lineStyle(3, 0xf6f7f3, 0.95).lineBetween(lerp(targetX, sourceX + (index - 2) * 8, amount), lerp(targetY, sourceY + (index % 2) * 5, amount), lerp(targetX + (index % 2 ? 10 : -10), sourceX + (index - 2) * 8, amount), lerp(targetY - 20, sourceY + (index % 2) * 5, amount));
+      }
+    }
+    if (progress >= 0.78 && action.type !== 'harvest') {
+      this.basilWaterEffect.lineStyle(2, 0xf6f7f3, 0.9).strokeCircle(targetX, targetY, 8 + (progress - 0.78) * 20);
+    }
+    this.basilWaterEffect.setVisible(true);
+    this.drawPlayer();
   }
 
   sellBasilHarvest(quantity = 1): void { this.sellPlantHarvest('basil', quantity); }
@@ -1903,15 +2131,10 @@ export class GameScene extends Phaser.Scene {
     const pot = this.getSelectedGrowingPot();
     if (!this.homeInterior || !pot?.crop || this.getCropStage(pot) !== 'planted') { this.showToast('Select a planted growing pot first.', 1500); return; }
     if (!this.progress.wateringCanOwned || this.progress.equippedTool !== 'watering-can') { this.showToast('Equip the watering can before pressing B.', 1500); return; }
-    if (pot.crop.growthStartedAt !== null || this.basilWaterAnimating) { this.showToast('This crop has already been watered.', 1400); return; }
+    if (pot.crop.growthStartedAt !== null || this.basilWaterAnimating || this.pendingGardeningAction || this.activeGardeningAction) { this.showToast('This crop has already been watered.', 1400); return; }
     const growingSpot = this.getGrowingSpotForPot(pot);
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 115) { this.showToast('Move beside the growing pot before watering.', 1500); return; }
-    this.audio.playToolUse();
-    this.selectedGrowingPotId = pot.id;
-    this.basilWaterAnimating = true;
-    this.basilWaterElapsed = 0;
-    this.drawBasilWatering(0);
-    this.showToast('WATERING…', 900);
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, growingSpot.x, growingSpot.y) > 115) { this.showToast('Move beside the highlighted growing pot before watering.', 1500); return; }
+    this.requestGardeningAction({ potId: pot.id, type: 'water', requiredTool: 'watering-can' });
   }
 
   private stopBasilWatering(): void { this.basilWaterAnimating = false; this.basilWaterElapsed = 0; this.basilWaterEffect?.clear().setVisible(false); }
@@ -2055,9 +2278,8 @@ export class GameScene extends Phaser.Scene {
     const pot = this.progress.growingPots.find((candidate) => candidate.id === id && candidate.slot !== null);
     if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) > BASIL_POT_INTERACTION_RADIUS) { this.showToast('Move closer to the growing pot first.', 1400); return; }
     this.selectedGrowingPotId = id; this.basilPotSelected = true;
-    const stage = this.getCropStage(pot);
-    if (stage === 'empty' || stage === 'mature') this.hud.openPanel('basil');
-    else this.showToast(`${pot.crop?.species === 'mint' ? 'Mint' : 'Basil'} selected. Equip the watering can and press B.`, 1900);
+    this.hud.openPanel('basil');
+    this.showInteractionHighlight('select-growing-pot', new Phaser.Math.Vector2(this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y));
     this.updateBasilVisual(); this.updateInteraction();
   }
 
@@ -2128,6 +2350,45 @@ export class GameScene extends Phaser.Scene {
       this.player.lineStyle(2, 0x697173, 1).lineBetween(0, -20 - lift, 0, 9 - lift);
     }
     this.player.fillStyle(0xf5f6f2, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
+    this.drawPlayerToolAttachment(lift);
+  }
+
+  private drawPlayerToolAttachment(lift: number): void {
+    const action = this.activeGardeningAction;
+    const sideSign = this.playerFacing === 'left' ? -1 : 1;
+    const handX = this.playerFacing === 'front' || this.playerFacing === 'back' ? 16 : sideSign * 16;
+    const handY = -4 - lift;
+    const reach = action ? 5 + Math.sin(Math.min(1, this.gardeningActionElapsed / this.gardeningActionDuration) * Math.PI) * 8 : 0;
+    const toolX = handX + sideSign * reach;
+
+    if (action?.type === 'plant') {
+      this.player.fillStyle(0xf6f7f3, 1).fillRect(toolX - 9, handY - 9, 18, 13);
+      this.player.lineStyle(2, 0x111416, 1).strokeRect(toolX - 9, handY - 9, 18, 13);
+      this.player.fillStyle(0x111416, 1).fillRect(toolX - 5, handY - 3, 10, 2);
+      return;
+    }
+    if (action?.type === 'fertilize') {
+      this.player.fillStyle(0x111416, 1).fillRect(toolX - 8, handY - 10, 16, 14);
+      this.player.lineStyle(2, 0xf6f7f3, 1).strokeRect(toolX - 8, handY - 10, 16, 14);
+      this.player.lineStyle(2, 0xf6f7f3, 1).lineBetween(toolX - 4, handY - 6, toolX + 4, handY - 6);
+      return;
+    }
+    if (action?.type === 'harvest') {
+      this.player.lineStyle(3, 0xf6f7f3, 1).lineBetween(handX, handY, toolX + sideSign * 12, handY - 8);
+      return;
+    }
+    if (this.progress.equippedTool === 'watering-can') {
+      this.player.fillStyle(0xbfc5c3, 1).fillRect(toolX - 7, handY - 9, 13, 15);
+      this.player.lineStyle(2, 0x111416, 1).strokeRect(toolX - 7, handY - 9, 13, 15);
+      this.player.lineStyle(2, 0xf6f7f3, 1).lineBetween(toolX + sideSign * 5, handY - 5, toolX + sideSign * 13, handY - 12);
+    } else if (this.progress.equippedTool === 'cleaner') {
+      this.player.lineStyle(3, 0xf6f7f3, 1).lineBetween(handX, handY, toolX + sideSign * 15, handY - 13);
+      this.player.fillStyle(0xbfc5c3, 1).fillRect(toolX + sideSign * 10 - 5, handY - 17, 10, 8);
+      this.player.lineStyle(2, 0x111416, 1).strokeRect(toolX + sideSign * 10 - 5, handY - 17, 10, 8);
+    } else if (this.progress.equippedTool === 'repair') {
+      this.player.lineStyle(3, 0xf6f7f3, 1).lineBetween(handX, handY, toolX + sideSign * 12, handY + 10);
+      this.player.lineStyle(3, 0x111416, 1).lineBetween(toolX + sideSign * 8, handY + 5, toolX + sideSign * 16, handY + 12);
+    }
   }
 
   private createPot(): void {
@@ -2349,7 +2610,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleWorldPoint(screenX: number, screenY: number): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld || this.activeGardeningAction) return;
     if (this.sprayAnimating) this.cancelToolUse(false);
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
     if (this.shopInterior) {
@@ -2576,7 +2837,7 @@ export class GameScene extends Phaser.Scene {
     approach: Phaser.Math.Vector2,
     path?: Phaser.Math.Vector2[],
   ): void {
-    this.cancelTapWalk();
+    this.cancelTapWalk(interaction === 'gardening-action');
     if (interaction !== 'window-clean') this.selectedWindowSectionIndex = null;
     this.pendingInteraction = interaction;
     this.showInteractionHighlight(interaction, approach);
@@ -2795,6 +3056,8 @@ export class GameScene extends Phaser.Scene {
       const index = this.selectedGrowingSpotIndex;
       const spot = index === null ? point : HOME_GROWING_SPOTS[index];
       this.interactionHighlight.strokeRect(spot.x - 48, spot.y - 34, 96, 68);
+    } else if (interaction === 'select-growing-pot' || interaction === 'gardening-action') {
+      this.interactionHighlight.strokeRect(point.x - 48, point.y - 34, 96, 68);
     } else {
       this.interactionHighlight.strokeCircle(point.x, point.y, 42);
     }
@@ -2830,6 +3093,7 @@ export class GameScene extends Phaser.Scene {
     if (interaction === 'select-basil-pot') this.selectBasilPot();
     if (interaction === 'place-growing-pot') this.prepareGrowingSlotPlacement();
     if (interaction === 'select-growing-pot' && this.selectedGrowingPotId) this.selectGrowingPot(this.selectedGrowingPotId);
+    if (interaction === 'gardening-action') this.startGardeningAction();
   }
 
   private collectPot(): void {
@@ -3625,11 +3889,12 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private cancelTapWalk(): void {
+  private cancelTapWalk(preserveGardeningAction = false): void {
     this.target = null;
     this.targetQueue = [];
     if (this.destinationMarker) this.destinationMarker.setVisible(false);
     this.pendingInteraction = null;
+    if (!preserveGardeningAction) this.pendingGardeningAction = null;
     this.growingSlotReadyToPlace = false;
     this.basilPotSelected = false;
     this.windowFacePromptRequired = false;
@@ -3719,6 +3984,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateInteraction(): void {
+    if (this.activeGardeningAction) {
+      this.hud.setAction(null);
+      return;
+    }
     if (!this.modalOpen && this.homeInterior && this.isNearHomeExit()) {
       this.hud.setAction('EXIT HOME');
       return;
