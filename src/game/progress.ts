@@ -219,10 +219,6 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const input = value && typeof value === 'object' ? value as Partial<ProgressState> : {};
   const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
   const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
-  const graphicsUpgradeUnlocked = Boolean(input.graphicsUpgradeUnlocked) || graphicsUpgradeInstalled || Number(input.repairStep) >= 10 || Boolean(input.repairedPotSaleComplete);
-  const graphicsUpgradeStage: GraphicsUpgradeStage = input.graphicsUpgradeStage === 'installing' || input.graphicsUpgradeStage === 'acknowledgement' || input.graphicsUpgradeStage === 'prompt'
-    ? input.graphicsUpgradeStage
-    : graphicsUpgradeUnlocked && !graphicsUpgradeInstalled ? 'prompt' : 'none';
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
   const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
   const tool = validTool(input.equippedTool) ? input.equippedTool : null;
@@ -243,6 +239,16 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const shopStock = sanitizeShopStock(input.shopStock, legacyPothosStock, condition);
   const saleComplete = Boolean(input.saleComplete) || legacyPothosStock || shopStock.some((entry) => entry.item === 'small-golden-pothos');
   const repairedPotSaleComplete = Boolean(input.repairedPotSaleComplete) || input.task === 'complete' || shopStock.some((entry) => entry.item === 'special-repair-pot');
+  // Repair completion leaves the pot on the ground. The graphics upgrade is
+  // deliberately unlocked only after that repaired pot has been picked up
+  // (or a later saved state proves that it was picked up/sold).
+  const repairedPotPickedUp = condition === 'repaired'
+    || placedItem?.item === 'special-repair-pot' && placedItem.condition === 'repaired'
+    || repairedPotSaleComplete;
+  const graphicsUpgradeUnlocked = Boolean(input.graphicsUpgradeUnlocked) || graphicsUpgradeInstalled || repairedPotPickedUp;
+  const graphicsUpgradeStage: GraphicsUpgradeStage = input.graphicsUpgradeStage === 'installing' || input.graphicsUpgradeStage === 'acknowledgement' || input.graphicsUpgradeStage === 'prompt'
+    ? input.graphicsUpgradeStage
+    : graphicsUpgradeUnlocked && !graphicsUpgradeInstalled ? 'prompt' : 'none';
   const rawTask = input.task;
   const task: TaskState = rawTask === 'sell' || rawTask === 'clean' || rawTask === 'repair' || rawTask === 'sell-repaired' || rawTask === 'complete'
     || rawTask === 'place-pot' || rawTask === 'plant-basil' || rawTask === 'water-basil' || rawTask === 'grow-basil' || rawTask === 'harvest-basil' || rawTask === 'sell-basil'

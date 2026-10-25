@@ -193,8 +193,8 @@ when crossing between pavements or stopping for interaction thresholds.
 
 ## Pass 3 graphics upgrade
 
-Implemented in the current source: the tenth repair action unlocks a separate
-saved graphics-upgrade state. The prompt, 2.3-second installation screen, and
+Implemented in the current source: picking up the repaired pot after the tenth
+repair action unlocks a separate saved graphics-upgrade state. The prompt, 2.3-second installation screen, and
 final acknowledgement are explicit and block world input. Installation does
 not change coins, inventory, crop timing, or objectives. Existing saves with a
 repaired or sold special pot become eligible through save sanitisation.

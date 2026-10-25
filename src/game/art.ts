@@ -36,6 +36,7 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
   background.fillStyle(0x60686a, 1).fillRect(0, 770, WORLD_WIDTH, 60);
   background.fillStyle(0x161a1c, 1).fillRect(0, 1090, WORLD_WIDTH, WORLD_HEIGHT - 1090);
 
+  drawOpeningFallSkyline(scene);
   drawSkyline(scene);
   drawOpeningTower(scene);
   drawDistantRoads(scene);
@@ -57,6 +58,40 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
   addWorldLabel(scene, 156, 1120, 'ROADS CONTINUE →', 0xced4d2, 18);
   addWorldLabel(scene, 3290, 1120, '← FUTURE NEIGHBOURHOODS', 0xced4d2, 18);
   return buySellDoor;
+}
+
+function drawOpeningFallSkyline(scene: Phaser.Scene): void {
+  // The street skyline begins around y=0, but the opening camera travels far
+  // above it. These quieter silhouettes fill that vertical drop while staying
+  // behind both the normal skyline and the eviction tower.
+  const far = scene.add.graphics().setDepth(-96);
+  const farBuildings = [
+    [0, -330, 260], [300, -520, 190], [1080, -450, 250],
+    [1380, -260, 330], [1780, -560, 230], [2080, -350, 310],
+  ];
+  far.fillStyle(0x303638, 0.72);
+  farBuildings.forEach(([x, top, width], index) => {
+    far.fillRect(x, top, width, 410 - top);
+    if (index % 3 === 1) far.fillRect(x + width / 2 - 4, top - 42, 8, 42);
+  });
+
+  const near = scene.add.graphics().setDepth(-94);
+  const nearBuildings = [
+    [65, -690, 245], [345, -910, 165], [1090, -790, 225],
+    [1360, -620, 285], [1750, -840, 210], [2030, -670, 270],
+  ];
+  nearBuildings.forEach(([x, top, width], index) => {
+    near.fillStyle(index % 3 === 0 ? 0x1c2123 : 0x22282a, 0.94).fillRect(x, top, width, 420 - top);
+    near.fillStyle(0x15191b, 0.96).fillRect(x - 5, top, width + 10, 18);
+    if (index % 4 === 2) near.fillRect(x + width - 34, top - 54, 12, 54);
+
+    // Sparse windows give scale during the fall without competing with Alex.
+    near.lineStyle(3, 0x626b6c, 0.42);
+    for (let windowY = top + 92; windowY < 330; windowY += 170) {
+      near.strokeRect(x + 28, windowY, 14, 11);
+      if (width > 220 && index % 2 === 0) near.strokeRect(x + width - 44, windowY, 14, 11);
+    }
+  });
 }
 
 function drawOpeningTower(scene: Phaser.Scene): void {
@@ -179,10 +214,11 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
   const crossingX = CROSSING_START_X + 14;
   const crossingWidth = CROSSING_END_X - CROSSING_START_X - 18;
   const crossingY = PAVEMENT_Y + PAVEMENT_HEIGHT + 10;
-  for (let stripeX = crossingX + 14; stripeX + 18 <= crossingX + crossingWidth - 14; stripeX += 32) {
-    // The road runs horizontally, so each crossing bar runs perpendicular to
-    // it and connects the two pavements without entering the traffic lanes.
-    g.fillRect(stripeX, crossingY, 18, 220);
+  const crossingHeight = 220;
+  for (let stripeY = crossingY + 12; stripeY + 14 <= crossingY + crossingHeight - 12; stripeY += 30) {
+    // Horizontal bars repeat down the crossing and remain wholly inside its
+    // existing road footprint. Walkable and routing bounds are unchanged.
+    g.fillRect(crossingX, stripeY, crossingWidth, 14);
   }
 }
 

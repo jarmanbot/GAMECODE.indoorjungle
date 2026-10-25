@@ -1781,12 +1781,14 @@ export class GameScene extends Phaser.Scene {
     this.drawPlayer();
     this.saveProgress();
     this.syncHudState();
-    this.presentGraphicsUpgradeIfNeeded();
     this.showToast('Pot fully repaired. Tap or click it to put it in the Bag.', 2400);
   }
 
   private presentGraphicsUpgradeIfNeeded(): void {
-    if (!this.progress.graphicsUpgradeUnlocked && (this.progress.repairStep >= 10 || this.progress.repairedPotSaleComplete)) {
+    const repairedPotPickedUp = this.progress.inventoryPot === 'repaired'
+      || (this.progress.placedWorldItem?.item === 'special-repair-pot' && this.progress.placedWorldItem.condition === 'repaired')
+      || this.progress.repairedPotSaleComplete;
+    if (!this.progress.graphicsUpgradeUnlocked && repairedPotPickedUp) {
       this.progress.graphicsUpgradeUnlocked = true;
       this.progress.graphicsUpgradeStage = 'prompt';
       this.saveProgress();
@@ -3034,7 +3036,9 @@ export class GameScene extends Phaser.Scene {
     }
     this.player.fillStyle(robotLight, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
     this.drawPlayerToolAttachment(lift);
-    this.player.setScale(this.progress.graphicsUpgradeInstalled ? 1.25 : 1);
+    // The upgraded Green screen style is intentionally only a modest visual
+    // step up from Atari B&W; world position and collision remain unchanged.
+    this.player.setScale(greenScreen ? 1.08 : 1);
   }
 
   private drawPlayerToolAttachment(lift: number): void {
@@ -3927,6 +3931,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
+    this.presentGraphicsUpgradeIfNeeded();
     this.showToast(`Repaired pot added to the Bag. Sell it at BUY / SELL for ${REPAIRED_POT_SALE_PRICE} coins.`);
   }
 
