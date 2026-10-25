@@ -46,6 +46,8 @@ export class HudController {
   private readonly panelBackdrop = document.querySelector<HTMLElement>('#panel-backdrop')!;
   private readonly panelTitle = document.querySelector<HTMLElement>('#panel-title')!;
   private readonly panelBody = document.querySelector<HTMLElement>('#panel-body')!;
+  private readonly toastMessage = document.querySelector<HTMLElement>('#toast-message')!;
+  private readonly toastClose = document.querySelector<HTMLButtonElement>('#toast-close')!;
   private readonly mapCentreButton = document.querySelector<HTMLButtonElement>('#map-centre')!;
   private readonly rotateOverlay = document.querySelector<HTMLElement>('#rotate-overlay')!;
   private readonly joystick = document.querySelector<HTMLElement>('#joystick')!;
@@ -108,6 +110,10 @@ export class HudController {
     });
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#settings-button')!, () => this.openPanel('settings'));
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#close-panel')!, () => this.closePanel());
+    this.bindButtonActivation(this.toastClose, () => {
+      this.scene?.suppressWorldInput();
+      this.showToast('');
+    });
     this.bindButtonActivation(this.mapCentreButton, () => this.centreCityMap());
     this.panelBackdrop.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -242,7 +248,7 @@ export class HudController {
       'grow-basil': 'Wait for the basil to grow',
       'harvest-basil': 'Harvest the mature basil',
       'sell-basil': 'Sell the basil harvest at BUY / SELL',
-      'buy-seeds': 'Buy seed portions for another grow-table crop',
+      'buy-seeds': 'Buy seeds for another grow-table crop',
       'plant-mint': 'Plant mint in an empty grow-table pot',
       'water-mint': 'Water the planted mint',
       'grow-mint': 'Wait for the mint to grow',
@@ -362,13 +368,22 @@ export class HudController {
   }
 
   showToast(message: string): void {
-    this.toast.textContent = message;
+    this.toastMessage.textContent = message;
+    this.toast.classList.remove('is-dismissible');
+    this.toastClose.hidden = true;
     this.toast.classList.toggle('is-visible', Boolean(message));
+  }
+
+  showDismissibleToast(message: string): void {
+    this.toastMessage.textContent = message;
+    this.toast.classList.add('is-dismissible');
+    this.toastClose.hidden = false;
+    this.toast.classList.add('is-visible');
   }
 
   private bindButtonActivation(button: HTMLButtonElement, action: () => void): void {
     let lastActivationAt = 0;
-    const activate = (event: MouseEvent): void => {
+    const activate = (event: Event): void => {
       const now = performance.now();
       if (now - lastActivationAt < 350) return;
       lastActivationAt = now;
@@ -378,6 +393,7 @@ export class HudController {
       action();
     };
     button.addEventListener('pointerdown', (event) => event.stopPropagation());
+    button.addEventListener('pointerup', activate);
     button.addEventListener('click', activate);
   }
 
@@ -916,7 +932,7 @@ export class HudController {
         'place-pot': 'Place an owned pot on an empty grow-table slot', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
-        'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy seed portions for another grow-table crop',
+        'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy seeds for another grow-table crop',
         'plant-mint': 'Plant mint in an empty grow-table pot', 'water-mint': 'Water the planted mint',
         'grow-mint': 'Wait for the mint to grow', 'harvest-mint': 'Harvest the mature mint', 'sell-mint': 'Sell the mint harvest at BUY / SELL',
       };
@@ -1206,23 +1222,23 @@ export class HudController {
     } else if (!selectedPot) {
       status = 'No pot selected.';
     } else if (state.stage === 'empty') {
-      status = 'Choose a seed type.';
-      const seedButtons = PLANT_SPECIES.map((species) => {
+      const availableSpecies = PLANT_SPECIES.filter((species) => (state.seedQuantities[species] ?? 0) > 0);
+      status = availableSpecies.length > 0 ? 'Choose a seed type.' : '';
+      const seedButtons = availableSpecies.map((species) => {
         const definition = getPlantDefinition(species);
         const available = state.seedQuantities[species] ?? 0;
-        return `<button class="basil-action" type="button" data-plant-species="${species}"${available < 1 ? ' disabled' : ''}>PLANT ${definition.label.toUpperCase()} <small>×${available}</small></button>`;
+        return `<button class="basil-action" type="button" data-plant-species="${species}">PLANT ${definition.label.toUpperCase()} <small>×${available}</small></button>`;
       }).join('');
-      const hasSeed = PLANT_SPECIES.some((species) => (state.seedQuantities[species] ?? 0) > 0);
-      action = hasSeed ? `<div class="seed-choice-row">${seedButtons}</div>` : '<p class="basil-action-note">No seed portions owned. Buy basil or mint seeds at BUY / SELL.</p>';
+      action = availableSpecies.length > 0 ? `<div class="seed-choice-row">${seedButtons}</div>` : '';
     } else if (state.stage === 'planted') {
       action = state.wateringCanOwned
         ? '<button class="basil-action" type="button" data-water-crop>WATER CROP</button>'
-        : '<p class="basil-action-note">A basic watering can is required.</p>';
+        : '';
     } else if (state.stage === 'seedling') {
       status = timeLabel;
       action = state.basicFertilizerCharges > 0
         ? `<button class="basil-action" type="button" data-use-basic-fertilizer>FERTILISE CROP <small>×${state.basicFertilizerCharges}</small></button>`
-        : '<p class="basil-action-note">No basic fertiliser remains.</p>';
+        : '';
     } else {
       action = '<button class="basil-action" type="button" data-harvest-crop>HARVEST CROP</button>';
     }

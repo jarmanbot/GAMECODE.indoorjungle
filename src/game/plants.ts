@@ -18,7 +18,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
   basil: {
     species: 'basil',
     label: 'Basil',
-    seedLabel: 'Basil seed portions',
+    seedLabel: 'Basil seeds',
     harvestLabel: 'Fresh basil leaves',
     seedItem: 'basil-seeds',
     harvestItem: 'fresh-basil-leaves',
@@ -29,7 +29,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
   mint: {
     species: 'mint',
     label: 'Mint',
-    seedLabel: 'Mint seed portions',
+    seedLabel: 'Mint seeds',
     harvestLabel: 'Fresh mint leaves',
     seedItem: 'mint-seeds',
     harvestItem: 'fresh-mint-leaves',

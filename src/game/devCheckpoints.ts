@@ -87,7 +87,7 @@ const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
 
 const starterKitClaimed = (): ProgressState => withState(apartmentRented(), {
   starterKitClaimed: true, starterKitGranted: true, wateringCanOwned: true, toolSlots: ['repair', 'watering-can', null],
-  seedQuantities: { basil: 1, mint: 0 }, basicFertilizerCharges: 1, growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID)], task: 'place-pot',
+  seedQuantities: { basil: 1, mint: 1 }, basicFertilizerCharges: 1, growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID)], task: 'place-pot',
 });
 
 const starterPotWithCrop = (species: 'basil' | 'mint', stage: 'planted' | 'seedling' | 'mature', startedAt: number | null): ProgressState => {
@@ -95,7 +95,7 @@ const starterPotWithCrop = (species: 'basil' | 'mint', stage: 'planted' | 'seedl
   const pot = createEmptyGrowingPot(STARTER_GROWING_POT_ID, 1);
   pot.crop = { species, stage, wateredAt: startedAt, growthStartedAt: startedAt };
   return withState(base, {
-    growingPots: [pot], seedQuantities: { basil: species === 'basil' ? 0 : 1, mint: species === 'mint' ? 0 : 0 },
+    growingPots: [pot], seedQuantities: { basil: species === 'basil' ? 0 : 1, mint: species === 'mint' ? 0 : 1 },
     growingEvents: { basil: species === 'basil' ? 1 : 0, mint: 0 }, task: species === 'basil' ? stage === 'planted' ? 'water-basil' : stage === 'mature' ? 'harvest-basil' : 'grow-basil' : 'water-mint',
   });
 };

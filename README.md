@@ -47,7 +47,7 @@ use Return to normal save before checking the regular player save.
 - Dependency-free procedural arcade music plus jump and tool-use sound effects, unlocked on the first user interaction for browser autoplay compatibility.
 - Reversible portrait phone layout trial with an outside-the-world joystick, pointer capture, dead-zone handling, and shared tap/keyboard/zoom actions. Set `PHONE_HYBRID_CONTROLS` in `src/game/config.ts` to `false` to restore the previous phone layout.
 - Opening loop: find and collect one Small Golden Pothos, then accept the opening window-cleaning job from the BUY / SELL counter. Selling the first delivery remains available for 5 coins but is no longer the next required objective.
-- Starter apartment loop: claim the one-time starter pot, used medium, basil seed portion, watering can and fertiliser; place up to three independent Small basic plastic pots, choose basil or mint for each pot, water once, wait 60 seconds, optionally fertilise to mature instantly, harvest, sell fresh leaves for 5 coins, and buy further seed portions for 2 coins. Each pot retains its own crop, slot and growth timing, and its usable medium remains after harvest.
+- Starter apartment loop: claim the one-time starter pot, used medium, one basil seed, one mint seed, watering can and fertiliser; place up to three independent Small basic plastic pots, choose basil or mint for each pot, water once, wait 60 seconds, optionally fertilise to mature instantly, harvest, sell fresh leaves for 5 coins, and buy further seeds for 2 coins. Each pot retains its own crop, slot and growth timing, and its usable medium remains after harvest.
 - Opening job: collect the Small Golden Pothos first, accept the job at the counter, then tap the HOMES estate-agent window and tap the equipped cleaner eight times. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
 - Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 75 coins.
 - BUY / SELL shows the outstanding Golden Pothos request in its street window. Items Alex sells become persistent shop stock: the opening Small Golden Pothos can be bought back for 7 coins, repaired pots for 105 coins, and fresh basil or mint leaves for 7 coins each. Matching harvest stacks remain species-specific; basil seeds, mint seeds, living crops and fresh leaves remain distinct. The two additional growing pots cost 10 coins each and are one-time stock.
@@ -57,7 +57,7 @@ use Return to normal save before checking the regular player save.
 ## Provisional decisions
 
 - The pot sale value is temporary prototype tuning, fixed at 5 coins.
-- Basil harvest value (5 coins), seed portion price (2 coins), and the 60-second growth duration are provisional prototype tuning.
+- Basil harvest value (5 coins), seed price (2 coins), and the 60-second growth duration are provisional prototype tuning.
 - Window reward (3 coins) and repaired-pot sale value (75 coins) are provisional prototype tuning.
 - World movement is intentionally lightweight and constrained to the front pavement, marked crossing, and opposite pavement; cars are decoration only.
 - Art is code-drawn so the same world geometry can later receive Atari colour, 16-bit, or 32-bit renderers.

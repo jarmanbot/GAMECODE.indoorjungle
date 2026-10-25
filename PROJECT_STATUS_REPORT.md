@@ -518,7 +518,8 @@ The one-time starter kit contains:
 
 ~~~text
 Reusable starter pot and used medium
-1 basil seed portion
+1 basil seed
+1 mint seed
 Basic watering can
 1 basic fertiliser charge
 ~~~
@@ -669,7 +670,7 @@ ceil(5 × 1.4) = 7 coins each
 
 ### 17. Buy more seeds
 
-Basil seed portion price:
+Basil seed price:
 
 ~~~text
 2 coins
@@ -694,7 +695,7 @@ This begins the repeatable basil-growing loop.
 | Repaired special pot sale | +75 |
 | Starter apartment bond | −60 |
 | Basil harvest sale | +5 |
-| Basil seed portion purchase | −2 |
+| Basil seed purchase | −2 |
 | Golden Pothos buyback | 7 |
 | Repaired pot buyback | 105 |
 | Basil harvest buyback | 7 |

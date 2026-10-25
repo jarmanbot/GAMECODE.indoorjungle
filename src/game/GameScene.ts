@@ -525,6 +525,12 @@ export class GameScene extends Phaser.Scene {
     this.joystickSteering = true;
   }
 
+  suppressWorldInput(): void {
+    // A UI button may disappear during touch release. Ignore the synthetic
+    // click that follows so dismissing a message cannot become a walk tap.
+    this.lastWorldInputAt = performance.now();
+  }
+
   canPutDownCarriedItem(): boolean {
     return this.inventoryHasPot && !this.shopInterior && !this.homeInterior && !this.shopTransitioning;
   }
@@ -739,6 +745,14 @@ export class GameScene extends Phaser.Scene {
     if (this.progress.starterKitClaimed && this.progress.starterKitGranted
       && this.progress.growingEvents.basil === 0 && this.progress.basicFertilizerCharges === 0) {
       this.progress.basicFertilizerCharges = 1;
+      this.saveProgress();
+    }
+    // The starter kit now includes one mint seed as well as one basil seed.
+    // Migrate older claimed kits once, but do not respawn a mint seed after a
+    // player has already started a mint growing event.
+    if (this.progress.starterKitClaimed && this.progress.starterKitGranted
+      && this.progress.seedQuantities.mint === 0 && this.progress.growingEvents.mint === 0) {
+      this.progress.seedQuantities.mint = 1;
       this.saveProgress();
     }
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
@@ -992,6 +1006,7 @@ export class GameScene extends Phaser.Scene {
   private grantStarterKitState(): void {
     this.progress.starterKitGranted = true;
     this.progress.seedQuantities.basil = Math.max(1, this.progress.seedQuantities.basil);
+    this.progress.seedQuantities.mint = Math.max(1, this.progress.seedQuantities.mint);
     this.progress.basicFertilizerCharges = Math.max(1, this.progress.basicFertilizerCharges);
     this.progress.wateringCanOwned = true;
     if (!this.progress.growingPots.some((pot) => pot.id === STARTER_GROWING_POT_ID)) {
@@ -1742,7 +1757,9 @@ export class GameScene extends Phaser.Scene {
     this.grantStarterKitState();
     this.progress.task = 'place-pot';
     this.saveProgress();
-    this.showToast('Starter kit claimed: pot, basil seeds, watering can and one basic fertiliser. Place the pot on the grow table.', 3000);
+    this.toastTimer?.remove(false);
+    this.toastTimer = undefined;
+    this.hud.showDismissibleToast('Starter kit claimed: pot, watering can, basil seed ×1, mint seed ×1 and basic fertiliser ×1. Place the pot on the grow table.');
     this.drawHomeInteriorKit();
     this.syncHudState();
   }
@@ -1761,7 +1778,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.progress.seedQuantities[species] < 1) {
-      this.hud.refreshBasilPanel(`No ${definition.label.toLowerCase()} seed portions available. Buy one at BUY / SELL.`);
+      this.hud.refreshBasilPanel(`No ${definition.label.toLowerCase()} seeds available. Buy some at BUY / SELL.`);
       return;
     }
     this.requestGardeningAction({ potId: pot.id, type: 'plant', species });
@@ -1859,7 +1876,7 @@ export class GameScene extends Phaser.Scene {
     if (action.type === 'plant') {
       if (!action.species) return 'Choose a seed type first.';
       if (pot.crop) return 'This pot is already occupied.';
-      if ((this.progress.seedQuantities[action.species] ?? 0) < 1) return `No ${getPlantDefinition(action.species).label.toLowerCase()} seed portions remain.`;
+      if ((this.progress.seedQuantities[action.species] ?? 0) < 1) return `No ${getPlantDefinition(action.species).label.toLowerCase()} seeds remain.`;
     } else if (action.type === 'water') {
       if (!pot.crop || this.getCropStage(pot) !== 'planted' || pot.crop.growthStartedAt !== null) return 'This pot does not need water.';
       if (!this.progress.wateringCanOwned) return 'A basic watering can is required.';
@@ -2040,7 +2057,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.refreshShopStockDisplay();
-    this.hud.refreshShopPanel(`${definition.harvestLabel} ×${amount} sold for ${total} coins. Buy another seed portion to grow again.`);
+    this.hud.refreshShopPanel(`${definition.harvestLabel} ×${amount} sold for ${total} coins. Buy more seeds to grow again.`);
     this.showToast(`${definition.harvestLabel} ×${amount} sold for ${total} coins.`, 1800);
   }
 
@@ -2054,7 +2071,7 @@ export class GameScene extends Phaser.Scene {
     const total = definition.seedPrice * amount;
     if (this.coins < total) {
       const shortfall = total - this.coins;
-      this.hud.refreshShopPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${amount} seed portion${amount === 1 ? '' : 's'}.`);
+      this.hud.refreshShopPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${amount} seed${amount === 1 ? '' : 's'}.`);
       this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${definition.label.toLowerCase()} seeds.`, 1600);
       return;
     }
@@ -2063,8 +2080,8 @@ export class GameScene extends Phaser.Scene {
     this.progress.task = species === 'basil' ? 'plant-basil' : 'plant-mint';
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel(`${amount} ${definition.label.toLowerCase()} seed portion${amount === 1 ? '' : 's'} added to the Bag.`);
-    this.showToast(`Bought ${amount} ${definition.label.toLowerCase()} seed portion${amount === 1 ? '' : 's'} for ${total} coins.`, 1600);
+    this.hud.refreshShopPanel(`${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} added to the Bag.`);
+    this.showToast(`Bought ${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} for ${total} coins.`, 1600);
   }
 
   buyAdditionalGrowingPot(quantity = 1): void {
@@ -2279,6 +2296,11 @@ export class GameScene extends Phaser.Scene {
     if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) > BASIL_POT_INTERACTION_RADIUS) { this.showToast('Move closer to the growing pot first.', 1400); return; }
     this.selectedGrowingPotId = id; this.basilPotSelected = true;
     this.hud.openPanel('basil');
+    if (!pot.crop && PLANT_SPECIES.every((species) => (this.progress.seedQuantities[species] ?? 0) < 1)) {
+      const message = 'Buy seeds at BUY / SELL.';
+      this.hud.refreshBasilPanel(message);
+      this.showToast(message, 1900);
+    }
     this.showInteractionHighlight('select-growing-pot', new Phaser.Math.Vector2(this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y));
     this.updateBasilVisual(); this.updateInteraction();
   }
