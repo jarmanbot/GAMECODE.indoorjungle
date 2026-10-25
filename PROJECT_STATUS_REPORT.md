@@ -4,11 +4,11 @@ Audit date: 25 October 2026
 
 Workspace: /Users/jarmandonohue/GAMECODE.indoorjungle
 
-Branch: cleanup-pass-1
+Branch: cleanup-pass-2
 
-Latest commit before this Pass 1 implementation: a6766cf
+Latest commit before this Pass 2 implementation: 7b01781
 
-Working tree at audit: Pass 1 housing objective, thought bubble and rental-key changes in progress
+Working tree at audit: Pass 2 start screen, opening sequence and starting-street layout changes in progress
 
 Remote: https://github.com/jarmanbot/GAMECODE.indoorjungle.git
 
@@ -45,13 +45,38 @@ Implemented in the current source:
 Runtime/browser and phone verification for this Pass 1 change still needs to
 be performed; the production build is the automated check currently run.
 
+## Pass 2 implementation status
+
+Implemented in the current source:
+
+- Normal mode now opens with a monochrome start screen. Continue is shown for
+  a valid normal save; New Game requires an inline overwrite confirmation.
+  Developer test saves remain isolated from this screen and the normal save.
+- New Game runs a six-second, skippable boot-out/drop animation from a
+  separate upper doorway in a six-times-height old city tower to the pavement.
+  Movement, tools, zoom and world input
+  are blocked until it ends; skip and normal completion set the same saved
+  `openingComplete` state and start the housing reminder afterward.
+- Existing saves without the new opening field migrate as already past the
+  opening when they contain progress. Fresh developer checkpoints retain a
+  testable opening; later checkpoints bypass it.
+- The street order is now starter apartment, BUY / SELL, REAL ESTATE AGENT,
+  then a non-interactive nursery vacant lot. Shared world anchors move the
+  doors, cleaning sections, listings, pot, camera framing and labels together.
+- The rented apartment sign changes from `TO LET / 60 COINS` to
+  `YOUR HOME / ACCESS UNLOCKED`; no recurring eviction or rent system was added.
+- The crossing bars now run perpendicular to the horizontal road.
+
+The production build is verified. Interactive browser and phone verification
+for Pass 2 remains outstanding in this environment.
+
 ## Current implementation summary
 
 The game currently contains:
 
 - A playable starting street.
 - BUY / SELL shop interior.
-- HOMES estate-agent window-cleaning job.
+- REAL ESTATE AGENT window-cleaning job.
 - Broken-pot collection and repair loop.
 - Starter apartment rental.
 - Starter kit and a three-slot grow table.
@@ -69,7 +94,7 @@ The current implemented progression reaches:
 
 > First basil harvest sold → ready to buy more basil seeds.
 
-Not implemented: house expansion, PLANTS shop stock, district unlock
+Not implemented: house expansion, nursery shop stock, district unlock
 progression, fast travel, accounts, backend services or additional playable
 districts.
 
@@ -89,10 +114,10 @@ districts.
 
 Building order:
 
-1. BUY / SELL
-2. HOMES estate agent
-3. PLANTS — shuttered and labelled OPENING SOON
-4. STARTER APARTMENT
+1. STARTER APARTMENT
+2. BUY / SELL
+3. REAL ESTATE AGENT
+4. NURSERY COMING SOON — vacant and non-interactive
 
 World dimensions:
 
@@ -120,16 +145,16 @@ Current world positions:
 | Destination | Position |
 |---|---:|
 | Alex start | (560, 890) |
-| Opening Golden Pothos | (1648, 930) |
-| BUY / SELL entrance | (1165, 864) |
-| HOMES left window section | (1332, 860) |
-| HOMES centre window section | (1450, 860) |
-| HOMES right window section | (1568, 860) |
+| Opening Golden Pothos | (1080, 930) |
+| BUY / SELL entrance | (1405, 864) |
+| REAL ESTATE AGENT left window section | (1582, 860) |
+| REAL ESTATE AGENT centre window section | (1700, 860) |
+| REAL ESTATE AGENT right window section | (1818, 860) |
 | Broken-pot pieces | (1880, 910) |
-| Starter apartment entrance | (2275, 864) |
+| Starter apartment entrance | (835, 864) |
 
-The zebra crossing currently uses horizontal bars spanning the crossing. The
-road and world geometry are not rotated.
+The zebra crossing uses bars perpendicular to the horizontal road. The road
+and world geometry are not rotated.
 
 ## Movement mathematics
 
@@ -155,11 +180,11 @@ Approximate walking times:
 |---|---:|---:|---:|
 | Start → Golden Pothos | 1088.7 | 5.73 s | 4.63 s |
 | Start → BUY / SELL | 605.6 | 3.19 s | 2.58 s |
-| BUY / SELL → HOMES left section | 167.1 | 0.88 s | 0.71 s |
-| HOMES left → centre | 118 | 0.62 s | 0.50 s |
-| HOMES centre → right | 118 | 0.62 s | 0.50 s |
-| HOMES right → broken pot | 316.0 | 1.66 s | 1.34 s |
-| HOMES right → apartment | 707.0 | 3.72 s | 3.01 s |
+| BUY / SELL → REAL ESTATE AGENT left section | 177.0 | 0.75 s | 0.57 s |
+| REAL ESTATE AGENT left → centre | 118 | 0.50 s | 0.38 s |
+| REAL ESTATE AGENT centre → right | 118 | 0.50 s | 0.38 s |
+| REAL ESTATE AGENT right → broken pot | 62.0 | 0.26 s | 0.20 s |
+| REAL ESTATE AGENT right → apartment | 983.0 | 4.18 s | 3.20 s |
 | Start → apartment | 1715.2 | 9.03 s | 7.30 s |
 | Full playable X span | 2000 | 10.53 s | 8.51 s |
 
@@ -379,9 +404,9 @@ The cleaner is equipped immediately. The current acceptance method does not
 explicitly assign the cleaner into a tool slot, while the checkpoint builder
 does. This is a small consistency point to check when testing the Tools popup.
 
-### 5. Clean the HOMES window
+### 5. Clean the REAL ESTATE AGENT window
 
-The HOMES window has three sequential sections:
+The REAL ESTATE AGENT window has three sequential sections:
 
 | Section | Position | Sprays |
 |---|---:|---:|
@@ -528,7 +553,7 @@ ceil(75 × 1.4) = 105 coins
 
 ### 9. Rent the starter apartment
 
-The HOMES window advertises the actual nearby starter apartment as TO LET.
+The REAL ESTATE AGENT window advertises the actual nearby starter apartment as TO LET.
 
 ~~~text
 Rental bond = 60 coins
@@ -917,7 +942,7 @@ Current style:
 - Simple storefronts.
 - BUY / SELL sign.
 - Clear door and display window.
-- Shuttered PLANTS building labelled OPENING SOON.
+- Vacant nursery lot labelled NURSERY COMING SOON.
 - Peaked starter-apartment silhouette.
 - Decorative cars and street details.
 - Display-only future-era shelf items in the shop.
@@ -946,7 +971,7 @@ awarding a duplicate item.
 
 ### Future Plants shop
 
-The PLANTS building is present visually but remains shuttered. Fertiliser is
+The nursery lot is present visually but remains non-interactive. Fertiliser is
 not purchasable there yet.
 
 ### Future districts

@@ -36,6 +36,7 @@ export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' |
   | 'plant-mint' | 'water-mint' | 'grow-mint' | 'harvest-mint' | 'sell-mint' | 'buy-seeds';
 
 export interface ProgressState {
+  openingComplete: boolean;
   coins: number;
   inventoryPot: PotCondition | null;
   inventoryItem: InventoryItem | null;
@@ -85,6 +86,7 @@ export interface ProgressState {
 }
 
 export const DEFAULT_PROGRESS: ProgressState = {
+  openingComplete: false,
   coins: 0,
   inventoryPot: null,
   inventoryItem: null,
@@ -249,7 +251,18 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const piecesOwned = Number.isFinite(Number(input.brokenPotPiecesOwned))
     ? Math.max(0, Math.min(3, Math.floor(Number(input.brokenPotPiecesOwned))))
     : (Boolean(input.brokenPotOwned) || condition === 'broken' ? 0 : Math.max(0, 3 - piecesRemaining));
+  const legacyProgressExists = Boolean(input.coins)
+    || condition !== null
+    || Boolean(input.saleComplete)
+    || Boolean(input.windowJobAccepted)
+    || Boolean(input.windowJobComplete)
+    || Boolean(input.rentalBondPaid)
+    || Boolean(input.starterKitClaimed)
+    || Boolean(input.placedWorldItem)
+    || (Array.isArray(input.growingPots) && input.growingPots.length > 0);
+  const openingComplete = typeof input.openingComplete === 'boolean' ? input.openingComplete : legacyProgressExists;
   const progress: ProgressState = {
+    openingComplete,
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock,

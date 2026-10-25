@@ -15,6 +15,8 @@ import {
   FUTURE_ZONES,
   WORLD_HEIGHT,
   WORLD_WIDTH,
+  OPENING_TOWER,
+  OPENING_DROP_POINT,
   type Building,
 } from './world';
 
@@ -25,7 +27,7 @@ const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
 
-export function drawNeighborhood(scene: Phaser.Scene): Phaser.GameObjects.Graphics | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false): Phaser.GameObjects.Graphics | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -34,6 +36,7 @@ export function drawNeighborhood(scene: Phaser.Scene): Phaser.GameObjects.Graphi
   background.fillStyle(0x161a1c, 1).fillRect(0, 1090, WORLD_WIDTH, WORLD_HEIGHT - 1090);
 
   drawSkyline(scene);
+  drawOpeningTower(scene);
   drawDistantRoads(scene);
   const [westZone, eastZone, worksZone] = FUTURE_ZONES;
   drawVacantLot(scene, westZone.x, westZone.y, westZone.width, westZone.height, westZone.label);
@@ -45,7 +48,7 @@ export function drawNeighborhood(scene: Phaser.Scene): Phaser.GameObjects.Graphi
 
   let buySellDoor: Phaser.GameObjects.Graphics | undefined;
   BUILDINGS.forEach((building) => {
-    const door = drawBuilding(scene, building);
+    const door = drawBuilding(scene, building, apartmentRented);
     if (door) buySellDoor = door;
   });
   drawStreetDetails(scene);
@@ -53,6 +56,30 @@ export function drawNeighborhood(scene: Phaser.Scene): Phaser.GameObjects.Graphi
   addWorldLabel(scene, 156, 1120, 'ROADS CONTINUE →', 0xced4d2, 18);
   addWorldLabel(scene, 3290, 1120, '← FUTURE NEIGHBOURHOODS', 0xced4d2, 18);
   return buySellDoor;
+}
+
+function drawOpeningTower(scene: Phaser.Scene): void {
+  const g = scene.add.graphics().setDepth(-20);
+  const { x, y, width, height } = OPENING_TOWER;
+  g.fillStyle(0x151a1c, 1).fillRect(x, y, width, height);
+  g.fillStyle(0x252b2d, 1).fillRect(x + 18, y + 22, width - 36, height - 22);
+  g.lineStyle(8, 0x0d1011, 1).strokeRect(x, y, width, height);
+  g.lineStyle(5, 0x697173, 0.8).lineBetween(x + 28, y + 90, x + width - 28, y + 90);
+  g.lineBetween(x + 28, y + height - 82, x + width - 28, y + height - 82);
+  for (let floorY = y + 150; floorY < y + height - 120; floorY += 150) {
+    g.lineStyle(3, 0x4e5759, 0.65).lineBetween(x + 34, floorY, x + width - 34, floorY);
+    for (let windowX = x + 58; windowX < x + width - 70; windowX += 96) {
+      g.fillStyle(0x0b0e0f, 1).fillRect(windowX, floorY - 62, 46, 52);
+      g.lineStyle(3, 0x858d8d, 0.75).strokeRect(windowX, floorY - 62, 46, 52);
+      g.lineBetween(windowX + 23, floorY - 62, windowX + 23, floorY - 10);
+    }
+  }
+  // A distinct upper doorway marks the introductory exit. It is decorative
+  // after the opening and is not the rentable ground-floor entrance.
+  g.fillStyle(0x07090a, 1).fillRect(OPENING_DROP_POINT.x - 34, OPENING_DROP_POINT.y - 48, 68, 96);
+  g.lineStyle(5, 0xf6f7f3, 0.9).strokeRect(OPENING_DROP_POINT.x - 34, OPENING_DROP_POINT.y - 48, 68, 96);
+  addWorldLabel(scene, OPENING_DROP_POINT.x, OPENING_DROP_POINT.y - 66, 'UPPER EXIT', 0xc4ccca, 10, true);
+  addWorldLabel(scene, x + width / 2, y + 42, 'OLD CITY TOWER', 0xf6f7f3, 18, true);
 }
 
 function drawSkyline(scene: Phaser.Scene): void {
@@ -151,10 +178,10 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
   const crossingX = CROSSING_START_X + 14;
   const crossingWidth = CROSSING_END_X - CROSSING_START_X - 18;
   const crossingY = PAVEMENT_Y + PAVEMENT_HEIGHT + 10;
-  for (let stripeY = crossingY + 14; stripeY + 18 <= crossingY + 220 - 14; stripeY += 32) {
-    // Keep the bars horizontal as requested: each one spans the crossing
-    // width while the repeated rows connect the two pavements through the road.
-    g.fillRect(crossingX, stripeY, crossingWidth, 18);
+  for (let stripeX = crossingX + 14; stripeX + 18 <= crossingX + crossingWidth - 14; stripeX += 32) {
+    // The road runs horizontally, so each crossing bar runs perpendicular to
+    // it and connects the two pavements without entering the traffic lanes.
+    g.fillRect(stripeX, crossingY, 18, 220);
   }
 }
 
@@ -208,7 +235,7 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building): Phaser.GameObjects.Graphics | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false): Phaser.GameObjects.Graphics | undefined {
   if (building.kind === 'shop') {
     return drawBuySellBuilding(scene, building);
   }
@@ -229,7 +256,7 @@ function drawBuilding(scene: Phaser.Scene, building: Building): Phaser.GameObjec
 
   if (building.kind === 'homes') drawHomes(scene, g, building);
   if (building.kind === 'plants') drawPlants(scene, g, building);
-  if (building.kind === 'apartment') drawApartment(scene, g, building);
+  if (building.kind === 'apartment') drawApartment(scene, g, building, apartmentRented);
 }
 
 function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.GameObjects.Graphics {
@@ -339,17 +366,20 @@ function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building
 function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
   const x = building.x;
   const y = building.y;
-  g.fillStyle(0x222729, 1).fillRect(x + 24, y + 101, building.width - 48, 184);
-  g.lineStyle(6, WHITE, 0.95).strokeRect(x + 24, y + 101, building.width - 48, 184);
-  for (let shutterX = x + 38; shutterX < x + building.width - 36; shutterX += 30) {
-    g.lineStyle(4, 0x9aa1a1, 0.85).lineBetween(shutterX, y + 116, shutterX, y + 271);
+  g.fillStyle(0x242a2c, 1).fillRect(x + 18, y + 112, building.width - 36, 174);
+  g.lineStyle(5, 0x858d8d, 0.95).strokeRect(x + 18, y + 112, building.width - 36, 174);
+  g.lineStyle(3, 0x697173, 0.8);
+  for (let plotX = x + 42; plotX < x + building.width - 38; plotX += 74) {
+    g.strokeRect(plotX, y + 190, 52, 42);
+    g.lineBetween(plotX + 8, y + 226, plotX + 16, y + 205);
+    g.lineBetween(plotX + 28, y + 226, plotX + 38, y + 198);
   }
-  addWorldLabel(scene, x + building.width / 2, y + 225, 'OPENING SOON', WHITE, 18, true);
-  drawPot(g, x + 74, y + 272, 0.85);
-  drawPot(g, x + building.width - 76, y + 272, 0.85);
+  addWorldLabel(scene, x + building.width / 2, y + 138, 'NURSERY', WHITE, 18, true);
+  addWorldLabel(scene, x + building.width / 2, y + 166, 'COMING SOON', 0xc4ccca, 12, true);
+  addWorldLabel(scene, x + building.width / 2, y + 260, 'VACANT LOT', 0xabb3b1, 11, true);
 }
 
-function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
+function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean): void {
   const x = building.x;
   const y = building.y;
   g.fillStyle(0x1b2022, 1).fillTriangle(x - 18, y + 10, x + building.width / 2, y - 62, x + building.width + 18, y + 10);
@@ -357,6 +387,11 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
     .lineBetween(x - 18, y + 10, x + building.width / 2, y - 62)
     .lineBetween(x + building.width / 2, y - 62, x + building.width + 18, y + 10);
   g.lineStyle(4, 0x6e7677, 0.95).lineBetween(x - 12, y + 12, x + building.width + 12, y + 12);
+  // Separate upper service doorway used only by the introductory drop. It is
+  // not the rentable ground-floor apartment entrance and has no interaction.
+  g.fillStyle(0x07090a, 1).fillRect(x + 64, y + 28, 62, 72);
+  g.lineStyle(4, INK, 1).strokeRect(x + 64, y + 28, 62, 72);
+  addWorldLabel(scene, x + 95, y + 18, 'UPPER EXIT', 0xc4ccca, 8, true);
   g.fillStyle(0x242a2c, 1).fillRect(x + 28, y + 100, building.width - 56, 204);
   g.lineStyle(6, WHITE, 0.9).strokeRect(x + 28, y + 100, building.width - 56, 204);
   for (let windowX = x + 58; windowX < x + building.width - 50; windowX += 86) {
@@ -367,7 +402,10 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
   }
   g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 30, y + 218, 60, 86);
   g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 64, y + 82, 128, 28);
-  addWorldLabel(scene, x + building.width / 2, y + 96, 'TO LET', WHITE, 12, true);
+  const rentalLabel = addWorldLabel(scene, x + building.width / 2, y + 92, rented ? 'YOUR HOME' : 'TO LET', WHITE, 12, true);
+  rentalLabel.setData('apartment-rental-sign', true);
+  const rentalPrice = addWorldLabel(scene, x + building.width / 2, y + 108, rented ? 'ACCESS UNLOCKED' : '60 COINS', 0xc4ccca, 9, true);
+  rentalPrice.setData('apartment-rental-sign', true);
   addWorldLabel(scene, x + building.width / 2, y + 207, 'HOME DOOR', WHITE, 9, true);
 }
 

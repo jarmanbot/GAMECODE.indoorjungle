@@ -47,6 +47,8 @@ import {
   HOME_STARTER_KIT,
   HOME_WORLD_HEIGHT,
   HOME_WORLD_WIDTH,
+  OPENING_TOWER,
+  OPENING_DROP_POINT,
   BASIL_GROWTH_DURATION_MS,
   BASIL_POT_INTERACTION_RADIUS,
   BASIL_HARVEST_PRICE,
@@ -58,6 +60,7 @@ import {
   REPAIRED_POT_SALE_PRICE,
   RENTAL_BOND_COST,
   HOMES_LISTINGS,
+  HOMES_WINDOW,
   HOMES_WINDOW_CLEAN_SECTIONS,
   OPPOSITE_PAVEMENT_MAX_Y,
   OPPOSITE_PAVEMENT_MIN_Y,
@@ -214,6 +217,9 @@ export class GameScene extends Phaser.Scene {
   private gardeningActionApplied = false;
   private readonly gardeningActionDuration = 760;
   private gardeningPanelRefreshAt = 0;
+  private openingSequenceActive = false;
+  private openingSequenceTween?: Phaser.Tweens.Tween;
+  private openingKick?: Phaser.GameObjects.Graphics;
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -224,7 +230,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
-    this.buySellDoor = drawNeighborhood(this);
+    this.buySellDoor = drawNeighborhood(this, this.progress.rentalBondPaid);
     this.createWantedSign();
     this.createWindowDirtOverlay();
     this.createCars();
@@ -293,7 +299,13 @@ export class GameScene extends Phaser.Scene {
     }
     this.hud.setDevTestMode(this.testSaveMode, this.devSessionMeta?.checkpointId ?? null);
     this.updateInteraction();
-    this.startHousingThoughtReminder();
+    if (!this.testSaveMode) {
+      this.hud.showStartScreen(this.hasNormalSave(), () => this.continueNormalGame(), () => this.beginNewGame());
+    } else if (!this.progress.openingComplete) {
+      this.startOpeningSequence();
+    } else {
+      this.startHousingThoughtReminder();
+    }
   }
 
   update(time: number, delta: number): void {
@@ -303,6 +315,11 @@ export class GameScene extends Phaser.Scene {
     this.updateGardeningAction(delta);
     this.updateWindowSpray(delta);
     this.updateThoughtBubble(delta);
+
+    if (this.openingSequenceActive) {
+      this.updateInteraction();
+      return;
+    }
 
     if (this.modalOpen && time - this.gardeningPanelRefreshAt >= 500) {
       this.gardeningPanelRefreshAt = time;
@@ -422,7 +439,7 @@ export class GameScene extends Phaser.Scene {
 
     // Alex faces the player whenever movement has ended. The window-cleaning
     // task is the one deliberate exception: Alex must keep their back to the
-    // player while working on the HOMES display.
+    // player while working on the REAL ESTATE AGENT display.
     if (direction.lengthSq() === 0 && !this.windowFacingLocked && this.playerFacing !== 'front') {
       this.faceDirection(new Phaser.Math.Vector2(0, 1));
     }
@@ -460,19 +477,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   zoomBy(direction: 1 | -1): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     const index = this.zoomOrder.indexOf(this.zoomMode);
     const nextIndex = Phaser.Math.Clamp(index + direction, 0, this.zoomOrder.length - 1);
     this.applyZoom(this.zoomOrder[nextIndex]);
   }
 
   setZoom(mode: ZoomMode): void {
-    if (this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     this.applyZoom(mode);
   }
 
   tryInteract(): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked) return;
     if (this.itemPlacementMode) {
       this.showToast(this.placementTarget ? 'Press B to put the item down.' : 'Tap a clear pavement square first.', 1500);
       return;
@@ -508,6 +525,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   setJoystickInput(x: number, y: number, pointerHeld: boolean): void {
+    if (this.openingSequenceActive) {
+      this.joystickPointerHeld = false;
+      this.joystickInput.set(0, 0);
+      this.joystickSteering = false;
+      return;
+    }
     if (this.activeGardeningAction) {
       this.joystickPointerHeld = pointerHeld;
       this.joystickInput.set(0, 0);
@@ -823,6 +846,116 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private hasNormalSave(): boolean {
+    try {
+      const raw = localStorage.getItem(this.normalProgressKey);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as unknown;
+      return Boolean(parsed && typeof parsed === 'object');
+    } catch {
+      return false;
+    }
+  }
+
+  private continueNormalGame(): void {
+    this.hud.hideStartScreen();
+    if (this.progress.openingComplete) {
+      this.startHousingThoughtReminder();
+      return;
+    }
+    this.startOpeningSequence();
+  }
+
+  private beginNewGame(): void {
+    this.hud.hideStartScreen();
+    this.progress = sanitizeProgress(DEFAULT_PROGRESS);
+    this.coins = 0;
+    this.inventoryPot = null;
+    this.inventoryHasPot = false;
+    this.inventoryInstanceId = null;
+    this.saleComplete = false;
+    this.rentalBondPaid = false;
+    this.rentalKeyOwned = false;
+    this.starterKitClaimed = false;
+    this.clearItemPlacement();
+    this.cancelTapWalk();
+    this.hud.resetHeldInputs();
+    this.player.setAlpha(1).setVisible(true);
+    this.updateProgressVisuals();
+    this.refreshWantedSign();
+    this.updateApartmentRentalSign();
+    this.saveProgress();
+    this.startOpeningSequence();
+  }
+
+  private startOpeningSequence(): void {
+    this.openingSequenceTween?.stop();
+    this.openingSequenceActive = true;
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    this.cancelToolUse(true);
+    this.modalOpen = false;
+    this.shopTransitioning = false;
+    this.progress.openingComplete = false;
+    this.saveProgress();
+    this.thoughtBubble?.setVisible(false);
+    this.zoomMode = 'normal';
+    this.streetZoomMode = 'normal';
+    this.player.setPosition(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y).setAlpha(1).setVisible(true);
+    this.cameras.main.stopFollow();
+    this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
+    this.applyZoom(this.zoomMode);
+    this.hud.setZoomMode(this.zoomMode);
+    this.openingKick?.destroy();
+    this.openingKick = this.add.graphics().setDepth(32);
+    this.openingKick.fillStyle(0x111416, 1).fillRect(-8, -7, 54, 18);
+    this.openingKick.fillStyle(0xf6f7f3, 1).fillRect(34, -4, 18, 12);
+    this.openingKick.lineStyle(3, 0x111416, 1).strokeRect(-8, -7, 60, 18);
+    this.openingKick.setPosition(OPENING_DROP_POINT.x + 20, OPENING_DROP_POINT.y + 18);
+    this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 620, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    this.showToast('Alex has been booted out. Recovering on the street...', 2200);
+    this.hud.showOpeningSkip(() => this.finishOpeningSequence());
+    this.openingSequenceTween = this.tweens.add({
+      targets: this.player,
+      y: START_POSITION.y,
+      duration: 6000,
+      ease: 'Bounce.easeOut',
+      onUpdate: () => {
+        this.drawPlayer();
+        this.updateThoughtBubblePosition();
+      },
+      onComplete: () => this.finishOpeningSequence(),
+    });
+  }
+
+  private finishOpeningSequence(): void {
+    if (!this.openingSequenceActive) return;
+    this.openingSequenceTween?.stop();
+    this.openingSequenceTween = undefined;
+    this.openingKick?.destroy();
+    this.openingKick = undefined;
+    this.openingSequenceActive = false;
+    this.hud.hideOpeningSkip();
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    this.player.setPosition(START_POSITION.x, START_POSITION.y).setAlpha(1).setVisible(true);
+    this.cameras.main.stopFollow();
+    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.zoomMode = 'close';
+    this.streetZoomMode = 'close';
+    this.applyZoom(this.zoomMode);
+    this.hud.setZoomMode(this.zoomMode);
+    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
+    this.progress.openingComplete = true;
+    this.saveProgress();
+    this.drawPlayer();
+    this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
+    this.updateInteraction();
+    this.startHousingThoughtReminder();
+    this.showThought('I need a place to live', true);
+  }
+
   private saveProgress(): void {
     syncProgressLegacyMirrors(this.progress);
     this.progress.coins = this.coins;
@@ -863,6 +996,7 @@ export class GameScene extends Phaser.Scene {
     this.updateProgressVisuals();
     if (this.repairPickupReady && this.progress.inventoryPot === 'broken') this.createRepairPickupPresentation();
     this.refreshWantedSign();
+    this.updateApartmentRentalSign();
     this.saveProgress();
     this.syncHudState();
     this.hud.setDevTestMode(true, snapshot.id);
@@ -1229,7 +1363,7 @@ export class GameScene extends Phaser.Scene {
       const now = performance.now();
       if (now - this.toolFeedbackAt > 700) {
         this.toolFeedbackAt = now;
-        this.showToast(!inRange ? 'Move closer to the HOMES window.' : 'Face the HOMES window, then press B once per spray.', 1300);
+        this.showToast(!inRange ? 'Move closer to the REAL ESTATE AGENT window.' : 'Face the REAL ESTATE AGENT window, then press B once per spray.', 1300);
       }
       return;
     }
@@ -1797,6 +1931,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.rentalKeyOwned = true;
     this.progress.starterKitClaimed = false;
     this.progress.task = 'place-pot';
+    this.updateApartmentRentalSign();
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshPropertyPanel('Bond paid. Your rental and starter kit are unlocked.');
@@ -2376,6 +2511,7 @@ export class GameScene extends Phaser.Scene {
     this.rentalBondPaid = false;
     this.rentalKeyOwned = false;
     this.starterKitClaimed = false;
+    this.progress.openingComplete = false;
     this.housingThoughtElapsedMs = 0;
     this.thoughtBubble?.setVisible(false);
     this.repairPickupReady = false;
@@ -2404,7 +2540,16 @@ export class GameScene extends Phaser.Scene {
     this.hud.setMapPosition(START_POSITION.x / WORLD_WIDTH, START_POSITION.y);
     this.showToast('Prototype restarted.');
     this.updateInteraction();
-    this.startHousingThoughtReminder();
+    this.startOpeningSequence();
+  }
+
+  private updateApartmentRentalSign(): void {
+    this.children.list.forEach((child) => {
+      if (!('getData' in child) || !('setText' in child)) return;
+      const object = child as Phaser.GameObjects.Text;
+      if (!object.getData('apartment-rental-sign')) return;
+      object.setText(object.y < 575 ? (this.rentalBondPaid ? 'YOUR HOME' : 'TO LET') : (this.rentalBondPaid ? 'ACCESS UNLOCKED' : '60 COINS'));
+    });
   }
 
   private createPlayer(): void {
@@ -2745,7 +2890,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readonly handleCanvasPointerDown = (event: PointerEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -2765,7 +2910,7 @@ export class GameScene extends Phaser.Scene {
   };
 
   private readonly handleCanvasClick = (event: MouseEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld) {
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -2785,7 +2930,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleWorldPoint(screenX: number, screenY: number): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld || this.activeGardeningAction) return;
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld || this.activeGardeningAction) return;
     if (this.sprayAnimating) this.cancelToolUse(false);
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
     if (this.isNearPoint(point, new Phaser.Math.Vector2(this.player.x, this.player.y), 54)) {
@@ -2930,7 +3075,7 @@ export class GameScene extends Phaser.Scene {
       const approach = this.getApartmentApproachPoint();
       if (!this.rentalBondPaid) {
         this.cancelTapWalk();
-        this.showToast('Rent the starter apartment at HOMES first.', 1800);
+        this.showToast('Rent the starter apartment at the REAL ESTATE AGENT first.', 1800);
         return;
       }
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 120) {
@@ -3185,7 +3330,7 @@ export class GameScene extends Phaser.Scene {
         if (this.rentalBondPaid) this.enterHome();
         else if (performance.now() - this.rentalFeedbackAt > 900) {
           this.rentalFeedbackAt = performance.now();
-          this.showToast('Rent the starter apartment at HOMES first.', 1500);
+          this.showToast('Rent the starter apartment at the REAL ESTATE AGENT first.', 1500);
         }
         return true;
       }
@@ -3232,7 +3377,7 @@ export class GameScene extends Phaser.Scene {
     } else if (interaction === 'exit-shop') {
       this.interactionHighlight.strokeRect(point.x - 58, point.y - 62, 116, 70);
     } else if (interaction === 'window-clean') {
-      this.interactionHighlight.strokeRect(1274, 596, 332, 188);
+      this.interactionHighlight.strokeRect(HOMES_WINDOW.x - 6, HOMES_WINDOW.y + 4, HOMES_WINDOW.width - 8, HOMES_WINDOW.height - 8);
     } else if (interaction === 'place-growing-pot') {
       const index = this.selectedGrowingSpotIndex;
       const spot = index === null ? point : HOME_GROWING_SPOTS[index];
@@ -3873,7 +4018,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readonly handleCanvasWheel = (event: WheelEvent): void => {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
       event.preventDefault();
     this.zoomBy(event.deltaY > 0 ? -1 : 1);
   };
@@ -3883,7 +4028,7 @@ export class GameScene extends Phaser.Scene {
       if (!this.modalOpen && !this.phoneLandscapeBlocked && !this.shopTransitioning) event.preventDefault();
       return;
     }
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
     if (event.key === ',' || event.code === 'Comma') {
       event.preventDefault();
       this.zoomBy(-1);
@@ -4013,10 +4158,10 @@ export class GameScene extends Phaser.Scene {
       // Close is one camera level. Do not derive its magnification from the
       // nearest storefront: different building widths otherwise create an
       // apparent third zoom while Alex walks along the street.
-      const referenceBuilding = BUILDINGS.find((candidate) => candidate.key === 'buy-sell') ?? BUILDINGS[0];
+      const referenceBuilding = BUILDINGS.find((candidate) => candidate.key === (this.player.x < 1080 ? 'starter-apartment' : 'buy-sell')) ?? BUILDINGS[0];
       const referenceLeft = Math.min(START_POSITION.x - 20, referenceBuilding.x);
       const referenceRight = Math.max(START_POSITION.x + 20, referenceBuilding.x + referenceBuilding.width);
-      const referenceTop = referenceBuilding.y - 18;
+      const referenceTop = referenceBuilding.kind === 'apartment' ? referenceBuilding.y - 76 : referenceBuilding.y - 18;
       const referenceBottom = FRONT_PAVEMENT_MAX_Y + 16;
       const zoom = this.fitZoom(
         viewportWidth,
@@ -4036,7 +4181,7 @@ export class GameScene extends Phaser.Scene {
       ? { left: 560, right: 2530, top: 390, bottom: 1240 }
       : compactLandscape
         ? { left: 540, right: 2400, top: 430, bottom: 1210 }
-        : { left: 560, right: 1680, top: 390, bottom: 1240 };
+        : { left: 540, right: 2450, top: 390, bottom: 1240 };
     const fittedZoom = this.fitZoom(
       viewportWidth,
       viewportHeight,
@@ -4213,7 +4358,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted
       && this.isNearWindowApproach() && (this.windowFacePromptRequired || !this.isFacingWindow())) {
-      this.hud.setAction('FACE HOMES WINDOW');
+      this.hud.setAction('FACE REAL ESTATE WINDOW');
       return;
     }
     this.hud.setAction(null);

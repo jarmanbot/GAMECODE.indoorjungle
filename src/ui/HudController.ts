@@ -62,6 +62,13 @@ export class HudController {
   private readonly toolPopupBackdrop = document.querySelector<HTMLElement>('#tool-popup-backdrop')!;
   private readonly toolPopupClose = document.querySelector<HTMLButtonElement>('#tool-popup-close')!;
   private readonly toolSlots = document.querySelector<HTMLElement>('#tool-slots')!;
+  private readonly startScreen = document.querySelector<HTMLElement>('#start-screen')!;
+  private readonly startContinue = document.querySelector<HTMLButtonElement>('#start-continue')!;
+  private readonly startNew = document.querySelector<HTMLButtonElement>('#start-new')!;
+  private readonly startConfirm = document.querySelector<HTMLElement>('#start-confirm')!;
+  private readonly startConfirmNew = document.querySelector<HTMLButtonElement>('#start-confirm-new')!;
+  private readonly startCancelNew = document.querySelector<HTMLButtonElement>('#start-cancel-new')!;
+  private readonly openingSkip = document.querySelector<HTMLButtonElement>('#opening-skip')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
@@ -110,6 +117,9 @@ export class HudController {
   private devFeedback = '';
   private activeActionLabel: string | null = null;
   private actionHideTimer: number | null = null;
+  private startContinueAction: (() => void) | null = null;
+  private startNewAction: (() => void) | null = null;
+  private openingSkipAction: (() => void) | null = null;
 
   constructor(audio: AudioController) {
     this.audio = audio;
@@ -149,6 +159,11 @@ export class HudController {
       if (event.target === this.toolPopupBackdrop) this.closeToolPopup();
     });
     this.bindButtonActivation(this.interactButton, () => this.scene?.tryInteract());
+    this.bindButtonActivation(this.startContinue, () => this.startContinueAction?.());
+    this.bindButtonActivation(this.startNew, () => { this.startConfirm.hidden = false; this.startNew.hidden = true; });
+    this.bindButtonActivation(this.startConfirmNew, () => this.startNewAction?.());
+    this.bindButtonActivation(this.startCancelNew, () => { this.startConfirm.hidden = true; this.startNew.hidden = false; });
+    this.bindButtonActivation(this.openingSkip, () => this.openingSkipAction?.());
     this.bindJoystickControls();
     this.bindArcadeControls();
     this.applyJoystickSide();
@@ -173,6 +188,31 @@ export class HudController {
   bindScene(scene: GameScene): void {
     this.scene = scene;
     this.refreshPhoneLayout();
+  }
+
+  showStartScreen(hasContinue: boolean, continueAction: () => void, newGameAction: () => void): void {
+    this.startContinueAction = continueAction;
+    this.startNewAction = newGameAction;
+    this.startContinue.hidden = !hasContinue;
+    this.startNew.hidden = false;
+    this.startConfirm.hidden = true;
+    this.startScreen.hidden = false;
+  }
+
+  hideStartScreen(): void {
+    this.startScreen.hidden = true;
+    this.startContinueAction = null;
+    this.startNewAction = null;
+  }
+
+  showOpeningSkip(action: () => void): void {
+    this.openingSkipAction = action;
+    this.openingSkip.hidden = false;
+  }
+
+  hideOpeningSkip(): void {
+    this.openingSkip.hidden = true;
+    this.openingSkipAction = null;
   }
 
   setPhoneHybridLayout(enabled: boolean): void {
@@ -260,7 +300,7 @@ export class HudController {
     const labels: Record<TaskState, string> = {
       find: 'Find a Small Golden Pothos',
       sell: 'Sell the Small Golden Pothos at BUY / SELL',
-      clean: 'Clean the HOMES estate-agent window',
+      clean: 'Clean the REAL ESTATE AGENT window',
       repair: 'Find broken pot pieces; repair with tool + glue',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
@@ -966,7 +1006,7 @@ export class HudController {
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-put-down-item>PUT DOWN</button></div>'
         : '';
       const toolNote = [
-        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Press B once per spray.' : 'Equip it near the HOMES estate-agent window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
+        this.cleanerOwned ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Borrowed cleaner</strong><small>${this.equippedTool === 'cleaner' ? 'Press B once per spray.' : 'Equip it near the REAL ESTATE AGENT window.'}</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="cleaner">${this.equippedTool === 'cleaner' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
         this.repairToolOwned ? `<div class="inventory-item"><span class="inventory-art">⚒</span><div><strong>Repair tool</strong><small>${this.glueCharges} glue charge${this.glueCharges === 1 ? '' : 's'} remaining. Tap B 10 times beside a broken pot.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="repair">${this.equippedTool === 'repair' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
         this.wateringCanOwned ? `<div class="inventory-item"><span class="inventory-art">≈</span><div><strong>Basic watering can</strong><small>Reusable and essential. Select a planted pot, then press B.</small></div><div class="inventory-actions"><button class="inventory-action" type="button" data-equip-tool="watering-can">${this.equippedTool === 'watering-can' ? 'EQUIPPED' : 'EQUIP'}</button></div></div>` : '',
       ].join('');
@@ -999,7 +1039,7 @@ export class HudController {
     if (kind === 'tasks') {
       const complete = this.activeTask === 'complete';
       const taskLabel: Record<TaskState, string> = {
-        find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
+        find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the REAL ESTATE AGENT window',
         repair: 'Find broken pot pieces; repair with tool + glue', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
         'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
@@ -1019,7 +1059,7 @@ export class HudController {
         title: 'Home',
         body: rental.rentalBondPaid
           ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Apartment key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small><small>${rental.starterKitClaimed ? 'Place the pot and begin the repeatable basil growing loop.' : 'Enter the apartment to claim the one-time starter kit.'}</small></div>`
-          : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at HOMES to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
+          : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at the REAL ESTATE AGENT to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
       };
     }
     if (kind.startsWith('property-')) {

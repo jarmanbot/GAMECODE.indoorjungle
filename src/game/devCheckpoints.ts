@@ -52,6 +52,7 @@ const withState = (base: ProgressState, overrides: Partial<ProgressState>): Prog
 const freshStart = (): ProgressState => sanitizeProgress(DEFAULT_PROGRESS);
 
 const goldenPothosCollected = (): ProgressState => withState(freshStart(), {
+  openingComplete: true,
   inventoryPot: 'ordinary', inventoryItem: 'small-golden-pothos', inventoryInstanceId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, task: 'clean',
 });
 

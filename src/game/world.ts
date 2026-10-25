@@ -27,10 +27,10 @@ export const STARTING_WALKABLE_MIN_X = 540;
 export const STARTING_WALKABLE_MAX_X = 2540;
 
 export const BUILDINGS: Building[] = [
-  { key: 'buy-sell', label: 'BUY / SELL', kind: 'shop', x: 880, y: 505, width: 350, height: 325 },
-  { key: 'homes', label: 'HOMES', kind: 'homes', x: 1260, y: 490, width: 380, height: 340 },
-  { key: 'plants', label: 'PLANTS', kind: 'plants', x: 1670, y: 510, width: 360, height: 320 },
-  { key: 'starter-apartment', label: 'STARTER APARTMENT', kind: 'apartment', x: 2060, y: 465, width: 430, height: 365 },
+  { key: 'starter-apartment', label: 'STARTER APARTMENT', kind: 'apartment', x: 620, y: 465, width: 430, height: 365 },
+  { key: 'buy-sell', label: 'BUY / SELL', kind: 'shop', x: 1120, y: 505, width: 350, height: 325 },
+  { key: 'homes', label: 'REAL ESTATE AGENT', kind: 'homes', x: 1510, y: 490, width: 380, height: 340 },
+  { key: 'plants', label: 'NURSERY COMING SOON', kind: 'plants', x: 1940, y: 510, width: 360, height: 320 },
 ];
 
 export interface FutureZone {
@@ -176,10 +176,10 @@ export const BUY_SELL_DOOR_WIDTH = 64;
 export const BUY_SELL_DOOR_HEIGHT = 104;
 export const BUY_SELL_DOOR_TOP = 726;
 export const BUY_SELL_DOOR_BOTTOM = 830;
-export const BUY_SELL_ENTRANCE = { x: 1165, y: 864 };
-export const BUY_SELL_WINDOW = { x: 895, y: 590, width: 222, height: 190 };
-export const HOMES_WINDOW = { x: 1280, y: 592, width: 340, height: 184 };
-export const HOMES_WINDOW_CLEAN_ZONE = { x: 1280, y: 592, width: 340, height: 36 };
+export const BUY_SELL_ENTRANCE = { x: 1405, y: 864 };
+export const BUY_SELL_WINDOW = { x: 1135, y: 590, width: 222, height: 190 };
+export const HOMES_WINDOW = { x: 1530, y: 592, width: 340, height: 184 };
+export const HOMES_WINDOW_CLEAN_ZONE = { x: 1530, y: 592, width: 340, height: 36 };
 export interface WindowCleanSection {
   id: string;
   x: number;
@@ -192,23 +192,25 @@ export interface WindowCleanSection {
 // Keep section effort in the world definition so larger future windows can
 // use more sprays per section without changing the cleaning system.
 export const HOMES_WINDOW_CLEAN_SECTIONS: WindowCleanSection[] = [
-  { id: 'homes-left', x: 1280, y: 592, width: 104, height: 184, spraysRequired: 3 },
-  { id: 'homes-centre', x: 1398, y: 592, width: 104, height: 184, spraysRequired: 3 },
-  { id: 'homes-right', x: 1516, y: 592, width: 104, height: 184, spraysRequired: 3 },
+  { id: 'homes-left', x: 1530, y: 592, width: 104, height: 184, spraysRequired: 3 },
+  { id: 'homes-centre', x: 1648, y: 592, width: 104, height: 184, spraysRequired: 3 },
+  { id: 'homes-right', x: 1766, y: 592, width: 104, height: 184, spraysRequired: 3 },
 ];
 export const HOMES_LISTINGS: Array<{ key: PropertyListingKey; x: number; y: number; width: number; height: number }> = [
-  { key: 'cheap-rental', x: 1300, y: 637, width: 112, height: 90 },
-  { key: 'mid-rental', x: 1430, y: 637, width: 78, height: 90 },
-  { key: 'high-property', x: 1523, y: 637, width: 78, height: 90 },
+  { key: 'cheap-rental', x: 1550, y: 637, width: 112, height: 90 },
+  { key: 'mid-rental', x: 1680, y: 637, width: 78, height: 90 },
+  { key: 'high-property', x: 1773, y: 637, width: 78, height: 90 },
 ];
 export const APARTMENT_DOOR_WIDTH = 60;
 export const APARTMENT_DOOR_TOP = 683;
 export const APARTMENT_DOOR_BOTTOM = 769;
-export const APARTMENT_ENTRANCE = { x: 2275, y: 864 };
+export const APARTMENT_ENTRANCE = { x: 835, y: 864 };
+export const OPENING_TOWER = { x: 540, y: -1320, width: 500, height: 2210 };
+export const OPENING_DROP_POINT = { x: 715, y: -1080 };
 // The collectible sits on the lower edge of the front pavement: with its
 // existing drawing scale, the pot base meets the road-edge line at y=944.
-export const POT_POSITION = { x: 1648, y: 930 };
-export const START_POSITION = { x: STARTING_WALKABLE_MIN_X + 20, y: 890 };
+export const POT_POSITION = { x: 1080, y: 930 };
+export const START_POSITION = { x: 560, y: 890 };
 
 export const SHOP_WORLD_WIDTH = 1200;
 export const SHOP_WORLD_HEIGHT = 900;

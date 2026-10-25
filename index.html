@@ -26,6 +26,7 @@
           <span class="interact-dot" aria-hidden="true"></span>
           <span id="interact-label">INTERACT</span>
         </button>
+        <button id="opening-skip" class="opening-skip" type="button" hidden>SKIP OPENING</button>
       </section>
 
       <section id="phone-control-panel" class="phone-control-panel" aria-label="Phone movement and camera controls">
@@ -87,6 +88,22 @@
         </section>
       </div>
     </main>
+    <div id="start-screen" class="start-screen" hidden>
+      <section class="start-card" role="dialog" aria-modal="true" aria-labelledby="start-title">
+        <span class="eyebrow">INDOOR JUNGLE</span>
+        <h1 id="start-title">INDOOR JUNGLE</h1>
+        <p class="start-tagline">A small monochrome city. A fresh start.</p>
+        <div class="start-actions">
+          <button id="start-continue" type="button">CONTINUE</button>
+          <button id="start-new" type="button">NEW GAME</button>
+        </div>
+        <div id="start-confirm" class="start-confirm" hidden>
+          <strong>Overwrite the normal save?</strong>
+          <small>Your existing progress will be replaced. Developer test saves are separate.</small>
+          <div class="start-confirm-actions"><button id="start-confirm-new" type="button">START NEW GAME</button><button id="start-cancel-new" type="button">CANCEL</button></div>
+        </div>
+      </section>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

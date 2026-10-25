@@ -23,6 +23,18 @@ button { font: inherit; color: inherit; }
   background: #171b1d;
 }
 
+.start-screen { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: #0b0d0e; }
+.start-card { width: min(520px, 100%); padding: clamp(24px, 6vw, 56px); text-align: center; background: #171c1e; border: 4px solid #f6f7f3; box-shadow: 10px 10px 0 #050607; }
+.start-card h1 { margin: 12px 0 8px; font-size: clamp(28px, 7vw, 54px); letter-spacing: .08em; }
+.start-tagline { margin: 0 0 28px; color: #c4ccca; font-size: clamp(12px, 2vw, 16px); }
+.start-actions, .start-confirm-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.start-actions button, .start-confirm-actions button { min-width: 150px; min-height: 48px; padding: 10px 16px; border: 3px solid #f6f7f3; background: #202729; color: #f6f7f3; cursor: pointer; font-weight: 800; }
+.start-actions button:hover, .start-confirm-actions button:hover { background: #f6f7f3; color: #111416; }
+.start-confirm { display: grid; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 2px solid #697173; }
+.start-confirm small { color: #c4ccca; line-height: 1.4; }
+.opening-skip { position: absolute; z-index: 8; right: 16px; bottom: 16px; min-height: 42px; padding: 8px 12px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-size: 11px; font-weight: 800; }
+.opening-skip:hover { background: #f6f7f3; color: #111416; }
+
 .hud {
   position: relative;
   z-index: 20;
