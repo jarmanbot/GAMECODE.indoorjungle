@@ -51,6 +51,7 @@ const withState = (base: ProgressState, overrides: Partial<ProgressState>): Prog
   harvestQuantities: { ...base.harvestQuantities, ...(overrides.harvestQuantities ?? {}) },
   growingEvents: { ...base.growingEvents, ...(overrides.growingEvents ?? {}) },
   toolSlots: overrides.toolSlots ? [...overrides.toolSlots] : [...base.toolSlots],
+  ownedPremiumPlants: overrides.ownedPremiumPlants ? [...overrides.ownedPremiumPlants] : [...base.ownedPremiumPlants],
 });
 const freshStart = (): ProgressState => sanitizeProgress(DEFAULT_PROGRESS);
 

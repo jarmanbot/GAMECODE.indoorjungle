@@ -30,6 +30,7 @@ import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState
 import type { AlexGraphics } from '../game/progress';
 import type { PropertyId } from '../game/world';
 import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
+import { PREMIUM_PLANT_CATALOG, isPremiumPlantId, type PremiumPlantId } from '../game/shopCatalog';
 import type { GrowingPotState } from '../game/growing';
 
 const DEV_BUILD = import.meta.env.DEV;
@@ -113,6 +114,7 @@ export class HudController {
   private seedQuantities: Record<PlantSpecies, number> = { basil: 0, mint: 0 };
   private harvestQuantities: Record<PlantSpecies, number> = { basil: 0, mint: 0 };
   private growingPots: GrowingPotState[] = [];
+  private ownedPremiumPlants: PremiumPlantId[] = [];
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
   private mapPositionY = START_POSITION.y;
   private cityMapZoom = 0.72;
@@ -313,7 +315,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; ownedPremiumPlants?: PremiumPlantId[] }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -347,6 +349,7 @@ export class HudController {
     this.seedQuantities = state.seedQuantities ? { ...this.seedQuantities, ...state.seedQuantities } : { ...this.seedQuantities, basil: this.basilSeeds };
     this.harvestQuantities = state.harvestQuantities ? { ...this.harvestQuantities, ...state.harvestQuantities } : { ...this.harvestQuantities, basil: this.basilHarvests };
     this.growingPots = state.growingPots?.map((pot) => ({ ...pot, crop: pot.crop ? { ...pot.crop } : null })) ?? this.growingPots;
+    this.ownedPremiumPlants = state.ownedPremiumPlants ? [...state.ownedPremiumPlants] : this.ownedPremiumPlants;
     this.graphicsUpgradeInstalled = state.graphicsUpgradeInstalled ?? this.graphicsUpgradeInstalled;
     this.alexGraphics = state.alexGraphics ?? this.alexGraphics;
     document.documentElement.classList.toggle('graphics-upgrade-installed', this.graphicsUpgradeInstalled);
@@ -1077,6 +1080,10 @@ export class HudController {
         this.rentalKeyOwned ? `<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>${this.activeProperty === 'second-rental' ? 'Two-room rental key' : 'Starter apartment key'}</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>` : '',
         this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its growth timer.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>${getPlantDefinition(species).harvestLabel} ×${this.harvestQuantities[species]}</strong><small>Sell each harvest at BUY / SELL for ${getPlantDefinition(species).harvestPrice} coins.</small></div></div>` : ''),
+        ...this.ownedPremiumPlants.map((id) => {
+          const plant = PREMIUM_PLANT_CATALOG.find((candidate) => candidate.id === id)!;
+          return `<div class="inventory-item"><span class="inventory-art">♣</span><div><strong>${plant.label}</strong><small>Premium shop plant · purchased for ${plant.price} coins.</small></div></div>`;
+        }),
       ].filter(Boolean).join('');
       return {
         title: 'Bag',
@@ -1170,6 +1177,12 @@ export class HudController {
         const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
         const stockId = buyButton.dataset.shopBuyStock;
         if (stockId) this.scene?.buyShopStock(stockId, quantity);
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-premium]').forEach((buyButton) => {
+      this.bindButtonActivation(buyButton, () => {
+        const id = buyButton.dataset.shopBuyPremium;
+        if (isPremiumPlantId(id)) this.scene?.buyPremiumPlant(id);
       });
     });
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy]').forEach((buyButton) => {
@@ -1307,6 +1320,7 @@ export class HudController {
       additionalGrowingPotsAvailable: 0,
       starterKitClaimed: this.starterKitClaimed,
       shopStock: [] as ShopStockEntry[],
+      ownedPremiumPlants: [...this.ownedPremiumPlants],
     };
     const windowSprayTotal = HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0);
     const sectionSprays = new Set(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => section.spraysRequired));
@@ -1339,11 +1353,15 @@ export class HudController {
       const quantity = entry.quantity > 1 ? ` ×${entry.quantity}` : '';
       return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'special-repair-pot' ? '◈' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
     }).join('');
+    const premiumOffers = PREMIUM_PLANT_CATALOG.filter((plant) => !shop.ownedPremiumPlants.includes(plant.id)).map((plant) =>
+      `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>${plant.label}</strong><small>Premium potted plant · one available · ${plant.price} coins</small></div>${quantityControl(1, plant.price, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-premium="${plant.id}">BUY FOR ${plant.price} COINS</button></div>`,
+    ).join('');
+    const premiumContent = `<div class="shop-section-label">PREMIUM PLANTS</div>${premiumOffers || '<div class="empty-state"><span class="empty-mark">✓</span><strong>Premium shelf purchased</strong><small>All current premium plants are in your Bag.</small></div>'}`;
     const seedContent = shop.starterKitClaimed
       ? `<div class="shop-section-label">SEEDS</div>${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); return `<div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>${definition.seedLabel}</strong><small>Independent stock · ${definition.seedPrice} coins each</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, definition.seedPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="seed-${species}">BUY SELECTED</button></div>`; }).join('')}`
       : '<div class="shop-section-label">SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying seeds.</small></div>';
     const potContent = shop.starterKitClaimed && shop.additionalGrowingPotsAvailable > 0 ? `<div class="shop-section-label">GROWING POTS</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small basic plastic pot</strong><small>Usable medium · ${shop.additionalGrowingPotsAvailable} available · ${SMALL_BASIC_PLASTIC_POT_PRICE} coins each</small></div>${quantityControl(shop.additionalGrowingPotsAvailable, SMALL_BASIC_PLASTIC_POT_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-growing-pot>BUY SELECTED</button></div>` : '';
-    const buyContent = `<div class="shop-content-heading">BUY</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${potContent}`;
+    const buyContent = `<div class="shop-content-heading">BUY</div>${premiumContent}<div class="shop-section-label">PLAYER-SOLD STOCK</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${potContent}`;
     const deliveryContent = shop.saleComplete
       ? ''
       : `<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>${OPENING_POTHOS_SALE_PRICE} COINS</strong></div><span class="shop-status">WANTED</span></div>`;

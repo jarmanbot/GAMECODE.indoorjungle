@@ -2,6 +2,7 @@ import { createEmptyGrowingPot, GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING
 import { emptyPlantQuantities, PLANT_SPECIES, type PlantSpecies, type PlantStage } from './plants';
 import { RENTAL_BOND_COST, SECOND_RENTAL_TOTAL_BOND } from './world';
 import type { PropertyId } from './world';
+import { isPremiumPlantId, type PremiumPlantId } from './shopCatalog';
 
 export type PotCondition = 'ordinary' | 'broken' | 'repaired';
 export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot';
@@ -55,6 +56,7 @@ export interface ProgressState {
   repairedPotSaleComplete: boolean;
   shopGoldenPothosStock: boolean;
   shopStock: ShopStockEntry[];
+  ownedPremiumPlants: PremiumPlantId[];
   windowJobAccepted: boolean;
   windowCleaningProgress: number;
   windowJobComplete: boolean;
@@ -114,6 +116,7 @@ export const DEFAULT_PROGRESS: ProgressState = {
   repairedPotSaleComplete: false,
   shopGoldenPothosStock: false,
   shopStock: [],
+  ownedPremiumPlants: [],
   windowJobAccepted: false,
   windowCleaningProgress: 0,
   windowJobComplete: false,
@@ -301,6 +304,9 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const rentalBondTotal = rentalBondPaid ? (activeProperty === 'second-rental' ? SECOND_RENTAL_TOTAL_BOND : RENTAL_BOND_COST) : 0;
   const shopHasBasilSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-basil-leaves');
   const shopHasMintSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-mint-leaves');
+  const ownedPremiumPlants = Array.isArray(input.ownedPremiumPlants)
+    ? [...new Set(input.ownedPremiumPlants.filter(isPremiumPlantId))]
+    : [];
   const progress: ProgressState = {
     openingComplete,
     graphicsUpgradeUnlocked,
@@ -310,7 +316,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
     nurseryConstructionComplete: Boolean(input.nurseryConstructionComplete) || graphicsUpgradeInstalled,
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
-    saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock,
+    saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock, ownedPremiumPlants,
     windowJobAccepted: Boolean(input.windowJobAccepted), windowCleaningProgress: Math.max(0, Math.min(999, quantity(input.windowCleaningProgress))), windowJobComplete: Boolean(input.windowJobComplete),
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
     brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned,

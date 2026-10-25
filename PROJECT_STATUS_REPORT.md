@@ -220,8 +220,8 @@ before the panel closes. A short serialized shopkeeper animation then carries
 one representative item, with a quantity label for stacks. The saved stock is
 rebuilt after the animation; reloads therefore cannot duplicate or undo a
 committed transaction. Pothos, repaired pots, and harvested basil/mint use
-distinct procedural appearances, while premium display items remain
-display-only.
+distinct procedural appearances. Three premium plants are now one-time shop
+purchases priced at 250, 750 and 2,000 coins, with persistent Bag ownership.
 
 Pass 4 adds development-only shop fixtures for the pre-upgrade B&W sale,
 post-upgrade sale items, upgraded buyback stock, and seven-unit basil/mint
@@ -1045,11 +1045,11 @@ Current style:
 - Vacant nursery lot labelled NURSERY COMING SOON.
 - Peaked starter-apartment silhouette.
 - Decorative cars and street details.
-- Display-only future-era shelf items in the shop.
+- Three premium shelf plants available from the start.
 
-The shop interior contains Alex, a shopkeeper, counter, shelves, exit door,
-player-sold stock and display-only B&W, NES-style and PlayStation-style items.
-The premium display items are not purchasable.
+The compact shop interior contains Alex, a shopkeeper, counter, shelves, exit
+door, player-sold stock and three purchasable premium plants. All shelf items
+use shared shelf slots so their pot bases remain aligned as stock changes.
 
 ## Known limitations and inconsistencies
 

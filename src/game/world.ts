@@ -217,17 +217,32 @@ export const OPENING_DROP_POINT = { x: 715, y: -1080 };
 export const POT_POSITION = { x: 1080, y: 930 };
 export const START_POSITION = { x: 560, y: 890 };
 
-export const SHOP_WORLD_WIDTH = 1200;
-export const SHOP_WORLD_HEIGHT = 900;
-export const SHOP_PLAYER_START = { x: 260, y: 690 };
-export const SHOP_COUNTER = { x: 390, y: 500 };
-export const SHOP_COUNTER_APPROACH = { x: 390, y: 640 };
+export const SHOP_WORLD_WIDTH = 900;
+export const SHOP_WORLD_HEIGHT = 700;
+export const SHOP_PLAYER_START = { x: 220, y: 555 };
+export const SHOP_COUNTER = { x: 450, y: 400 };
+export const SHOP_COUNTER_APPROACH = { x: 450, y: 525 };
+export const SHOP_COUNTER_WIDTH = 260;
+export const SHOP_COUNTER_HEIGHT = 104;
+export const SHOP_SHELVES = [
+  { x: 120, y: 180, width: 170, height: 250 },
+  { x: 610, y: 180, width: 170, height: 250 },
+] as const;
+// Every shop-owned or player-sold item uses these shared positions. The first
+// three are reserved for the opening premium catalogue; later slots are used
+// by persistent player-sold stock in stable list order.
+export const SHOP_SHELF_SLOTS = [
+  { x: 205, y: 238 }, { x: 695, y: 238 },
+  { x: 205, y: 306 }, { x: 695, y: 306 },
+  { x: 205, y: 374 }, { x: 695, y: 374 },
+  { x: 205, y: 430 }, { x: 695, y: 430 },
+] as const;
 // The interior exit sits in the bottom wall, farther right and close to the
 // room's lower edge so it reads as a real way out rather than a floating door.
-export const SHOP_EXIT = { x: 760, y: 840 };
+export const SHOP_EXIT = { x: 700, y: 646 };
 export const SHOP_EXIT_DOOR_TOP = SHOP_EXIT.y - BUY_SELL_DOOR_HEIGHT;
 export const SHOP_EXIT_DOOR_BOTTOM = SHOP_EXIT.y;
-export const SHOP_HANDOVER_POINT = { x: 650, y: 620 };
+export const SHOP_HANDOVER_POINT = { x: 570, y: 515 };
 export const HOME_WORLD_WIDTH = 900;
 export const HOME_WORLD_HEIGHT = 700;
 export const HOME_PLAYER_START = { x: 220, y: 560 };

@@ -26,6 +26,7 @@ import {
 } from './progress';
 import { GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, createEmptyGrowingPot, type GrowingPotState } from './growing';
 import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from './plants';
+import { getPremiumPlantDefinition, PREMIUM_PLANT_CATALOG, type PremiumPlantId } from './shopCatalog';
 import {
   BUILDINGS,
   APARTMENT_DOOR_BOTTOM,
@@ -75,11 +76,15 @@ import {
   POT_POSITION,
   SHOP_COUNTER,
   SHOP_COUNTER_APPROACH,
+  SHOP_COUNTER_HEIGHT,
+  SHOP_COUNTER_WIDTH,
   SHOP_EXIT,
   SHOP_EXIT_DOOR_BOTTOM,
   SHOP_EXIT_DOOR_TOP,
   SHOP_HANDOVER_POINT,
   SHOP_PLAYER_START,
+  SHOP_SHELF_SLOTS,
+  SHOP_SHELVES,
   SHOP_WORLD_HEIGHT,
   SHOP_WORLD_WIDTH,
   START_POSITION,
@@ -110,7 +115,7 @@ interface GardeningAction {
   species?: PlantSpecies;
   requiredTool?: EquippedTool;
 }
-type ShopPresentationItem = ShopStockItem | 'basil-seeds' | 'mint-seeds' | 'small-basic-plastic-pot';
+type ShopPresentationItem = ShopStockItem | PremiumPlantId | 'basil-seeds' | 'mint-seeds' | 'small-basic-plastic-pot';
 type ShopTransactionDirection = 'buy' | 'sell';
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
@@ -200,6 +205,7 @@ export class GameScene extends Phaser.Scene {
   private wantedSignText?: Phaser.GameObjects.Text;
   private wantedSignPulse?: Phaser.Tweens.Tween;
   private shopGoldenPothosDisplay: Phaser.GameObjects.GameObject[] = [];
+  private shopPremiumPlantDisplay: Phaser.GameObjects.GameObject[] = [];
   private shopkeeper?: Phaser.GameObjects.Graphics;
   private shopExitDoor?: Phaser.GameObjects.Graphics;
   private shopkeeperCarry?: Phaser.GameObjects.Graphics;
@@ -731,7 +737,7 @@ export class GameScene extends Phaser.Scene {
     this.toolHeld = false;
   }
 
-  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; basilHarvests: number; basilSeeds: number; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number>; additionalGrowingPotsAvailable: number; starterKitClaimed: boolean; shopStock: ShopStockEntry[] } {
+  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; basilHarvests: number; basilSeeds: number; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number>; additionalGrowingPotsAvailable: number; starterKitClaimed: boolean; shopStock: ShopStockEntry[]; ownedPremiumPlants: PremiumPlantId[] } {
     return {
       inventoryPot: this.inventoryPot,
       inventoryItem: this.progress.inventoryItem,
@@ -746,6 +752,7 @@ export class GameScene extends Phaser.Scene {
       additionalGrowingPotsAvailable: Math.max(0, MAX_ADDITIONAL_GROWING_POTS - this.progress.additionalGrowingPotsPurchased),
       starterKitClaimed: this.starterKitClaimed,
       shopStock: this.progress.shopStock.map((entry) => ({ ...entry, instanceIds: [...entry.instanceIds] })),
+      ownedPremiumPlants: [...this.progress.ownedPremiumPlants],
     };
   }
 
@@ -832,6 +839,7 @@ export class GameScene extends Phaser.Scene {
       growingPots: this.progress.growingPots,
       graphicsUpgradeInstalled: this.progress.graphicsUpgradeInstalled,
       alexGraphics: this.progress.alexGraphics,
+      ownedPremiumPlants: this.progress.ownedPremiumPlants,
     });
   }
 
@@ -1253,6 +1261,7 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects = [];
     this.homeStarterKitObjects = [];
     this.shopGoldenPothosDisplay = [];
+    this.shopPremiumPlantDisplay = [];
     this.shopInterior = false;
     this.homeInterior = false;
     this.basilPot = undefined;
@@ -2043,10 +2052,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshShopStockDisplay(): void {
-    this.shopGoldenPothosDisplay.forEach((object) => object.destroy());
-    const displaySet = new Set(this.shopGoldenPothosDisplay);
+    const shelfObjects = [...this.shopGoldenPothosDisplay, ...this.shopPremiumPlantDisplay];
+    shelfObjects.forEach((object) => object.destroy());
+    const displaySet = new Set(shelfObjects);
     this.shopObjects = this.shopObjects.filter((object) => !displaySet.has(object));
     this.shopGoldenPothosDisplay = [];
+    this.shopPremiumPlantDisplay = [];
+    this.createShopFutureDisplayItems();
     this.createShopGoldenPothosDisplay();
   }
 
@@ -2160,6 +2172,29 @@ export class GameScene extends Phaser.Scene {
     const label = removed.item === 'fresh-basil-leaves' ? 'Fresh basil leaves' : removed.item === 'fresh-mint-leaves' ? 'Fresh mint leaves' : removed.item === 'small-golden-pothos' ? 'Small Golden Pothos' : 'Empty repaired pot';
     this.hud.refreshShopPanel(`Bought ${amount} ${label}${amount === 1 ? '' : 's'} for ${total} coins.`);
     this.startShopkeeperTransaction(removed.item, amount, 'buy', sourcePosition, `${label} added to the Bag.`);
+  }
+
+  buyPremiumPlant(id: PremiumPlantId): void {
+    if (!this.shopInterior || this.shopTransactionBusy) return;
+    const definition = getPremiumPlantDefinition(id);
+    if (this.progress.ownedPremiumPlants.includes(id)) {
+      this.hud.refreshShopPanel(`${definition.label} is already in the Bag.`);
+      return;
+    }
+    if (this.coins < definition.price) {
+      const shortfall = definition.price - this.coins;
+      this.hud.refreshShopPanel(`Need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${definition.label}.`);
+      this.showToast(`Insufficient funds: ${shortfall} more coin${shortfall === 1 ? '' : 's'} needed.`, 1600);
+      return;
+    }
+    const source = SHOP_SHELF_SLOTS[definition.shelfSlot];
+    this.coins -= definition.price;
+    this.progress.coins = this.coins;
+    this.progress.ownedPremiumPlants.push(id);
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.refreshShopPanel(`${definition.label} purchased for ${definition.price} coins.`);
+    this.startShopkeeperTransaction(id, 1, 'buy', new Phaser.Math.Vector2(source.x, source.y - 12), `${definition.label} added to the Bag.`);
   }
 
   acceptWindowJob(): void {
@@ -2620,7 +2655,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel(`${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} added to the Bag.`);
-    this.startShopkeeperTransaction(`${species}-seeds`, amount, 'buy', new Phaser.Math.Vector2(960, 612), `Bought ${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} for ${total} coins.`);
+    this.startShopkeeperTransaction(`${species}-seeds`, amount, 'buy', new Phaser.Math.Vector2(695, 557), `Bought ${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} for ${total} coins.`);
   }
 
   buyAdditionalGrowingPot(quantity = 1): void {
@@ -2642,7 +2677,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel(`Bought ${amount} Small basic plastic pot${amount === 1 ? '' : 's'} for ${total} coins. Place them on the grow table.`);
-    this.startShopkeeperTransaction('small-basic-plastic-pot', amount, 'buy', new Phaser.Math.Vector2(840, 612), `Bought ${amount} Small basic plastic pot${amount === 1 ? '' : 's'} for ${total} coins.`);
+    this.startShopkeeperTransaction('small-basic-plastic-pot', amount, 'buy', new Phaser.Math.Vector2(205, 557), `Bought ${amount} Small basic plastic pot${amount === 1 ? '' : 's'} for ${total} coins.`);
   }
 
   private getCropStage(pot: GrowingPotState): BasilStage {
@@ -2883,6 +2918,7 @@ export class GameScene extends Phaser.Scene {
     this.repairPickupPrompt?.destroy();
     this.repairPickupPrompt = undefined;
     this.shopGoldenPothosDisplay = [];
+    this.shopPremiumPlantDisplay = [];
     this.saveProgress();
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
@@ -3570,7 +3606,7 @@ export class GameScene extends Phaser.Scene {
   private handleShopWorldPoint(pointX: number, pointY: number): void {
     const point = new Phaser.Math.Vector2(pointX, pointY);
     if (this.isNearShopExit(point)) {
-      const approach = new Phaser.Math.Vector2(SHOP_EXIT.x, SHOP_EXIT.y);
+      const approach = new Phaser.Math.Vector2(SHOP_EXIT.x, SHOP_EXIT_DOOR_BOTTOM - 18);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
         this.selectPendingInteraction('exit-shop', approach);
       } else {
@@ -3754,7 +3790,7 @@ export class GameScene extends Phaser.Scene {
     const movingIntoExit = direction.y > 0.45 && inExitLane
       && previousY <= this.player.y
       && previousY <= SHOP_EXIT_DOOR_BOTTOM + 8
-      && this.player.y >= SHOP_EXIT_DOOR_BOTTOM - 18;
+      && this.player.y >= SHOP_EXIT_DOOR_BOTTOM - 26;
     if (movingIntoExit) {
       this.exitShop();
       return true;
@@ -3980,6 +4016,7 @@ export class GameScene extends Phaser.Scene {
     this.setObjectsVisible(this.streetObjects, false);
     this.shopObjects = [];
     this.shopGoldenPothosDisplay = [];
+    this.shopPremiumPlantDisplay = [];
     this.drawShopInterior();
     this.player.setPosition(SHOP_PLAYER_START.x, SHOP_PLAYER_START.y).setAlpha(1).setVisible(true);
     this.destinationMarker.setVisible(false);
@@ -4077,6 +4114,7 @@ export class GameScene extends Phaser.Scene {
     this.shopkeeper = undefined;
     this.shopExitDoor = undefined;
     this.shopGoldenPothosDisplay = [];
+    this.shopPremiumPlantDisplay = [];
     this.shopInterior = false;
     setBuySellDoorOpen(this.buySellDoor!, false);
     this.setObjectsVisible(this.streetObjects, true);
@@ -4136,12 +4174,10 @@ export class GameScene extends Phaser.Scene {
       this.scale.width / SHOP_WORLD_WIDTH,
       this.scale.height / SHOP_WORLD_HEIGHT,
     ) * 0.92;
-    // The full room is intentionally not fitted into a narrow portrait phone:
-    // that made the interior text render at only a few pixels high. The camera
-    // still follows Alex and the room remains bounded, but the readable play
-    // area is larger on phones than the desktop-fit room.
+    // The compact room now fits almost entirely within a portrait gameplay
+    // viewport while retaining a small minimum scale on very short phones.
     const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
-    const zoom = portraitPhone ? Math.max(0.58, fittedZoom) : Math.max(0.25, fittedZoom);
+    const zoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
     this.cameras.main.setBounds(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
     this.cameras.main.setZoom(zoom);
     this.cameras.main.startFollow(this.player, true, 0.14, 0.14, 0, 0);
@@ -4176,26 +4212,31 @@ export class GameScene extends Phaser.Scene {
     const upgraded = this.progress.graphicsUpgradeInstalled;
     const room = this.add.graphics().setDepth(-100);
     room.fillStyle(upgraded ? 0x263d42 : 0x252a2d, 1).fillRect(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
-    room.fillStyle(upgraded ? 0x4d6f70 : 0x454c4e, 1).fillRect(56, 110, SHOP_WORLD_WIDTH - 112, SHOP_WORLD_HEIGHT - 170);
-    room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(56, 110, SHOP_WORLD_WIDTH - 112, SHOP_WORLD_HEIGHT - 170);
+    room.fillStyle(upgraded ? 0x4d6f70 : 0x454c4e, 1).fillRect(40, 80, SHOP_WORLD_WIDTH - 80, SHOP_WORLD_HEIGHT - 130);
+    room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(40, 80, SHOP_WORLD_WIDTH - 80, SHOP_WORLD_HEIGHT - 130);
     room.lineStyle(3, 0x697271, 0.9);
-    for (let x = 90; x < SHOP_WORLD_WIDTH - 70; x += 80) room.lineBetween(x, 120, x, 800);
+    for (let x = 70; x < SHOP_WORLD_WIDTH - 50; x += 70) room.lineBetween(x, 90, x, SHOP_WORLD_HEIGHT - 70);
     this.shopObjects.push(room);
 
     const shelves = this.add.graphics().setDepth(3);
-    shelves.fillStyle(0x111416, 1).fillRect(92, 220, 180, 260).fillRect(880, 220, 180, 260);
+    shelves.fillStyle(0x111416, 1);
+    SHOP_SHELVES.forEach((shelf) => shelves.fillRect(shelf.x, shelf.y, shelf.width, shelf.height));
     shelves.lineStyle(5, 0xf6f7f3, 1);
-    for (const shelfX of [92, 880]) {
-      for (const shelfY of [275, 350, 425]) shelves.lineBetween(shelfX + 12, shelfY, shelfX + 168, shelfY);
-    }
+    SHOP_SHELVES.forEach((shelf) => {
+      for (const shelfY of [shelf.y + 58, shelf.y + 126, shelf.y + 194, shelf.y + shelf.height]) {
+        shelves.lineBetween(shelf.x + 12, shelfY, shelf.x + shelf.width - 12, shelfY);
+      }
+    });
     this.shopObjects.push(shelves);
     this.createShopFutureDisplayItems();
     this.createShopGoldenPothosDisplay();
 
     const counter = this.add.graphics().setDepth(5);
-    counter.fillStyle(0x111416, 1).fillRect(SHOP_COUNTER.x - 180, SHOP_COUNTER.y - 62, 360, 112);
-    counter.fillStyle(0x858d8d, 1).fillRect(SHOP_COUNTER.x - 159, SHOP_COUNTER.y - 42, 318, 30);
-    counter.lineStyle(5, 0xf6f7f3, 0.95).strokeRect(SHOP_COUNTER.x - 180, SHOP_COUNTER.y - 62, 360, 112);
+    const counterLeft = SHOP_COUNTER.x - SHOP_COUNTER_WIDTH / 2;
+    const counterTop = SHOP_COUNTER.y - SHOP_COUNTER_HEIGHT / 2;
+    counter.fillStyle(0x111416, 1).fillRect(counterLeft, counterTop, SHOP_COUNTER_WIDTH, SHOP_COUNTER_HEIGHT);
+    counter.fillStyle(0x858d8d, 1).fillRect(counterLeft + 18, counterTop + 18, SHOP_COUNTER_WIDTH - 36, 26);
+    counter.lineStyle(5, 0xf6f7f3, 0.95).strokeRect(counterLeft, counterTop, SHOP_COUNTER_WIDTH, SHOP_COUNTER_HEIGHT);
     this.shopObjects.push(counter);
 
     this.shopkeeper = this.add.graphics().setDepth(6);
@@ -4208,8 +4249,8 @@ export class GameScene extends Phaser.Scene {
     this.shopObjects.push(this.shopExitDoor);
 
     const labels = [
-      { text: 'BUY / SELL', x: SHOP_COUNTER.x, y: 150, size: '26px' },
-      { text: 'COUNTER', x: SHOP_COUNTER.x, y: SHOP_COUNTER.y + 72, size: '15px' },
+      { text: 'BUY / SELL', x: SHOP_COUNTER.x, y: 125, size: '26px' },
+      { text: 'COUNTER', x: SHOP_COUNTER.x, y: SHOP_COUNTER.y + 66, size: '15px' },
     ];
     labels.forEach(({ text, x, y, size }) => {
       const label = this.add.text(x, y, text, {
@@ -4261,7 +4302,8 @@ export class GameScene extends Phaser.Scene {
     this.shopkeeperCarry?.destroy();
     this.shopkeeperCarryLabel?.destroy();
     this.shopkeeperCarry = this.add.graphics().setDepth(8);
-    if (item === 'small-golden-pothos') drawGoldenPothos(this.shopkeeperCarry, 0, 12, 0.34, this.progress.graphicsUpgradeInstalled);
+    if (item === 'snake-plant' || item === 'monstera' || item === 'variegated-pothos') this.drawPremiumPlant(this.shopkeeperCarry, item, 0, 12, 0.52);
+    else if (item === 'small-golden-pothos') drawGoldenPothos(this.shopkeeperCarry, 0, 12, 0.34, this.progress.graphicsUpgradeInstalled);
     else if (item === 'special-repair-pot') drawBrokenPot(this.shopkeeperCarry, 0, 12, 0.72, 10, this.progress.graphicsUpgradeInstalled);
     else if (item === 'fresh-basil-leaves' || item === 'fresh-mint-leaves') this.drawHarvestCarry(this.shopkeeperCarry, item === 'fresh-mint-leaves' ? 'mint' : 'basil');
     else if (item === 'small-basic-plastic-pot') drawPot(this.shopkeeperCarry, 0, 12, 0.62, this.progress.graphicsUpgradeInstalled);
@@ -4291,19 +4333,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getShopShelfPosition(stockId: string): Phaser.Math.Vector2 {
-    const positions = [
-      { x: 180, y: 405 },
-      { x: 960, y: 405 },
-      { x: 180, y: 540 },
-    ];
+    const slot = this.getShopShelfSlot(stockId);
+    return new Phaser.Math.Vector2(slot.x, slot.y - 12);
+  }
+
+  private getShopShelfSlot(stockId: string): { x: number; y: number } {
     const index = Math.max(0, this.progress.shopStock.findIndex((entry) => entry.stockId === stockId));
-    const position = positions[index] ?? { x: 960, y: 540 };
-    return new Phaser.Math.Vector2(position.x, position.y + 72);
+    return SHOP_SHELF_SLOTS[PREMIUM_PLANT_CATALOG.length + index] ?? SHOP_SHELF_SLOTS[SHOP_SHELF_SLOTS.length - 1];
   }
 
   private getShopItemShelfPosition(item: ShopStockItem): Phaser.Math.Vector2 {
     const entry = this.progress.shopStock.find((candidate) => candidate.item === item && candidate.quantity > 0);
-    return entry ? this.getShopShelfPosition(entry.stockId) : new Phaser.Math.Vector2(960, 612);
+    const fallback = SHOP_SHELF_SLOTS[SHOP_SHELF_SLOTS.length - 1];
+    return entry ? this.getShopShelfPosition(entry.stockId) : new Phaser.Math.Vector2(fallback.x, fallback.y - 12);
   }
 
   private startShopkeeperTransaction(
@@ -4542,51 +4584,61 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createShopFutureDisplayItems(): void {
-    this.createPremiumDisplayItem(140, 260, 'B&W', 0xdfe3df, 0x3b4244, 0x697173);
-    this.createPremiumDisplayItem(220, 335, 'NES', 0xc95b52, 0x3a78a8, 0x72a653);
-    this.createPremiumDisplayItem(930, 260, 'PS', 0x4b3b66, 0xb7a6d8, 0x6c8bd1);
+    PREMIUM_PLANT_CATALOG.forEach((definition) => {
+      if (this.progress.ownedPremiumPlants.includes(definition.id)) return;
+      const slot = SHOP_SHELF_SLOTS[definition.shelfSlot];
+      const item = this.add.graphics().setDepth(4).setPosition(slot.x, slot.y - 8);
+      this.drawPremiumPlant(item, definition.id, 0, 0, 0.55);
+      const tag = this.add.text(slot.x + 36, slot.y - 42, `${definition.shortLabel}\n${definition.price}C`, {
+        color: '#f6f7f3',
+        fontFamily: 'monospace',
+        fontSize: '7px',
+        fontStyle: 'bold',
+        backgroundColor: '#111416',
+        padding: { left: 2, right: 2, top: 1, bottom: 1 },
+      }).setOrigin(0, 0.5).setDepth(7);
+      this.shopPremiumPlantDisplay.push(item, tag);
+      this.shopObjects.push(item, tag);
+    });
   }
 
-  private createPremiumDisplayItem(
-    x: number,
-    y: number,
-    label: string,
-    potColor: number,
-    leafColor: number,
-    accentColor: number,
-  ): void {
-    const item = this.add.graphics().setDepth(4);
-    item.fillStyle(0x111416, 1).fillRect(x - 22, y - 18, 44, 8);
-    item.fillStyle(potColor, 1)
-      .fillTriangle(x - 16, y - 10, x + 16, y - 10, x + 11, y + 17)
-      .fillTriangle(x - 16, y - 10, x + 11, y + 17, x - 11, y + 17);
-    item.lineStyle(3, 0x111416, 1).strokeRect(x - 16, y - 10, 32, 27);
-    item.fillStyle(leafColor, 1)
-      .fillTriangle(x, y - 18, x - 19, y - 38, x - 5, y - 43)
-      .fillTriangle(x + 2, y - 18, x + 20, y - 37, x + 7, y - 43);
-    item.lineStyle(2, accentColor, 0.95).lineBetween(x, y - 17, x - 13, y - 35).lineBetween(x + 2, y - 17, x + 14, y - 34);
-    const name = this.add.text(x, y + 29, `${label} · DISPLAY`, {
-      color: '#f6f7f3',
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      fontStyle: 'bold',
-      backgroundColor: '#111416',
-      padding: { left: 3, right: 3, top: 2, bottom: 2 },
-    }).setOrigin(0.5).setDepth(7);
-    this.shopObjects.push(item, name);
+  private drawPremiumPlant(g: Phaser.GameObjects.Graphics, id: PremiumPlantId, x: number, y: number, scale: number): void {
+    const colour = this.progress.graphicsUpgradeInstalled;
+    drawPot(g, x, y, scale, colour);
+    const leaf = colour ? (id === 'variegated-pothos' ? 0xa9d36f : id === 'monstera' ? 0x4f9a54 : 0x6ba866) : 0xbfc5c3;
+    const accent = colour ? 0xe6efad : 0x697173;
+    g.lineStyle(3 * scale, 0x111416, 1);
+    if (id === 'snake-plant') {
+      g.fillStyle(leaf, 1)
+        .fillTriangle(x - 12 * scale, y - 26 * scale, x - 9 * scale, y - 88 * scale, x, y - 28 * scale)
+        .fillTriangle(x - 2 * scale, y - 26 * scale, x + 4 * scale, y - 102 * scale, x + 10 * scale, y - 27 * scale)
+        .fillTriangle(x + 6 * scale, y - 27 * scale, x + 18 * scale, y - 79 * scale, x + 17 * scale, y - 25 * scale);
+      g.lineStyle(2 * scale, accent, 0.9).lineBetween(x + 4 * scale, y - 31 * scale, x + 4 * scale, y - 91 * scale);
+      return;
+    }
+    if (id === 'monstera') {
+      g.lineBetween(x, y - 27 * scale, x, y - 91 * scale);
+      g.fillStyle(leaf, 1)
+        .fillTriangle(x - 2 * scale, y - 54 * scale, x - 35 * scale, y - 75 * scale, x - 15 * scale, y - 91 * scale)
+        .fillTriangle(x + 2 * scale, y - 65 * scale, x + 36 * scale, y - 88 * scale, x + 17 * scale, y - 101 * scale)
+        .fillTriangle(x - 1 * scale, y - 78 * scale, x - 24 * scale, y - 108 * scale, x - 4 * scale, y - 113 * scale);
+      return;
+    }
+    g.lineBetween(x, y - 27 * scale, x - 11 * scale, y - 76 * scale).lineBetween(x, y - 34 * scale, x + 16 * scale, y - 87 * scale);
+    g.fillStyle(leaf, 1)
+      .fillTriangle(x - 7 * scale, y - 58 * scale, x - 34 * scale, y - 73 * scale, x - 17 * scale, y - 88 * scale)
+      .fillTriangle(x + 10 * scale, y - 68 * scale, x + 38 * scale, y - 85 * scale, x + 20 * scale, y - 99 * scale)
+      .fillTriangle(x - 5 * scale, y - 78 * scale, x - 24 * scale, y - 107 * scale, x - 4 * scale, y - 111 * scale);
+    g.fillStyle(accent, 1).fillRect(x - 19 * scale, y - 82 * scale, 7 * scale, 6 * scale).fillRect(x + 23 * scale, y - 91 * scale, 7 * scale, 6 * scale);
   }
 
   private createShopGoldenPothosDisplay(): void {
     if (!this.shopInterior || this.shopGoldenPothosDisplay.length > 0) return;
     const entries = this.progress.shopStock.filter((entry) => entry.quantity > 0);
-    const positions = [
-      { x: 180, y: 405 },
-      { x: 960, y: 405 },
-      { x: 180, y: 540 },
-    ];
-    entries.forEach((entry, index) => {
-      const position = positions[index] ?? { x: 960, y: 540 };
-      const item = this.add.graphics().setDepth(4).setPosition(position.x, position.y);
+    entries.forEach((entry) => {
+      const slot = this.getShopShelfSlot(entry.stockId);
+      const itemOffsetY = entry.item === 'special-repair-pot' ? 20 : entry.item === 'small-golden-pothos' ? 8 : 16;
+      const item = this.add.graphics().setDepth(4).setPosition(slot.x, slot.y - itemOffsetY);
       if (entry.item === 'small-golden-pothos') {
         drawGoldenPothos(item, 0, 0, 0.55, this.progress.graphicsUpgradeInstalled);
       } else if (entry.item === 'special-repair-pot') {
@@ -4595,23 +4647,15 @@ export class GameScene extends Phaser.Scene {
         this.drawHarvestCarry(item, entry.item === 'fresh-mint-leaves' ? 'mint' : 'basil');
       }
       const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : entry.item === 'fresh-mint-leaves' ? 'FRESH MINT' : 'FRESH BASIL';
-      const stockLabel = this.add.text(position.x, position.y - 40, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}`, {
+      const stockLabel = this.add.text(slot.x + 36, slot.y - 43, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}\n${this.getShopBuyPrice(entry.item)}C`, {
         color: '#f6f7f3',
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '7px',
         fontStyle: 'bold',
         backgroundColor: '#111416',
-        padding: { left: 3, right: 3, top: 2, bottom: 2 },
-      }).setOrigin(0.5).setDepth(7);
-      const priceTag = this.add.text(position.x, position.y + 48, `${this.getShopBuyPrice(entry.item)} COINS EACH`, {
-        color: '#111416',
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        fontStyle: 'bold',
-        backgroundColor: '#f6f7f3',
-        padding: { left: 5, right: 5, top: 3, bottom: 3 },
-      }).setOrigin(0.5).setDepth(7);
-      this.shopGoldenPothosDisplay.push(item, stockLabel, priceTag);
+        padding: { left: 2, right: 2, top: 1, bottom: 1 },
+      }).setOrigin(0, 0.5).setDepth(7);
+      this.shopGoldenPothosDisplay.push(item, stockLabel);
     });
     this.shopObjects.push(...this.shopGoldenPothosDisplay);
   }
@@ -4864,11 +4908,11 @@ export class GameScene extends Phaser.Scene {
 
   private isShopWalkablePosition(x: number, y: number): boolean {
     if (x < 82 || x > SHOP_WORLD_WIDTH - 82 || y < 160 || y > SHOP_WORLD_HEIGHT - 72) return false;
-    const insideCounter = x >= SHOP_COUNTER.x - 180 && x <= SHOP_COUNTER.x + 180
-      && y >= SHOP_COUNTER.y - 62 && y <= SHOP_COUNTER.y + 112;
-    const insideLeftShelf = x >= 82 && x <= 292 && y >= 210 && y <= 500;
-    const insideRightShelf = x >= 868 && x <= 1078 && y >= 210 && y <= 500;
-    return !insideCounter && !insideLeftShelf && !insideRightShelf;
+    const insideCounter = x >= SHOP_COUNTER.x - SHOP_COUNTER_WIDTH / 2 && x <= SHOP_COUNTER.x + SHOP_COUNTER_WIDTH / 2
+      && y >= SHOP_COUNTER.y - SHOP_COUNTER_HEIGHT / 2 && y <= SHOP_COUNTER.y + SHOP_COUNTER_HEIGHT / 2 + 42;
+    const insideShelf = SHOP_SHELVES.some((shelf) => x >= shelf.x - 10 && x <= shelf.x + shelf.width + 10
+      && y >= shelf.y - 10 && y <= shelf.y + shelf.height + 20);
+    return !insideCounter && !insideShelf;
   }
 
   private isHomeWalkablePosition(x: number, y: number): boolean {
