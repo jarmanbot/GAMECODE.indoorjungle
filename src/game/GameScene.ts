@@ -639,6 +639,17 @@ export class GameScene extends Phaser.Scene {
     this.showToast(`${label} equipped.`, 1200);
   }
 
+  unequipTool(): void {
+    if (!this.progress.equippedTool) return;
+    this.cancelToolUse(true);
+    this.progress.equippedTool = null;
+    this.saveProgress();
+    this.syncHudState();
+    this.drawPlayer();
+    this.hud.refreshShopPanel('No tool equipped.');
+    this.showToast('Tool removed from Alex.', 1200);
+  }
+
   releaseTool(): void {
     this.toolHeld = false;
   }
@@ -1716,6 +1727,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.shopInterior || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
     this.progress.cleanerOwned = true;
+    this.assignToolToSlot('cleaner');
     this.progress.equippedTool = 'cleaner';
     this.progress.task = 'clean';
     this.saveProgress();

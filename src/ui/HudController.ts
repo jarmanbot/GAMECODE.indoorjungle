@@ -261,7 +261,7 @@ export class HudController {
   setEquippedTool(tool: EquippedTool): void {
     this.equippedTool = tool;
     const label = tool === 'cleaner' ? 'CLEANER' : tool === 'repair' ? 'REPAIR TOOL' : tool === 'watering-can' ? 'WATERING CAN' : 'NO TOOL EQUIPPED';
-    this.toolSelectorIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : tool === 'watering-can' ? '≈' : '—';
+    this.toolSelectorIcon.textContent = tool === 'cleaner' ? '▱' : tool === 'repair' ? '⚒' : tool === 'watering-can' ? '≈' : '⚒';
     this.toolSelector.classList.toggle('is-equipped', Boolean(tool));
     this.toolSelector.setAttribute('aria-label', tool ? `Open tool selector. Equipped ${label.toLowerCase()}` : 'Open tool selector. No tool equipped');
     this.arcadeB.disabled = !tool && !this.brokenPotPieceSelected && !this.canPlaceItem;
@@ -446,7 +446,8 @@ export class HudController {
     const glueMarkup = this.glueCharges > 0
       ? `<div class="tool-supply"><strong>GLUE</strong><span>${this.glueCharges} CHARGE${this.glueCharges === 1 ? '' : 'S'}</span></div>`
       : '';
-    this.toolSlots.innerHTML = `${slotMarkup}${glueMarkup}`;
+    const removeMarkup = `<button class="tool-slot tool-slot-remove" type="button" data-unequip-tool${this.equippedTool ? '' : ' disabled'} aria-label="Remove equipped tool from Alex"><strong>×</strong><span>${this.equippedTool ? 'REMOVE TOOL' : 'NO TOOL EQUIPPED'}</span></button>`;
+    this.toolSlots.innerHTML = `${slotMarkup}${glueMarkup}${removeMarkup}`;
     this.toolSlots.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((button) => {
       this.bindButtonActivation(button, () => {
         const tool = button.dataset.tool;
@@ -454,6 +455,11 @@ export class HudController {
         this.scene?.equipTool(tool);
         this.closeToolPopup();
       });
+    });
+    const removeButton = this.toolSlots.querySelector<HTMLButtonElement>('[data-unequip-tool]');
+    if (removeButton) this.bindButtonActivation(removeButton, () => {
+      this.scene?.unequipTool();
+      this.closeToolPopup();
     });
   }
 
