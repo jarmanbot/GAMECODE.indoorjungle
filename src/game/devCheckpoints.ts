@@ -89,6 +89,18 @@ const repairedPotSold = (): ProgressState => withState(upgradeInstalledAcknowled
   shopStock: [...specialPotRepaired().shopStock, { stockId: SPECIAL_REPAIR_POT_INSTANCE_ID, item: 'special-repair-pot', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'repaired', quantity: 1, instanceIds: [SPECIAL_REPAIR_POT_INSTANCE_ID] }], task: 'complete',
 });
 
+// Intentional test fixture: the opening job is reopened after the completed
+// upgrade so its existing acceptance, cleaner, spray, and style-switching
+// paths can be tested without changing the normal save progression.
+const graphicsUpgradedWindowCleaningTest = (): ProgressState => withState(repairedPotSold(), {
+  windowJobAccepted: false,
+  windowCleaningProgress: 0,
+  windowJobComplete: false,
+  cleanerOwned: false,
+  equippedTool: null,
+  task: 'clean',
+});
+
 const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
   coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
 });
@@ -152,6 +164,7 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'special-pot-repaired', label: 'Special pot repaired', order: 80, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: specialPotRepaired },
   { id: 'graphics-upgrade-prompt-pending', label: 'Graphics upgrade prompt pending', order: 85, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradePromptPending },
   { id: 'graphics-upgrade-installed', label: 'Graphics upgrade installed and acknowledged', order: 87, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradeInstalledAcknowledged },
+  { id: 'graphics-upgraded-window-cleaning-test', label: 'Graphics upgraded — window cleaning test', order: 88, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: graphicsUpgradedWindowCleaningTest },
   { id: 'repaired-pot-sold', label: 'Repaired pot sold', order: 90, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: repairedPotSold },
   { id: 'apartment-rented', label: 'Apartment rented · starter kit unclaimed', order: 100, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: apartmentRented },
   { id: 'starter-kit-claimed', label: 'Starter kit claimed', order: 110, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: starterKitClaimed },

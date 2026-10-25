@@ -1581,6 +1581,7 @@ export class GameScene extends Phaser.Scene {
     this.updateProgressVisuals();
     this.saveProgress();
     this.syncHudState();
+    this.refreshWantedSign();
     this.hud.highlightToolSelector();
     this.hud.highlightBag();
     this.toastTimer?.remove(false);
@@ -2083,6 +2084,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.task = 'clean';
     this.saveProgress();
     this.syncHudState();
+    this.refreshWantedSign();
     this.hud.refreshShopPanel('Cleaner borrowed and equipped.');
     this.showToast('Press B to clean window.', 1700);
   }
@@ -4104,10 +4106,14 @@ export class GameScene extends Phaser.Scene {
 
   private refreshWantedSign(): void {
     if (!this.wantedSignBackdrop || !this.wantedSignText) return;
-    const requestOutstanding = !this.progress.saleComplete;
-    const message = requestOutstanding
+    const deliveryOutstanding = !this.progress.saleComplete;
+    const cleaningJobAvailable = !this.progress.windowJobAccepted && !this.progress.windowJobComplete;
+    const requestOutstanding = deliveryOutstanding || cleaningJobAvailable;
+    const message = deliveryOutstanding
       ? 'WANTED\nGOLDEN POTHOS\nCASH PAID'
-      : 'NO DELIVERIES\nWANTED';
+      : cleaningJobAvailable
+        ? `WANTED\nWINDOW WASHER\n${WINDOW_JOB_REWARD} COINS`
+        : 'NO DELIVERIES\nWANTED';
     this.wantedSignBackdrop.clear();
     const signX = BUY_SELL_WINDOW.x + 18;
     const signY = BUY_SELL_WINDOW.y + 32;
