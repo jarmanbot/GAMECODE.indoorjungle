@@ -39,6 +39,7 @@ import {
   BUY_SELL_DOOR_WIDTH,
   BUY_SELL_ENTRANCE,
   BUY_SELL_WINDOW,
+  BROKEN_POT_PIECES_SCALE,
   CROSSING_END_X,
   CROSSING_START_X,
   FRONT_PAVEMENT_MAX_Y,
@@ -261,6 +262,8 @@ export class GameScene extends Phaser.Scene {
   private graphicsUpgradePresentationActive = false;
   private graphicsUpgradeInstallElapsed = 0;
   private readonly graphicsUpgradeInstallDuration = 2300;
+  private readonly graphicsUpgradePickupDelay = 2300;
+  private graphicsUpgradePromptDelay?: Phaser.Time.TimerEvent;
   private graphicsUpgradeWorldObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor(hud: HudController, audio: AudioController) {
@@ -1207,6 +1210,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyProgressState(progress: ProgressState): void {
+    this.graphicsUpgradePromptDelay?.remove(false);
+    this.graphicsUpgradePromptDelay = undefined;
     this.progress = sanitizeProgress(progress);
     this.coins = this.progress.coins;
     this.inventoryPot = this.progress.inventoryPot;
@@ -1234,6 +1239,8 @@ export class GameScene extends Phaser.Scene {
     this.openingZoomDemoTimer = undefined;
     this.openingZoomDemoStep = 0;
     this.graphicsUpgradePresentationActive = false;
+    this.graphicsUpgradePromptDelay?.remove(false);
+    this.graphicsUpgradePromptDelay = undefined;
     this.hud.hideGraphicsUpgrade();
     this.shopkeeperTransactionTween?.stop();
     this.shopkeeperTransactionTween = undefined;
@@ -1380,7 +1387,7 @@ export class GameScene extends Phaser.Scene {
         if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
         const piecesRemaining = this.progress.brokenPotPiecesRemaining;
         this.brokenPot.clear();
-        drawBrokenPotPieces(this.brokenPot, 0, 0, 2.268, piecesRemaining);
+        drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining);
       }
       this.brokenPot.setVisible(shouldShowBrokenPot);
     }
@@ -1829,6 +1836,22 @@ export class GameScene extends Phaser.Scene {
     }
     this.progress.graphicsUpgradeStage = 'prompt';
     this.hud.showGraphicsUpgradePrompt(() => this.beginGraphicsUpgradeInstallation());
+  }
+
+  private scheduleGraphicsUpgradeAfterRepairedPickup(): void {
+    if (this.progress.graphicsUpgradeInstalled) return;
+    if (!this.progress.graphicsUpgradeUnlocked) {
+      this.progress.graphicsUpgradeUnlocked = true;
+      this.progress.graphicsUpgradeStage = 'prompt';
+      this.saveProgress();
+    }
+    this.graphicsUpgradePromptDelay?.remove(false);
+    this.graphicsUpgradePromptDelay = this.time.delayedCall(this.graphicsUpgradePickupDelay, () => {
+      this.graphicsUpgradePromptDelay = undefined;
+      if (!this.progress.graphicsUpgradeInstalled && this.progress.graphicsUpgradeStage === 'prompt') {
+        this.presentGraphicsUpgradeIfNeeded();
+      }
+    });
   }
 
   private beginGraphicsUpgradeInstallation(): void {
@@ -3135,7 +3158,7 @@ export class GameScene extends Phaser.Scene {
     const piecesRemaining = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned
       ? Math.max(1, this.progress.brokenPotPiecesRemaining)
       : this.progress.brokenPotPiecesRemaining;
-    drawBrokenPotPieces(this.brokenPot, 0, 0, 2.268, piecesRemaining);
+    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining);
     this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
   }
 
@@ -3159,7 +3182,7 @@ export class GameScene extends Phaser.Scene {
       // The global piece counter is for the separate street pickup and is 0
       // after the pot has been assembled into the Bag, so it must not control
       // the appearance of a deliberately placed broken pot.
-      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, 2.268, 3);
+      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, BROKEN_POT_PIECES_SCALE, 3);
     } else {
       // A repaired pot keeps its empty, seamed silhouette when placed back
       // on the street; it never regresses to loose pieces or gains foliage.
@@ -3539,7 +3562,8 @@ export class GameScene extends Phaser.Scene {
     const dx = point.x - position.x;
     const dy = point.y - position.y;
     const hit = (x: number, y: number, width: number, height: number): boolean =>
-      Math.abs(dx - x) <= width / 2 && Math.abs(dy - y) <= height / 2;
+      Math.abs(dx - x * BROKEN_POT_PIECES_SCALE) <= width * BROKEN_POT_PIECES_SCALE / 2
+      && Math.abs(dy - y * BROKEN_POT_PIECES_SCALE) <= height * BROKEN_POT_PIECES_SCALE / 2;
     const remaining = this.progress.brokenPotPiecesRemaining;
     return (remaining >= 1 && hit(-39, -2, 58, 58))
       || (remaining >= 2 && hit(39, -2, 58, 58))
@@ -3933,7 +3957,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.brokenPotPiecesRemaining = Math.max(0, this.progress.brokenPotPiecesRemaining - 1);
     this.progress.brokenPotPiecesOwned = Math.min(3, this.progress.brokenPotPiecesOwned + 1);
     this.brokenPot.clear();
-    drawBrokenPotPieces(this.brokenPot, 0, 0, 2.268, this.progress.brokenPotPiecesRemaining);
+    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, this.progress.brokenPotPiecesRemaining);
 
     if (this.progress.brokenPotPiecesRemaining > 0) {
       this.saveProgress();
@@ -3973,7 +3997,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.presentGraphicsUpgradeIfNeeded();
+    this.scheduleGraphicsUpgradeAfterRepairedPickup();
     this.showToast(`Repaired pot added to the Bag. Sell it at BUY / SELL for ${REPAIRED_POT_SALE_PRICE} coins.`);
   }
 

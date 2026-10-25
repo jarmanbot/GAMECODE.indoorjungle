@@ -216,6 +216,7 @@ export const OPENING_DROP_POINT = { x: 715, y: -1080 };
 // existing drawing scale, the pot base meets the road-edge line at y=944.
 export const POT_POSITION = { x: 1080, y: 930 };
 export const START_POSITION = { x: 560, y: 890 };
+export const BROKEN_POT_PIECES_SCALE = 2.268;
 
 export const SHOP_WORLD_WIDTH = 900;
 export const SHOP_WORLD_HEIGHT = 900;
