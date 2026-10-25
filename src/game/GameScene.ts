@@ -688,15 +688,17 @@ export class GameScene extends Phaser.Scene {
     this.showToast(`${label} equipped.`, 1200);
   }
 
-  unequipTool(): void {
+  unequipTool(showFeedback = true): void {
     if (!this.progress.equippedTool) return;
     this.cancelToolUse(true);
     this.progress.equippedTool = null;
     this.saveProgress();
     this.syncHudState();
     this.drawPlayer();
-    this.hud.refreshShopPanel('No tool equipped.');
-    this.showToast('Tool removed from Alex.', 1200);
+    if (showFeedback) {
+      this.hud.refreshShopPanel('No tool equipped.');
+      this.showToast('Tool removed from Alex.', 1200);
+    }
   }
 
   releaseTool(): void {
@@ -1694,11 +1696,10 @@ export class GameScene extends Phaser.Scene {
     this.progress.glueCharges -= 1;
     this.repairPresentationActive = false;
     this.repairPickupReady = true;
-    // Keep the repair tool owned in its slot, but remove it from Alex's hand
-    // once the repair is complete so the finished pot is no longer in an
-    // active-tool state.
-    this.progress.equippedTool = null;
-    this.releaseTool();
+    // Use the normal equipment path so the logical selection, HUD, saved
+    // state, and Alex's hand are cleared together. Ownership and the Tools
+    // slot are deliberately untouched, so the tool can be equipped again.
+    this.unequipTool(false);
     this.drawRepairPresentation();
     this.createRepairPickupPresentation();
     this.drawPlayer();

@@ -78,10 +78,10 @@ const repairPartlyComplete = (): ProgressState => withState(brokenSpecialPotColl
 const repairOneActionBeforeCompletion = (): ProgressState => withState(brokenSpecialPotCollected(), { repairStep: 9, task: 'repair' });
 const specialPotRepaired = (): ProgressState => withState(brokenSpecialPotCollected(), { repairStep: 10, glueCharges: 0, task: 'repair' });
 const upgradePromptPending = (): ProgressState => withState(specialPotRepaired(), {
-  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'atari-bw', nurseryConstructionComplete: false,
+  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'atari-bw', nurseryConstructionComplete: false, equippedTool: null,
 });
 const upgradeInstalledAcknowledged = (): ProgressState => withState(specialPotRepaired(), {
-  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'green-screen', nurseryConstructionComplete: true,
+  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'green-screen', nurseryConstructionComplete: true, equippedTool: null,
 });
 
 const repairedPotSold = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
