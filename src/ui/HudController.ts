@@ -25,6 +25,7 @@ import {
 } from '../game/world';
 import { DEFAULT_SHOP_STOCK_QUALITY } from '../game/progress';
 import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool } from '../game/progress';
+import type { AlexGraphics } from '../game/progress';
 import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
 import type { GrowingPotState } from '../game/growing';
 
@@ -68,6 +69,10 @@ export class HudController {
   private readonly startConfirm = document.querySelector<HTMLElement>('#start-confirm')!;
   private readonly startConfirmNew = document.querySelector<HTMLButtonElement>('#start-confirm-new')!;
   private readonly startCancelNew = document.querySelector<HTMLButtonElement>('#start-cancel-new')!;
+  private readonly graphicsUpgradeOverlay = document.querySelector<HTMLElement>('#graphics-upgrade-overlay')!;
+  private readonly graphicsUpgradeCard = document.querySelector<HTMLElement>('#graphics-upgrade-card')!;
+  private readonly graphicsUpgradeContent = document.querySelector<HTMLElement>('#graphics-upgrade-content')!;
+  private readonly graphicsUpgradeOk = document.querySelector<HTMLButtonElement>('#graphics-upgrade-ok')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
@@ -118,6 +123,9 @@ export class HudController {
   private actionHideTimer: number | null = null;
   private startContinueAction: (() => void) | null = null;
   private startNewAction: (() => void) | null = null;
+  private graphicsUpgradeAction: (() => void) | null = null;
+  private graphicsUpgradeInstalled = false;
+  private alexGraphics: AlexGraphics = 'atari-bw';
 
   constructor(audio: AudioController) {
     this.audio = audio;
@@ -161,6 +169,7 @@ export class HudController {
     this.bindButtonActivation(this.startNew, () => { this.startConfirm.hidden = false; this.startNew.hidden = true; });
     this.bindButtonActivation(this.startConfirmNew, () => this.startNewAction?.());
     this.bindButtonActivation(this.startCancelNew, () => { this.startConfirm.hidden = true; this.startNew.hidden = false; });
+    this.bindButtonActivation(this.graphicsUpgradeOk, () => this.graphicsUpgradeAction?.());
     this.bindJoystickControls();
     this.bindArcadeControls();
     this.applyJoystickSide();
@@ -200,6 +209,50 @@ export class HudController {
     this.startScreen.hidden = true;
     this.startContinueAction = null;
     this.startNewAction = null;
+  }
+
+  showGraphicsUpgradePrompt(action: () => void): void {
+    this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeCard.classList.remove('is-installing');
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS UPGRADE DETECTED</h2><p>Install?</p>';
+    this.graphicsUpgradeOk.hidden = false;
+    this.graphicsUpgradeOk.textContent = 'OK';
+    this.graphicsUpgradeOverlay.hidden = false;
+  }
+
+  showGraphicsInstallation(): void {
+    this.graphicsUpgradeAction = null;
+    this.graphicsUpgradeCard.classList.add('is-installing');
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
+    this.graphicsUpgradeOk.hidden = true;
+    this.graphicsUpgradeOverlay.hidden = false;
+  }
+
+  updateGraphicsInstallation(progress: number, complete = false): void {
+    const value = Math.max(0, Math.min(1, progress));
+    const percent = Math.round(value * 100);
+    const filled = Math.round(value * 10);
+    const indicator = `[${'#'.repeat(filled)}${'.'.repeat(10 - filled)}] ${percent}%`;
+    const progressText = this.graphicsUpgradeContent.querySelector<HTMLElement>('#graphics-upgrade-progress');
+    const bar = this.graphicsUpgradeContent.querySelector<HTMLElement>('#graphics-upgrade-bar-fill');
+    const status = this.graphicsUpgradeContent.querySelector<HTMLElement>('#graphics-upgrade-status');
+    if (progressText) progressText.textContent = indicator;
+    if (bar) bar.style.width = `${percent}%`;
+    if (status) status.innerHTML = complete ? 'GREEN SCREEN MODULES LOADED' : `LOADING MODULES<span class="graphics-upgrade-dots">${'.'.repeat((Math.floor(value * 12) % 3) + 1)}</span>`;
+  }
+
+  showGraphicsAcknowledgement(action: () => void): void {
+    this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeCard.classList.add('is-installing');
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GREEN SCREEN MODULES LOADED</h2><p>Installation complete.</p>';
+    this.graphicsUpgradeOk.hidden = false;
+    this.graphicsUpgradeOk.textContent = 'OK';
+    this.graphicsUpgradeOverlay.hidden = false;
+  }
+
+  hideGraphicsUpgrade(): void {
+    this.graphicsUpgradeAction = null;
+    this.graphicsUpgradeOverlay.hidden = true;
   }
 
   setPhoneHybridLayout(enabled: boolean): void {
@@ -253,7 +306,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[] }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -283,6 +336,9 @@ export class HudController {
     this.seedQuantities = state.seedQuantities ? { ...this.seedQuantities, ...state.seedQuantities } : { ...this.seedQuantities, basil: this.basilSeeds };
     this.harvestQuantities = state.harvestQuantities ? { ...this.harvestQuantities, ...state.harvestQuantities } : { ...this.harvestQuantities, basil: this.basilHarvests };
     this.growingPots = state.growingPots?.map((pot) => ({ ...pot, crop: pot.crop ? { ...pot.crop } : null })) ?? this.growingPots;
+    this.graphicsUpgradeInstalled = state.graphicsUpgradeInstalled ?? this.graphicsUpgradeInstalled;
+    this.alexGraphics = state.alexGraphics ?? this.alexGraphics;
+    document.documentElement.classList.toggle('graphics-upgrade-installed', this.graphicsUpgradeInstalled);
     this.refreshToolPopup();
     const labels: Record<TaskState, string> = {
       find: 'Find a Small Golden Pothos',
@@ -1005,7 +1061,7 @@ export class HudController {
         this.starterKitClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.seedQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>${getPlantDefinition(species).seedLabel} ×${this.seedQuantities[species]}</strong><small>Plant one in any empty placed pot.</small></div></div>` : ''),
         this.rentalKeyOwned ? '<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>Starter apartment key</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>' : '',
-        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its 60 seconds.</small></div></div>` : '',
+        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its growth timer.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>${getPlantDefinition(species).harvestLabel} ×${this.harvestQuantities[species]}</strong><small>Sell each harvest at BUY / SELL for ${getPlantDefinition(species).harvestPrice} coins.</small></div></div>` : ''),
       ].filter(Boolean).join('');
       return {
@@ -1068,7 +1124,7 @@ export class HudController {
       const sfxOn = this.audio.sfxEnabled;
       return {
         title: 'Settings',
-        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div><div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${this.graphicsUpgradeInstalled ? `<div class="settings-choice"><strong>Alex graphics</strong><small>Choose an unlocked Alex appearance.</small><div class="settings-choice-row"><button type="button" data-alex-graphics="atari-bw" class="${this.alexGraphics === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button><button type="button" data-alex-graphics="green-screen" class="${this.alexGraphics === 'green-screen' ? 'is-selected' : ''}">GREEN SCREEN</button></div></div>` : ''}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
       };
     }
     return {
@@ -1166,6 +1222,12 @@ export class HudController {
         if (setting === 'music-on' || setting === 'music-off') this.audio.setMusicEnabled(setting === 'music-on');
         if (setting === 'sfx-on' || setting === 'sfx-off') this.audio.setSfxEnabled(setting === 'sfx-on');
         this.refreshAudioSettingsButtons();
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-alex-graphics]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        const style = button.dataset.alexGraphics;
+        if (style === 'atari-bw' || style === 'green-screen') this.scene?.setAlexGraphics(style);
       });
     });
     if (!DEV_BUILD) return;

@@ -22,7 +22,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     harvestLabel: 'Fresh basil leaves',
     seedItem: 'basil-seeds',
     harvestItem: 'fresh-basil-leaves',
-    growthDurationMs: 60_000,
+    growthDurationMs: 30_000,
     seedPrice: 2,
     harvestPrice: 5,
   },
@@ -35,7 +35,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     harvestItem: 'fresh-mint-leaves',
     growthDurationMs: 60_000,
     seedPrice: 2,
-    harvestPrice: 5,
+    harvestPrice: 8,
   },
 };
 

@@ -235,7 +235,7 @@ export const HOME_GROWING_SPOT = HOME_GROWING_SPOTS[1];
 // popups use a consistent distance from their target. The approach point is
 // placed at the edge of this ring beside the pot.
 export const BASIL_POT_INTERACTION_RADIUS = 96;
-export const BASIL_GROWTH_DURATION_MS = 60_000;
+export const BASIL_GROWTH_DURATION_MS = 30_000;
 export const BASIL_HARVEST_PRICE = 5;
 export const BASIL_SEED_PRICE = 2;
 export const SMALL_BASIC_PLASTIC_POT_PRICE = 10;

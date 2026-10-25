@@ -13,6 +13,7 @@ import {
   syncProgressLegacyMirrors,
   SPECIAL_REPAIR_POT_INSTANCE_ID,
   type BasilStage,
+  type AlexGraphics,
   type EquippedTool,
   type InventoryItem,
   type PotCondition,
@@ -223,6 +224,10 @@ export class GameScene extends Phaser.Scene {
   private openingZoomDemoActive = false;
   private openingZoomDemoTimer?: Phaser.Time.TimerEvent;
   private openingZoomDemoStep = 0;
+  private graphicsUpgradePresentationActive = false;
+  private graphicsUpgradeInstallElapsed = 0;
+  private readonly graphicsUpgradeInstallDuration = 2300;
+  private graphicsUpgradeWorldObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -233,7 +238,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
-    this.buySellDoor = drawNeighborhood(this, this.progress.rentalBondPaid);
+    this.buySellDoor = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled);
     this.createWantedSign();
     this.createWindowDirtOverlay();
     this.createCars();
@@ -308,6 +313,7 @@ export class GameScene extends Phaser.Scene {
       this.startOpeningSequence();
     } else {
       this.startHousingThoughtReminder();
+      this.presentGraphicsUpgradeIfNeeded();
     }
   }
 
@@ -319,7 +325,14 @@ export class GameScene extends Phaser.Scene {
     this.updateWindowSpray(delta);
     this.updateThoughtBubble(delta);
 
-    if (this.openingSequenceActive || this.openingZoomDemoActive) {
+    if (this.graphicsUpgradePresentationActive && this.progress.graphicsUpgradeStage === 'installing') {
+      this.graphicsUpgradeInstallElapsed += delta;
+      const installProgress = Math.min(1, this.graphicsUpgradeInstallElapsed / this.graphicsUpgradeInstallDuration);
+      this.hud.updateGraphicsInstallation(installProgress, installProgress >= 1);
+      if (installProgress >= 1) this.finishGraphicsUpgradeInstallation();
+    }
+
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive) {
       this.updateInteraction();
       return;
     }
@@ -480,19 +493,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   zoomBy(direction: 1 | -1): void {
-    if (this.openingSequenceActive || this.openingZoomDemoActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     const index = this.zoomOrder.indexOf(this.zoomMode);
     const nextIndex = Phaser.Math.Clamp(index + direction, 0, this.zoomOrder.length - 1);
     this.applyZoom(this.zoomOrder[nextIndex]);
   }
 
   setZoom(mode: ZoomMode): void {
-    if (this.openingSequenceActive || this.openingZoomDemoActive || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     this.applyZoom(mode);
   }
 
   tryInteract(): void {
-    if (this.openingSequenceActive || this.openingZoomDemoActive || this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.modalOpen || this.phoneLandscapeBlocked) return;
     if (this.itemPlacementMode) {
       this.showToast(this.placementTarget ? 'Press B to put the item down.' : 'Tap a clear pavement square first.', 1500);
       return;
@@ -528,7 +541,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   setJoystickInput(x: number, y: number, pointerHeld: boolean): void {
-    if (this.openingSequenceActive || this.openingZoomDemoActive) {
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive) {
       this.joystickPointerHeld = false;
       this.joystickInput.set(0, 0);
       this.joystickSteering = false;
@@ -774,7 +787,19 @@ export class GameScene extends Phaser.Scene {
       seedQuantities: this.progress.seedQuantities,
       harvestQuantities: this.progress.harvestQuantities,
       growingPots: this.progress.growingPots,
+      graphicsUpgradeInstalled: this.progress.graphicsUpgradeInstalled,
+      alexGraphics: this.progress.alexGraphics,
     });
+  }
+
+  public setAlexGraphics(style: AlexGraphics): void {
+    if (!this.progress.graphicsUpgradeInstalled) return;
+    this.progress.alexGraphics = style;
+    this.saveProgress();
+    this.drawPlayer();
+    this.syncHudState();
+    this.hud.closePanel();
+    this.hud.openPanel('settings');
   }
 
   private loadProgress(): void {
@@ -864,6 +889,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.hideStartScreen();
     if (this.progress.openingComplete) {
       this.startHousingThoughtReminder();
+      this.presentGraphicsUpgradeIfNeeded();
       return;
     }
     this.startOpeningSequence();
@@ -1053,6 +1079,7 @@ export class GameScene extends Phaser.Scene {
     this.showToast(`Loaded checkpoint: ${snapshot.label}.`, 2200);
     this.updateInteraction();
     this.startHousingThoughtReminder();
+    this.presentGraphicsUpgradeIfNeeded();
   }
 
   public resetDevTestSave(): void {
@@ -1120,6 +1147,9 @@ export class GameScene extends Phaser.Scene {
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
     this.basilStageCache = this.getBasilStage();
+    this.graphicsUpgradePresentationActive = this.progress.graphicsUpgradeStage === 'prompt'
+      || this.progress.graphicsUpgradeStage === 'installing'
+      || this.progress.graphicsUpgradeStage === 'acknowledgement';
   }
 
   private clearSceneForDevLoad(): void {
@@ -1128,6 +1158,8 @@ export class GameScene extends Phaser.Scene {
     this.openingZoomDemoTimer?.remove(false);
     this.openingZoomDemoTimer = undefined;
     this.openingZoomDemoStep = 0;
+    this.graphicsUpgradePresentationActive = false;
+    this.hud.hideGraphicsUpgrade();
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.cancelToolUse(true);
@@ -1148,6 +1180,8 @@ export class GameScene extends Phaser.Scene {
     this.repairPickupPrompt = undefined;
     this.shopObjects.forEach((object) => object.destroy());
     this.homeObjects.forEach((object) => object.destroy());
+    this.graphicsUpgradeWorldObjects.forEach((object) => object.destroy());
+    this.graphicsUpgradeWorldObjects = [];
     this.shopObjects = [];
     this.homeObjects = [];
     this.homeStarterKitObjects = [];
@@ -1264,7 +1298,7 @@ export class GameScene extends Phaser.Scene {
         if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
         const piecesRemaining = this.progress.brokenPotPiecesRemaining;
         this.brokenPot.clear();
-        drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, piecesRemaining);
+        drawBrokenPotPieces(this.brokenPot, 0, 0, 2.268, piecesRemaining);
       }
       this.brokenPot.setVisible(shouldShowBrokenPot);
     }
@@ -1611,7 +1645,7 @@ export class GameScene extends Phaser.Scene {
     // ordinary tappable world item rather than an active repair station.
     display.fillStyle(0x111416, 0.55).fillEllipse(0, 25, 116, 22);
     if (!completed) display.lineStyle(3, 0xf6f7f3, 0.9).strokeEllipse(0, 22, 142, 38);
-    drawBrokenPot(display, 0, 0, 1.15, stage);
+    drawBrokenPot(display, 0, 0, 2.415, stage, this.progress.graphicsUpgradeInstalled);
 
     if (!completed) {
       // Ten chunky segments make the required taps visible at a glance.
@@ -1660,11 +1694,105 @@ export class GameScene extends Phaser.Scene {
     this.progress.glueCharges -= 1;
     this.repairPresentationActive = false;
     this.repairPickupReady = true;
+    // Keep the repair tool owned in its slot, but remove it from Alex's hand
+    // once the repair is complete so the finished pot is no longer in an
+    // active-tool state.
+    this.progress.equippedTool = null;
+    this.releaseTool();
     this.drawRepairPresentation();
     this.createRepairPickupPresentation();
+    this.drawPlayer();
     this.saveProgress();
     this.syncHudState();
+    this.presentGraphicsUpgradeIfNeeded();
     this.showToast('Pot fully repaired. Tap or click it to put it in the Bag.', 2400);
+  }
+
+  private presentGraphicsUpgradeIfNeeded(): void {
+    if (!this.progress.graphicsUpgradeUnlocked && (this.progress.repairStep >= 10 || this.progress.repairedPotSaleComplete)) {
+      this.progress.graphicsUpgradeUnlocked = true;
+      this.progress.graphicsUpgradeStage = 'prompt';
+      this.saveProgress();
+    }
+    if (this.progress.graphicsUpgradeStage === 'acknowledgement') {
+      this.graphicsUpgradePresentationActive = true;
+      this.hud.resetHeldInputs();
+      this.cancelTapWalk();
+      this.thoughtBubble?.setVisible(false);
+      this.hud.showGraphicsAcknowledgement(() => this.acknowledgeGraphicsUpgrade());
+      return;
+    }
+    if (!this.progress.graphicsUpgradeUnlocked || this.progress.graphicsUpgradeInstalled) return;
+    this.graphicsUpgradePresentationActive = true;
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    this.cancelToolUse(true);
+    this.thoughtBubble?.setVisible(false);
+    if (this.progress.graphicsUpgradeStage === 'installing') {
+      this.graphicsUpgradeInstallElapsed = 0;
+      this.hud.showGraphicsInstallation();
+      return;
+    }
+    this.progress.graphicsUpgradeStage = 'prompt';
+    this.hud.showGraphicsUpgradePrompt(() => this.beginGraphicsUpgradeInstallation());
+  }
+
+  private beginGraphicsUpgradeInstallation(): void {
+    if (!this.graphicsUpgradePresentationActive || this.progress.graphicsUpgradeStage !== 'prompt') return;
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    this.progress.graphicsUpgradeStage = 'installing';
+    this.graphicsUpgradeInstallElapsed = 0;
+    this.saveProgress();
+    this.hud.showGraphicsInstallation();
+  }
+
+  private finishGraphicsUpgradeInstallation(): void {
+    if (!this.graphicsUpgradePresentationActive || this.progress.graphicsUpgradeStage !== 'installing') return;
+    this.progress.graphicsUpgradeInstalled = true;
+    this.progress.graphicsUpgradeStage = 'acknowledgement';
+    this.progress.nurseryConstructionComplete = true;
+    this.progress.alexGraphics = 'green-screen';
+    this.saveProgress();
+    this.applyInstalledGraphics();
+    this.hud.updateGraphicsInstallation(1, true);
+    this.hud.showGraphicsAcknowledgement(() => this.acknowledgeGraphicsUpgrade());
+  }
+
+  private acknowledgeGraphicsUpgrade(): void {
+    if (this.progress.graphicsUpgradeStage !== 'acknowledgement') return;
+    this.progress.graphicsUpgradeStage = 'none';
+    this.graphicsUpgradePresentationActive = false;
+    this.hud.hideGraphicsUpgrade();
+    this.saveProgress();
+    this.syncHudState();
+    this.updateInteraction();
+    this.startHousingThoughtReminder();
+  }
+
+  private applyInstalledGraphics(): void {
+    if (!this.progress.graphicsUpgradeInstalled) return;
+    this.createInstalledNurseryOverlay();
+    this.drawPlayer();
+    this.refreshWantedSign();
+    this.updateProgressVisuals();
+  }
+
+  private createInstalledNurseryOverlay(): void {
+    this.graphicsUpgradeWorldObjects.forEach((object) => object.destroy());
+    this.graphicsUpgradeWorldObjects = [];
+    const nursery = BUILDINGS.find((building) => building.key === 'plants');
+    if (!nursery) return;
+    const g = this.add.graphics().setDepth(26);
+    g.lineStyle(5, 0x969e9d, 0.95);
+    g.lineBetween(nursery.x + 28, nursery.y + 286, nursery.x + nursery.width - 28, nursery.y + 286);
+    g.lineBetween(nursery.x + 48, nursery.y + 286, nursery.x + 48, nursery.y + 214);
+    g.lineBetween(nursery.x + nursery.width - 48, nursery.y + 286, nursery.x + nursery.width - 48, nursery.y + 214);
+    g.lineBetween(nursery.x + 48, nursery.y + 214, nursery.x + nursery.width - 48, nursery.y + 214);
+    const label = this.add.text(nursery.x + nursery.width / 2, nursery.y + 300, 'NURSERY UNDER CONSTRUCTION', {
+      color: '#f6f7f3', fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', backgroundColor: '#111416', padding: { left: 4, right: 4, top: 3, bottom: 3 },
+    }).setOrigin(0.5).setDepth(27);
+    this.graphicsUpgradeWorldObjects.push(g, label);
   }
 
   private cancelRepairPresentation(): void {
@@ -2209,7 +2337,8 @@ export class GameScene extends Phaser.Scene {
       pot.crop.growthStartedAt = now;
       pot.crop.stage = 'seedling';
       this.progress.task = pot.crop.species === 'basil' ? 'grow-basil' : 'grow-mint';
-      this.showToast(`${getPlantDefinition(pot.crop.species).label} watered. It will mature in about 60 seconds.`, 2200);
+      const growthSeconds = Math.round(getPlantDefinition(pot.crop.species).growthDurationMs / 1000);
+      this.showToast(`${getPlantDefinition(pot.crop.species).label} watered. It will mature in about ${growthSeconds} seconds.`, 2200);
     } else if (action.type === 'fertilize' && pot.crop) {
       const duration = getPlantDefinition(pot.crop.species).growthDurationMs;
       this.progress.basicFertilizerCharges -= 1;
@@ -2425,7 +2554,8 @@ export class GameScene extends Phaser.Scene {
     pot!.crop!.stage = 'seedling';
     this.progress.task = species === 'basil' ? 'grow-basil' : 'grow-mint';
     this.saveProgress(); this.updateBasilVisual(); this.syncHudState();
-    this.showToast(`${getPlantDefinition(species).label} watered. It will mature in about 60 seconds.`, 2200);
+    const growthSeconds = Math.round(getPlantDefinition(species).growthDurationMs / 1000);
+    this.showToast(`${getPlantDefinition(species).label} watered. It will mature in about ${growthSeconds} seconds.`, 2200);
   }
 
   private drawBasilWatering(progress: number): void {
@@ -2452,7 +2582,7 @@ export class GameScene extends Phaser.Scene {
       const spot = HOME_GROWING_SPOTS[pot.slot];
       display.setPosition(spot.x, spot.y).clear().setVisible(this.starterKitClaimed);
       const stage = this.getCropStage(pot);
-      drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9);
+      drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9, this.progress.graphicsUpgradeInstalled);
       display.setAlpha(this.selectedGrowingPotId === pot.id ? 1 : 0.94);
     }
   }
@@ -2704,27 +2834,31 @@ export class GameScene extends Phaser.Scene {
   private drawPlayer(): void {
     this.player.clear();
     const lift = this.hopVisualOffset;
+    const greenScreen = this.progress.alexGraphics === 'green-screen' && this.progress.graphicsUpgradeInstalled;
+    const robotLight = greenScreen ? 0xb8d98c : 0xf5f6f2;
+    const robotInk = greenScreen ? 0x19331b : 0x111416;
     this.player.fillStyle(0x111416, 0.65).fillEllipse(0, 32, 30, 8);
     const sideFacing = this.playerFacing === 'left' || this.playerFacing === 'right';
     const bodyX = sideFacing ? -11 : -14;
     const bodyWidth = sideFacing ? 22 : 28;
-    this.player.fillStyle(0xf5f6f2, 1).fillRect(bodyX, -43 - lift, bodyWidth, 56);
-    this.player.lineStyle(3, 0x111416, 1).strokeRect(bodyX, -43 - lift, bodyWidth, 56);
+    this.player.fillStyle(robotLight, 1).fillRect(bodyX, -43 - lift, bodyWidth, 56);
+    this.player.lineStyle(3, robotInk, 1).strokeRect(bodyX, -43 - lift, bodyWidth, 56);
 
     if (this.playerFacing === 'front') {
-      this.player.fillStyle(0x111416, 1).fillRect(-8, -31 - lift, 5, 6).fillRect(3, -31 - lift, 5, 6);
-      this.player.lineStyle(3, 0x111416, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
+      this.player.fillStyle(robotInk, 1).fillRect(-8, -31 - lift, 5, 6).fillRect(3, -31 - lift, 5, 6);
+      this.player.lineStyle(3, robotInk, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
     } else if (this.playerFacing === 'back') {
-      this.player.fillStyle(0x3b4244, 1).fillRect(-8, -32 - lift, 16, 9);
-      this.player.lineStyle(2, 0x697173, 1).lineBetween(-4, -28 - lift, 4, -28 - lift);
-      this.player.lineStyle(3, 0x111416, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
+      this.player.fillStyle(greenScreen ? 0x53734a : 0x3b4244, 1).fillRect(-8, -32 - lift, 16, 9);
+      this.player.lineStyle(2, greenScreen ? 0x8fbf76 : 0x697173, 1).lineBetween(-4, -28 - lift, 4, -28 - lift);
+      this.player.lineStyle(3, robotInk, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
     } else {
       const eyeX = this.playerFacing === 'left' ? -8 : 3;
-      this.player.fillStyle(0x111416, 1).fillRect(eyeX, -31 - lift, 5, 6);
+      this.player.fillStyle(robotInk, 1).fillRect(eyeX, -31 - lift, 5, 6);
       this.player.lineStyle(2, 0x697173, 1).lineBetween(0, -20 - lift, 0, 9 - lift);
     }
-    this.player.fillStyle(0xf5f6f2, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
+    this.player.fillStyle(robotLight, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
     this.drawPlayerToolAttachment(lift);
+    this.player.setScale(this.progress.graphicsUpgradeInstalled ? 1.25 : 1);
   }
 
   private drawPlayerToolAttachment(lift: number): void {
@@ -2768,7 +2902,7 @@ export class GameScene extends Phaser.Scene {
   private createPot(): void {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
-    drawGoldenPothos(this.pot, 0, 0, 0.9);
+    drawGoldenPothos(this.pot, 0, 0, 0.9, this.progress.graphicsUpgradeInstalled);
     this.pot.setVisible(!this.inventoryHasPot && !this.saleComplete && !this.progress.placedWorldItem);
   }
 
@@ -2779,7 +2913,7 @@ export class GameScene extends Phaser.Scene {
     const piecesRemaining = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned
       ? Math.max(1, this.progress.brokenPotPiecesRemaining)
       : this.progress.brokenPotPiecesRemaining;
-    drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, piecesRemaining);
+    drawBrokenPotPieces(this.brokenPot, 0, 0, 2.268, piecesRemaining);
     this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
   }
 
@@ -2797,17 +2931,17 @@ export class GameScene extends Phaser.Scene {
     }
     this.placedItemDisplay.setPosition(placed.x, placed.y).clear();
     if (placed.item === 'small-golden-pothos') {
-      drawGoldenPothos(this.placedItemDisplay, 0, 0, 0.9);
+      drawGoldenPothos(this.placedItemDisplay, 0, 0, 0.9, this.progress.graphicsUpgradeInstalled);
     } else if (placed.condition === 'broken') {
       // A broken pot is represented as three loose pieces on the ground.
       // The global piece counter is for the separate street pickup and is 0
       // after the pot has been assembled into the Bag, so it must not control
       // the appearance of a deliberately placed broken pot.
-      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, 1.08, 3);
+      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, 2.268, 3);
     } else {
       // A repaired pot keeps its empty, seamed silhouette when placed back
       // on the street; it never regresses to loose pieces or gains foliage.
-      drawBrokenPot(this.placedItemDisplay, 0, 0, 0.9, 10);
+      drawBrokenPot(this.placedItemDisplay, 0, 0, 1.89, 10, this.progress.graphicsUpgradeInstalled);
     }
     this.placedItemDisplay.setVisible(true);
   }
@@ -2944,7 +3078,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readonly handleCanvasPointerDown = (event: PointerEvent): void => {
-    if (this.openingSequenceActive || this.openingZoomDemoActive || this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -3547,7 +3681,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.brokenPotPiecesRemaining = Math.max(0, this.progress.brokenPotPiecesRemaining - 1);
     this.progress.brokenPotPiecesOwned = Math.min(3, this.progress.brokenPotPiecesOwned + 1);
     this.brokenPot.clear();
-    drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, this.progress.brokenPotPiecesRemaining);
+    drawBrokenPotPieces(this.brokenPot, 0, 0, 2.268, this.progress.brokenPotPiecesRemaining);
 
     if (this.progress.brokenPotPiecesRemaining > 0) {
       this.saveProgress();
@@ -3805,9 +3939,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawShopInterior(): void {
+    const upgraded = this.progress.graphicsUpgradeInstalled;
     const room = this.add.graphics().setDepth(-100);
-    room.fillStyle(0x252a2d, 1).fillRect(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
-    room.fillStyle(0x454c4e, 1).fillRect(56, 110, SHOP_WORLD_WIDTH - 112, SHOP_WORLD_HEIGHT - 170);
+    room.fillStyle(upgraded ? 0x263d42 : 0x252a2d, 1).fillRect(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
+    room.fillStyle(upgraded ? 0x4d6f70 : 0x454c4e, 1).fillRect(56, 110, SHOP_WORLD_WIDTH - 112, SHOP_WORLD_HEIGHT - 170);
     room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(56, 110, SHOP_WORLD_WIDTH - 112, SHOP_WORLD_HEIGHT - 170);
     room.lineStyle(3, 0x697271, 0.9);
     for (let x = 90; x < SHOP_WORLD_WIDTH - 70; x += 80) room.lineBetween(x, 120, x, 800);
@@ -3830,9 +3965,13 @@ export class GameScene extends Phaser.Scene {
     this.shopObjects.push(counter);
 
     const shopkeeper = this.add.graphics().setDepth(6);
-    shopkeeper.fillStyle(0xf6f7f3, 1).fillRect(SHOP_COUNTER.x - 28, SHOP_COUNTER.y - 132, 56, 66);
-    shopkeeper.lineStyle(4, 0x111416, 1).strokeRect(SHOP_COUNTER.x - 28, SHOP_COUNTER.y - 132, 56, 66);
-    shopkeeper.fillStyle(0x111416, 1).fillRect(SHOP_COUNTER.x - 17, SHOP_COUNTER.y - 118, 8, 8).fillRect(SHOP_COUNTER.x + 9, SHOP_COUNTER.y - 118, 8, 8);
+    const shopkeeperWidth = upgraded ? 70 : 56;
+    const shopkeeperHeight = upgraded ? 82 : 66;
+    const shopkeeperBottom = SHOP_COUNTER.y - 66;
+    const shopkeeperTop = shopkeeperBottom - shopkeeperHeight;
+    shopkeeper.fillStyle(upgraded ? 0xc95b52 : 0xf6f7f3, 1).fillRect(SHOP_COUNTER.x - shopkeeperWidth / 2, shopkeeperTop, shopkeeperWidth, shopkeeperHeight);
+    shopkeeper.lineStyle(4, upgraded ? 0x242a2c : 0x111416, 1).strokeRect(SHOP_COUNTER.x - shopkeeperWidth / 2, shopkeeperTop, shopkeeperWidth, shopkeeperHeight);
+    shopkeeper.fillStyle(upgraded ? 0x111416 : 0x111416, 1).fillRect(SHOP_COUNTER.x - 20, shopkeeperTop + 18, 8, 8).fillRect(SHOP_COUNTER.x + 12, shopkeeperTop + 18, 8, 8);
     this.shopObjects.push(shopkeeper);
 
     const exit = this.add.graphics().setDepth(4);
@@ -3973,9 +4112,12 @@ export class GameScene extends Phaser.Scene {
     const signY = BUY_SELL_WINDOW.y + 32;
     const signWidth = BUY_SELL_WINDOW.width - 36;
     const signHeight = 112;
-    this.wantedSignBackdrop.fillStyle(0x111416, 0.98).fillRect(signX, signY, signWidth, signHeight);
-    this.wantedSignBackdrop.lineStyle(4, 0xf6f7f3, 0.98).strokeRect(signX, signY, signWidth, signHeight);
+    const signColour = this.progress.graphicsUpgradeInstalled ? 0x236a9b : 0x111416;
+    const signTextColour = this.progress.graphicsUpgradeInstalled ? 0x8ed8ff : 0xf6f7f3;
+    this.wantedSignBackdrop.fillStyle(signColour, 0.98).fillRect(signX, signY, signWidth, signHeight);
+    this.wantedSignBackdrop.lineStyle(4, signTextColour, 0.98).strokeRect(signX, signY, signWidth, signHeight);
     this.wantedSignText.setText(message);
+    this.wantedSignText.setColor(`#${signTextColour.toString(16).padStart(6, '0')}`);
 
     this.wantedSignPulse?.stop();
     this.wantedSignPulse?.remove();
@@ -4043,11 +4185,11 @@ export class GameScene extends Phaser.Scene {
       const position = positions[index] ?? { x: 960, y: 540 };
       const item = this.add.graphics().setDepth(4);
       if (entry.item === 'small-golden-pothos') {
-        drawGoldenPothos(item, position.x, position.y, 0.55);
+        drawGoldenPothos(item, position.x, position.y, 0.55, this.progress.graphicsUpgradeInstalled);
       } else if (entry.item === 'special-repair-pot') {
-        drawBrokenPot(item, position.x, position.y, 0.62, 10);
+        drawBrokenPot(item, position.x, position.y, 1.302, 10, this.progress.graphicsUpgradeInstalled);
       } else {
-        drawGrowingCrop(item, position.x, position.y, entry.item === 'fresh-mint-leaves' ? 'mint' : 'basil', 'mature', 0.55);
+        drawGrowingCrop(item, position.x, position.y, entry.item === 'fresh-mint-leaves' ? 'mint' : 'basil', 'mature', 0.55, this.progress.graphicsUpgradeInstalled);
       }
       const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : entry.item === 'fresh-mint-leaves' ? 'FRESH MINT' : 'FRESH BASIL';
       const stockLabel = this.add.text(position.x, position.y - 40, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}`, {

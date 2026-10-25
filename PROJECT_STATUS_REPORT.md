@@ -191,6 +191,22 @@ Approximate walking times:
 These are ideal straight-line estimates. Tap routes can be slightly longer
 when crossing between pavements or stopping for interaction thresholds.
 
+## Pass 3 graphics upgrade
+
+Implemented in the current source: the tenth repair action unlocks a separate
+saved graphics-upgrade state. The prompt, 2.3-second installation screen, and
+final acknowledgement are explicit and block world input. Installation does
+not change coins, inventory, crop timing, or objectives. Existing saves with a
+repaired or sold special pot become eligible through save sanitisation.
+
+After installation, Alex can be selected as Atari B&W or Green screen in
+Settings; the green-screen selection is saved independently of the installed
+world state. The Buy/Sell presentation, plant/pot visuals, Wanted sign, and
+nursery construction presentation receive the scoped upgrade treatment.
+Developer checkpoints include a repair-one-action state, pending prompt, and
+installed/acknowledged state. Runtime and phone acceptance still require the
+manual checks listed in the Pass 3 brief.
+
 ## Camera and zoom
 
 Only two street zoom levels exist; there is no intermediate or context-based
@@ -653,13 +669,13 @@ stage = seedling
 Natural growth duration:
 
 ~~~text
-60,000 ms = 60 seconds
+30,000 ms = 30 seconds for basil; mint uses its own 60,000 ms (60 second) duration.
 ~~~
 
 Remaining time:
 
 ~~~text
-max(0, 60,000 − (currentTime − basilGrowthStartedAt))
+max(0, 30,000 − (currentTime − basilGrowthStartedAt)) for basil; mint uses 60,000 in the same formula.
 ~~~
 
 ### 14. Use basic fertiliser
@@ -670,7 +686,7 @@ used while basil is actively growing.
 Using it changes the growth timestamp to:
 
 ~~~text
-currentTime − 60,001 ms
+currentTime − (growthDurationMs + 1 ms)
 ~~~
 
 The normal maturity path then runs. It does not directly award a harvest or
@@ -704,7 +720,7 @@ The grow-table pot becomes EMPTY POT again and remains reusable.
 Basil harvest value:
 
 ~~~text
-5 coins each
+5 coins each. Mint harvests use the configured mint value of 8 coins each.
 ~~~
 
 For the first basil harvest:
@@ -722,6 +738,13 @@ Basil buyback price:
 
 ~~~text
 ceil(5 × 1.4) = 7 coins each
+~~~
+
+Mint harvests sell for 8 coins each. Their shop buyback listing is calculated
+from the same configured value:
+
+~~~text
+ceil(8 × 1.4) = 12 coins each
 ~~~
 
 ### 17. Buy more seeds

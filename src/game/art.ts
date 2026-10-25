@@ -27,7 +27,7 @@ const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false): Phaser.GameObjects.Graphics | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -48,7 +48,7 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false): 
 
   let buySellDoor: Phaser.GameObjects.Graphics | undefined;
   BUILDINGS.forEach((building) => {
-    const door = drawBuilding(scene, building, apartmentRented);
+    const door = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled);
     if (door) buySellDoor = door;
   });
   drawStreetDetails(scene);
@@ -235,9 +235,9 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false): Phaser.GameObjects.Graphics | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics | undefined {
   if (building.kind === 'shop') {
-    return drawBuySellBuilding(scene, building);
+    return drawBuySellBuilding(scene, building, graphicsUpgradeInstalled);
   }
   const g = scene.add.graphics().setDepth(5);
   const { x, y, width, height } = building;
@@ -255,11 +255,11 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   addWorldLabel(scene, x + width / 2, y + 29, building.label, WHITE, building.kind === 'apartment' ? 17 : 23, true);
 
   if (building.kind === 'homes') drawHomes(scene, g, building);
-  if (building.kind === 'plants') drawPlants(scene, g, building);
+  if (building.kind === 'plants') drawPlants(scene, g, building, graphicsUpgradeInstalled);
   if (building.kind === 'apartment') drawApartment(scene, g, building, apartmentRented);
 }
 
-function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.GameObjects.Graphics {
+function drawBuySellBuilding(scene: Phaser.Scene, building: Building, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics {
   const g = scene.add.graphics().setDepth(5);
   const x = building.x;
   const y = building.y;
@@ -267,7 +267,7 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.Ga
 
   // A shallow roof cap and sparse masonry keep the shop legible as a
   // building without turning the facade into a dense UI-like border.
-  g.fillStyle(0x5e6669, 1).fillRect(x + 8, y + 8, building.width - 16, building.height - 8);
+  g.fillStyle(graphicsUpgradeInstalled ? 0x5f7790 : 0x5e6669, 1).fillRect(x + 8, y + 8, building.width - 16, building.height - 8);
   g.fillStyle(0x252a2d, 1).fillRect(x - 8, y - 8, building.width + 16, 18);
   g.fillStyle(0x858d8d, 1).fillRect(x + 4, y + 10, building.width - 8, 8);
   g.lineStyle(4, INK, 0.95).strokeRect(x + 8, y + 8, building.width - 16, building.height - 8);
@@ -300,11 +300,11 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building): Phaser.Ga
   g.lineStyle(3, 0x8b9392, 0.55).lineBetween(windowX + 18, windowY + 30, windowX + 62, windowY + 6);
   g.lineBetween(windowX + windowWidth - 70, windowY + 56, windowX + windowWidth - 22, windowY + 24);
   g.fillStyle(0x8a9291, 1).fillRect(windowX + 14, windowY + windowHeight - 34, windowWidth - 28, 10);
-  drawPot(g, windowX + 48, windowY + windowHeight - 30, 0.62);
+  drawPot(g, windowX + 48, windowY + windowHeight - 30, 0.62, graphicsUpgradeInstalled);
   g.fillStyle(0x9ea5a5, 1).fillRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
   g.lineStyle(2, INK, 1).strokeRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
   g.fillStyle(INK, 1).fillRect(windowX + windowWidth / 2 - 6, windowY + windowHeight - 49, 3, 3).fillRect(windowX + windowWidth / 2 + 1, windowY + windowHeight - 49, 3, 3);
-  drawPot(g, windowX + windowWidth - 50, windowY + windowHeight - 30, 0.56);
+  drawPot(g, windowX + windowWidth - 50, windowY + windowHeight - 30, 0.56, graphicsUpgradeInstalled);
 
   // Keep the dark opening and frame behind Alex so the entrance animation can
   // show him stepping into the doorway before he fades out.
@@ -363,7 +363,7 @@ function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building
   addWorldLabel(scene, x + building.width / 2, y + 294, 'CLEAN WINDOW', WHITE, 10, true);
 }
 
-function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
+function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, graphicsUpgradeInstalled = false): void {
   const x = building.x;
   const y = building.y;
   g.fillStyle(0x242a2c, 1).fillRect(x + 18, y + 112, building.width - 36, 174);
@@ -375,8 +375,15 @@ function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buildin
     g.lineBetween(plotX + 28, y + 226, plotX + 38, y + 198);
   }
   addWorldLabel(scene, x + building.width / 2, y + 138, 'NURSERY', WHITE, 18, true);
-  addWorldLabel(scene, x + building.width / 2, y + 166, 'COMING SOON', 0xc4ccca, 12, true);
-  addWorldLabel(scene, x + building.width / 2, y + 260, 'VACANT LOT', 0xabb3b1, 11, true);
+  addWorldLabel(scene, x + building.width / 2, y + 166, graphicsUpgradeInstalled ? 'UNDER CONSTRUCTION' : 'COMING SOON', 0xc4ccca, 12, true);
+  addWorldLabel(scene, x + building.width / 2, y + 260, graphicsUpgradeInstalled ? 'CONSTRUCTION SITE' : 'VACANT LOT', 0xabb3b1, 11, true);
+  if (graphicsUpgradeInstalled) {
+    g.lineStyle(5, 0x969e9d, 0.95);
+    g.lineBetween(x + 30, y + 286, x + building.width - 30, y + 286);
+    g.lineBetween(x + 48, y + 286, x + 48, y + 214);
+    g.lineBetween(x + building.width - 48, y + 286, x + building.width - 48, y + 214);
+    g.lineBetween(x + 48, y + 214, x + building.width - 48, y + 214);
+  }
 }
 
 function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean): void {
@@ -481,17 +488,17 @@ function drawStreetDetails(scene: Phaser.Scene): void {
   }
 }
 
-export function drawPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1): void {
+export function drawPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour = false): void {
   g.fillStyle(0x222729, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale);
-  g.fillStyle(0xdfe3df, 1)
+  g.fillStyle(colour ? 0xd38b55 : 0xdfe3df, 1)
     .fillTriangle(x - 16 * scale, y - 25 * scale, x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale)
     .fillTriangle(x - 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale, x - 11 * scale, y + 15 * scale);
-  g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 53 * scale, 8 * scale, 28 * scale);
-  g.fillStyle(0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
+  g.fillStyle(colour ? 0x4f9a54 : 0x3b4244, 1).fillRect(x - 4 * scale, y - 53 * scale, 8 * scale, 28 * scale);
+  g.fillStyle(colour ? 0x6bb566 : 0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
 }
 
-export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1): void {
-  drawPot(g, x, y, scale);
+export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour = false): void {
+  drawPot(g, x, y, scale, colour);
 
   // Keep the existing pot silhouette and footprint, adding only three chunky
   // leaves so the opening collectible reads as a Small Golden Pothos.
@@ -499,7 +506,7 @@ export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: n
     .lineBetween(x, y - 48 * scale, x - 14 * scale, y - 70 * scale)
     .lineBetween(x, y - 48 * scale, x + 14 * scale, y - 70 * scale)
     .lineBetween(x, y - 50 * scale, x + 4 * scale, y - 82 * scale);
-  g.fillStyle(0xbfc5c3, 1)
+  g.fillStyle(colour ? 0x6dbb52 : 0xbfc5c3, 1)
     .fillTriangle(x - 2 * scale, y - 53 * scale, x - 31 * scale, y - 68 * scale, x - 11 * scale, y - 79 * scale)
     .fillTriangle(x + 2 * scale, y - 54 * scale, x + 30 * scale, y - 68 * scale, x + 11 * scale, y - 79 * scale)
     .fillTriangle(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale, x + 19 * scale, y - 72 * scale);
@@ -530,11 +537,12 @@ export function drawGrowingCrop(
   species: GrowingCropVisualSpecies,
   stage: BasilVisualStage,
   scale = 1,
+  colour = false,
 ): void {
-  drawPot(g, x, y, scale);
+  drawPot(g, x, y, scale, colour);
   if (stage === 'empty') return;
 
-  g.fillStyle(0x697173, 1).fillCircle(x, y - 31 * scale, 4 * scale);
+  g.fillStyle(colour ? 0x6dbb52 : 0x697173, 1).fillCircle(x, y - 31 * scale, 4 * scale);
   if (stage === 'planted') return;
 
   const height = stage === 'mature' ? (species === 'mint' ? 60 : 66) : 38;
@@ -547,7 +555,7 @@ export function drawGrowingCrop(
     g.lineBetween(x, y - (height - 10) * scale, x - 15 * scale, y - (height - 23) * scale);
     g.lineBetween(x, y - (height - 19) * scale, x + 16 * scale, y - (height - 35) * scale);
   }
-  g.fillStyle(stage === 'mature' ? 0xbfc5c3 : 0x929b99, 1);
+  g.fillStyle(colour ? (stage === 'mature' ? 0x69b85a : 0x4f9a54) : stage === 'mature' ? 0xbfc5c3 : 0x929b99, 1);
   if (species === 'mint') {
     g.fillEllipse(x - 14 * scale, y - (height - 16) * scale, 17 * scale, 9 * scale);
     g.fillEllipse(x + 14 * scale, y - (height - 30) * scale, 17 * scale, 9 * scale);
@@ -567,9 +575,9 @@ export function drawGrowingCrop(
   }
 }
 
-export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0): void {
+export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0, colour = false): void {
   g.fillStyle(0x222729, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale);
-  g.fillStyle(0xdfe3df, 1)
+  g.fillStyle(colour ? 0xc98a55 : 0xdfe3df, 1)
     .fillTriangle(x - 16 * scale, y - 25 * scale, x + 2 * scale, y - 25 * scale, x - 3 * scale, y + 15 * scale)
     .fillTriangle(x + 3 * scale, y - 25 * scale, x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale);
   // The special repair pot has a dark empty opening and a small diamond

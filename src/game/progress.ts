@@ -4,6 +4,8 @@ import { emptyPlantQuantities, PLANT_SPECIES, type PlantSpecies, type PlantStage
 export type PotCondition = 'ordinary' | 'broken' | 'repaired';
 export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot';
 export type EquippedTool = 'cleaner' | 'repair' | 'watering-can' | null;
+export type AlexGraphics = 'atari-bw' | 'green-screen';
+export type GraphicsUpgradeStage = 'none' | 'prompt' | 'installing' | 'acknowledgement';
 export type BasilStage = 'empty' | 'planted' | 'seedling' | 'mature';
 export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'fresh-basil-leaves' | 'fresh-mint-leaves';
 export type ShopStockCondition = PotCondition | 'fresh';
@@ -37,6 +39,11 @@ export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' |
 
 export interface ProgressState {
   openingComplete: boolean;
+  graphicsUpgradeUnlocked: boolean;
+  graphicsUpgradeInstalled: boolean;
+  graphicsUpgradeStage: GraphicsUpgradeStage;
+  alexGraphics: AlexGraphics;
+  nurseryConstructionComplete: boolean;
   coins: number;
   inventoryPot: PotCondition | null;
   inventoryItem: InventoryItem | null;
@@ -87,6 +94,11 @@ export interface ProgressState {
 
 export const DEFAULT_PROGRESS: ProgressState = {
   openingComplete: false,
+  graphicsUpgradeUnlocked: false,
+  graphicsUpgradeInstalled: false,
+  graphicsUpgradeStage: 'none',
+  alexGraphics: 'atari-bw',
+  nurseryConstructionComplete: false,
   coins: 0,
   inventoryPot: null,
   inventoryItem: null,
@@ -195,6 +207,12 @@ function syncLegacyMirrors(state: ProgressState): ProgressState {
 
 export function sanitizeProgress(value: unknown): ProgressState {
   const input = value && typeof value === 'object' ? value as Partial<ProgressState> : {};
+  const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
+  const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
+  const graphicsUpgradeUnlocked = Boolean(input.graphicsUpgradeUnlocked) || graphicsUpgradeInstalled || Number(input.repairStep) >= 10 || Boolean(input.repairedPotSaleComplete);
+  const graphicsUpgradeStage: GraphicsUpgradeStage = input.graphicsUpgradeStage === 'installing' || input.graphicsUpgradeStage === 'acknowledgement' || input.graphicsUpgradeStage === 'prompt'
+    ? input.graphicsUpgradeStage
+    : graphicsUpgradeUnlocked && !graphicsUpgradeInstalled ? 'prompt' : 'none';
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
   const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
   const tool = validTool(input.equippedTool) ? input.equippedTool : null;
@@ -263,6 +281,11 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const openingComplete = typeof input.openingComplete === 'boolean' ? input.openingComplete : legacyProgressExists;
   const progress: ProgressState = {
     openingComplete,
+    graphicsUpgradeUnlocked,
+    graphicsUpgradeInstalled,
+    graphicsUpgradeStage: graphicsUpgradeInstalled ? (graphicsUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : graphicsUpgradeStage,
+    alexGraphics: graphicsUpgradeInstalled ? alexGraphics : 'atari-bw',
+    nurseryConstructionComplete: Boolean(input.nurseryConstructionComplete) || graphicsUpgradeInstalled,
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock,
