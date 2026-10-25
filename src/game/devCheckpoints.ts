@@ -76,7 +76,7 @@ const brokenSpecialPotCollected = (): ProgressState => withState(windowJobComple
 
 const repairPartlyComplete = (): ProgressState => withState(brokenSpecialPotCollected(), { repairStep: 5, task: 'repair' });
 const repairOneActionBeforeCompletion = (): ProgressState => withState(brokenSpecialPotCollected(), { repairStep: 9, task: 'repair' });
-const specialPotRepaired = (): ProgressState => withState(brokenSpecialPotCollected(), { repairStep: 10, glueCharges: 0, task: 'repair' });
+const specialPotRepaired = (): ProgressState => withState(brokenSpecialPotCollected(), { repairStep: 10, glueCharges: 0, equippedTool: null, task: 'repair' });
 const upgradePromptPending = (): ProgressState => withState(specialPotRepaired(), {
   graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'atari-bw', nurseryConstructionComplete: false, equippedTool: null,
 });
