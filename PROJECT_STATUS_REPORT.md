@@ -1,14 +1,14 @@
 # Indoor Jungle — Current Project Status Report
 
-Audit date: 24 October 2026
+Audit date: 25 October 2026
 
 Workspace: /Users/jarmandonohue/GAMECODE.indoorjungle
 
-Branch: first-basil-sold-and-seeds-bought
+Branch: cleanup-pass-1
 
-Latest commit before this implementation: 7c1b266
+Latest commit before this Pass 1 implementation: a6766cf
 
-Working tree at audit: growing-system implementation changes in progress
+Working tree at audit: Pass 1 housing objective, thought bubble and rental-key changes in progress
 
 Remote: https://github.com/jarmanbot/GAMECODE.indoorjungle.git
 
@@ -16,6 +16,34 @@ This report describes the current implementation in the source code and is
 intended as the document-ready project status reference for ChatGPT and
 project tracking. The source code is authoritative where older prompts or
 README wording differ.
+
+## Pass 1 implementation status
+
+Implemented in the current source:
+
+- Before the first rental, the main HUD objective is `Find a place to live`.
+- Tapping that objective opens a compact housing dropdown with the 60-coin
+  bond guidance, live coin progress and checklist entries for collecting,
+  selling, paid work, bond eligibility, renting and receiving the key.
+- Selling and completing paid work are guidance entries only; the existing
+  60-coin rental rule remains the only eligibility gate.
+- A rental grants `rentalKeyOwned` exactly once. The key is a separate,
+  non-saleable Bag item and older saves with `rentalBondPaid` migrate to the
+  key without another charge.
+- A successful rental closes the property panel and shows a dismissible key
+  handover. The main objective then directs Alex to claim the starter kit.
+- Alex’s housing reminder appears for three seconds immediately after loading
+  or restarting an unrented save, then repeats every 30 seconds of active
+  pre-rental play. Tapping Alex shows the current objective for three seconds
+  and does not issue a movement command. Menus, transitions and blocking
+  actions suppress reminders.
+- Developer checkpoints restore their saved zoom. HUD synchronisation now
+  receives the authoritative seed, harvest and growing-pot collections.
+- The cleaner assignment was already present in the current branch and is
+  retained: accepting the window job assigns it to a normal tool slot.
+
+Runtime/browser and phone verification for this Pass 1 change still needs to
+be performed; the production build is the automated check currently run.
 
 ## Current implementation summary
 
@@ -545,9 +573,9 @@ Slot 2: (495, 470)
 Slot 3: (610, 470)
 ~~~
 
-The current starter pot uses one selected slot. The other slots are prepared
-for future expansion, but the current system supports only one active starter
-pot.
+Each independent growing pot can occupy one selected slot. The other slots
+are available for the additional pots already supported by the current
+system.
 
 The approach point is 54 units to the left of the selected slot. The
 contextual interaction radius is 96 world units.
@@ -900,18 +928,12 @@ The premium display items are not purchasable.
 
 ## Known limitations and inconsistencies
 
-### README documentation drift
+### Documentation and consistency status
 
-The README contains older wording that says the window job uses eight sprays
-and pays three coins. The current implementation uses nine sprays and pays
-nine coins. This report and the source code use the current values.
-
-### Tool-slot consistency
-
-The window job equips the cleaner immediately, but the live acceptance method
-does not explicitly assign the cleaner to a tool slot. The repair tool is
-explicitly assigned after job completion. This should be checked when testing
-the Tools popup after accepting the job.
+The README values and growing-system description were updated during Pass 1
+to match the current source. The cleaner is explicitly assigned to a tool
+slot when the window job is accepted. These changes still require runtime
+verification in the browser and on a phone.
 
 ### Growing-system migration
 

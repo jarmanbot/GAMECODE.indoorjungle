@@ -82,7 +82,7 @@ const repairedPotSold = (): ProgressState => withState(specialPotRepaired(), {
 });
 
 const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
-  coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE - RENTAL_BOND_COST, rentalBondPaid: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
+  coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
 });
 
 const starterKitClaimed = (): ProgressState => withState(apartmentRented(), {
@@ -157,6 +157,7 @@ const definitions: DevCheckpointDefinition[] = [
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {
   const result = sanitizeProgress(progress);
   if (result.coins < 0) throw new Error(`Developer checkpoint ${id} has negative coins.`);
+  if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);
   if (result.starterKitGranted && !result.starterKitClaimed) throw new Error(`Developer checkpoint ${id} grants an unclaimed kit.`);
   const ids = new Set<string>(); const slots = new Set<number>();
   for (const pot of result.growingPots) {

@@ -18,7 +18,7 @@ Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
 - `E` near the BUY / SELL entrance or shop counter: select entry or open the panel.
 - `Space` (or phone `A`): one visual hop. It does not move Alex’s ground position or bypass collisions.
-- `Q` (or phone `B`): use the equipped tool. Cleaner uses eight one-second sprays; repair uses ten taps beside the visible ground pot.
+- `Q` (or phone `B`): use the equipped tool. Cleaner uses nine one-second sprays across three window sections; repair uses ten taps beside the visible ground pot.
 - Tap or click the world: walk to that point.
 - Mouse wheel, the single IN/OUT zoom button, or `,` / `.`: switch between Normal and Close (`.` zooms in, `,` zooms out).
 - Tap/click the Small Golden Pothos or BUY / SELL entrance to walk there and interact on arrival. Alex shows front, back, left and right poses; window cleaning requires the back-facing pose toward the HOMES display. After the window job, tap a broken-pot piece and press B to pick up each piece.
@@ -47,8 +47,9 @@ use Return to normal save before checking the regular player save.
 - Dependency-free procedural arcade music plus jump and tool-use sound effects, unlocked on the first user interaction for browser autoplay compatibility.
 - Reversible portrait phone layout trial with an outside-the-world joystick, pointer capture, dead-zone handling, and shared tap/keyboard/zoom actions. Set `PHONE_HYBRID_CONTROLS` in `src/game/config.ts` to `false` to restore the previous phone layout.
 - Opening loop: find and collect one Small Golden Pothos, then accept the opening window-cleaning job from the BUY / SELL counter. Selling the first delivery remains available for 5 coins but is no longer the next required objective.
+- Housing Pass 1: before renting, the main objective is “Find a place to live” with a tappable progress dropdown. Alex shows a three-second housing thought immediately after loading or restarting an unrented save, then repeats it every 30 seconds of active play; tapping Alex shows the current objective. Paying the 60-coin bond grants one persistent apartment key, shown in the Bag and migrated automatically for older rented saves.
 - Starter apartment loop: claim the one-time starter pot, used medium, one basil seed, one mint seed, watering can and fertiliser; place up to three independent Small basic plastic pots, choose basil or mint for each pot, water once, wait 60 seconds, optionally fertilise to mature instantly, harvest, sell fresh leaves for 5 coins, and buy further seeds for 2 coins. Each pot retains its own crop, slot and growth timing, and its usable medium remains after harvest.
-- Opening job: collect the Small Golden Pothos first, accept the job at the counter, then tap the HOMES estate-agent window and tap the equipped cleaner eight times. Completion rewards 3 coins, a reusable repair tool, and one starter glue charge.
+- Opening job: collect the Small Golden Pothos first, accept the job at the counter, then tap the HOMES estate-agent window and use the equipped cleaner nine times across three sections. Completion rewards 9 coins, a reusable repair tool, and one starter glue charge.
 - Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 75 coins.
 - BUY / SELL shows the outstanding Golden Pothos request in its street window. Items Alex sells become persistent shop stock: the opening Small Golden Pothos can be bought back for 7 coins, repaired pots for 105 coins, and fresh basil or mint leaves for 7 coins each. Matching harvest stacks remain species-specific; basil seeds, mint seeds, living crops and fresh leaves remain distinct. The two additional growing pots cost 10 coins each and are one-time stock.
 - Normal progress is stored in `indoor-jungle-progress-v1`. Development checkpoints use the separate `indoor-jungle-progress-dev-test-v1` namespace, plus development-only session metadata; no external service is involved.
@@ -58,7 +59,7 @@ use Return to normal save before checking the regular player save.
 
 - The pot sale value is temporary prototype tuning, fixed at 5 coins.
 - Basil harvest value (5 coins), seed price (2 coins), and the 60-second growth duration are provisional prototype tuning.
-- Window reward (3 coins) and repaired-pot sale value (75 coins) are provisional prototype tuning.
+- Window reward (9 coins) and repaired-pot sale value (75 coins) are provisional prototype tuning.
 - World movement is intentionally lightweight and constrained to the front pavement, marked crossing, and opposite pavement; cars are decoration only.
 - Art is code-drawn so the same world geometry can later receive Atari colour, 16-bit, or 32-bit renderers.
 

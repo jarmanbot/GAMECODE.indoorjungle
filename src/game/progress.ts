@@ -54,10 +54,12 @@ export interface ProgressState {
   brokenPotAvailable: boolean;
   brokenPotOwned: boolean;
   brokenPotPiecesRemaining: number;
+  brokenPotPiecesOwned: number;
   repairStep: number;
   equippedTool: EquippedTool;
   task: TaskState;
   rentalBondPaid: boolean;
+  rentalKeyOwned: boolean;
   starterKitClaimed: boolean;
   starterKitGranted: boolean;
 
@@ -101,10 +103,12 @@ export const DEFAULT_PROGRESS: ProgressState = {
   brokenPotAvailable: false,
   brokenPotOwned: false,
   brokenPotPiecesRemaining: 3,
+  brokenPotPiecesOwned: 0,
   repairStep: 0,
   equippedTool: null,
   task: 'find',
   rentalBondPaid: false,
+  rentalKeyOwned: false,
   starterKitClaimed: false,
   starterKitGranted: false,
   growingPots: [],
@@ -239,15 +243,21 @@ export function sanitizeProgress(value: unknown): ProgressState {
     harvests[species] = quantity(sourceHarvests ?? (species === 'basil' ? input.basilHarvests : 0));
     events[species] = quantity(sourceEvents ?? (species === 'basil' ? input.basilCycleCount : 0));
   }
+  const piecesRemaining = Number.isFinite(Number(input.brokenPotPiecesRemaining))
+    ? Math.max(0, Math.min(3, Math.floor(Number(input.brokenPotPiecesRemaining))))
+    : 3;
+  const piecesOwned = Number.isFinite(Number(input.brokenPotPiecesOwned))
+    ? Math.max(0, Math.min(3, Math.floor(Number(input.brokenPotPiecesOwned))))
+    : (Boolean(input.brokenPotOwned) || condition === 'broken' ? 0 : Math.max(0, 3 - piecesRemaining));
   const progress: ProgressState = {
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock,
     windowJobAccepted: Boolean(input.windowJobAccepted), windowCleaningProgress: Math.max(0, Math.min(999, quantity(input.windowCleaningProgress))), windowJobComplete: Boolean(input.windowJobComplete),
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
-    brokenPotPiecesRemaining: Number.isFinite(Number(input.brokenPotPiecesRemaining)) ? Math.max(0, Math.min(3, Math.floor(Number(input.brokenPotPiecesRemaining)))) : 3,
+    brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,
-    rentalBondPaid: Boolean(input.rentalBondPaid), starterKitClaimed: Boolean(input.starterKitClaimed), starterKitGranted: Boolean(input.starterKitGranted),
+    rentalBondPaid: Boolean(input.rentalBondPaid), rentalKeyOwned: Boolean(input.rentalKeyOwned) || Boolean(input.rentalBondPaid), starterKitClaimed: Boolean(input.starterKitClaimed), starterKitGranted: Boolean(input.starterKitGranted),
     growingPots: sanitizeGrowingPots(input), seedQuantities: seeds, harvestQuantities: harvests, growingEvents: events,
     additionalGrowingPotsPurchased: Math.max(0, Math.min(MAX_ADDITIONAL_GROWING_POTS, quantity(input.additionalGrowingPotsPurchased))),
     starterPotPlaced: false, starterPotSlot: 1, basilPlanted: false, basilSeeds: 0, basilHarvests: 0, basilGrowthStartedAt: null, basilCycleCount: 0,

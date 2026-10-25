@@ -560,23 +560,23 @@ export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y
   // that collection progress is visible.
   if (piecesRemaining >= 1) {
     g.fillStyle(0xdfe3df, 1)
-      .fillTriangle(x - 42 * scale, y - 20 * scale, x - 7 * scale, y - 20 * scale, x - 18 * scale, y + 16 * scale);
-    g.lineStyle(5, 0x111416, 1).strokeTriangle(x - 42 * scale, y - 20 * scale, x - 7 * scale, y - 20 * scale, x - 18 * scale, y + 16 * scale);
-    g.lineStyle(3, 0x697173, 1).lineBetween(x - 11 * scale, y - 18 * scale, x - 20 * scale, y + 9 * scale);
+      .fillTriangle(x - 62 * scale, y - 20 * scale, x - 25 * scale, y - 20 * scale, x - 39 * scale, y + 16 * scale);
+    g.lineStyle(5, 0x111416, 1).strokeTriangle(x - 62 * scale, y - 20 * scale, x - 25 * scale, y - 20 * scale, x - 39 * scale, y + 16 * scale);
+    g.lineStyle(3, 0x697173, 1).lineBetween(x - 29 * scale, y - 18 * scale, x - 41 * scale, y + 9 * scale);
   }
   if (piecesRemaining >= 2) {
     g.fillStyle(0xdfe3df, 1)
-      .fillTriangle(x + 7 * scale, y - 20 * scale, x + 42 * scale, y - 20 * scale, x + 19 * scale, y + 16 * scale);
-    g.lineStyle(5, 0x111416, 1).strokeTriangle(x + 7 * scale, y - 20 * scale, x + 42 * scale, y - 20 * scale, x + 19 * scale, y + 16 * scale);
-    g.lineStyle(3, 0x697173, 1).lineBetween(x + 11 * scale, y - 18 * scale, x + 20 * scale, y + 9 * scale);
+      .fillTriangle(x + 25 * scale, y - 20 * scale, x + 62 * scale, y - 20 * scale, x + 39 * scale, y + 16 * scale);
+    g.lineStyle(5, 0x111416, 1).strokeTriangle(x + 25 * scale, y - 20 * scale, x + 62 * scale, y - 20 * scale, x + 39 * scale, y + 16 * scale);
+    g.lineStyle(3, 0x697173, 1).lineBetween(x + 29 * scale, y - 18 * scale, x + 41 * scale, y + 9 * scale);
   }
   if (piecesRemaining >= 3) {
-    g.fillStyle(0x222729, 1).fillRect(x - 17 * scale, y - 29 * scale, 34 * scale, 7 * scale);
-    g.lineStyle(4, 0xf6f7f3, 1).strokeRect(x - 17 * scale, y - 29 * scale, 34 * scale, 7 * scale);
-    g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 54 * scale, 8 * scale, 27 * scale);
-    g.lineStyle(4, 0x111416, 1).strokeRect(x - 4 * scale, y - 54 * scale, 8 * scale, 27 * scale);
-    g.fillStyle(0x697173, 1).fillRect(x - 13 * scale, y - 60 * scale, 26 * scale, 7 * scale);
-    g.lineStyle(3, 0xf6f7f3, 1).strokeRect(x - 13 * scale, y - 60 * scale, 26 * scale, 7 * scale);
+    g.fillStyle(0x222729, 1).fillRect(x - 17 * scale, y - 42 * scale, 34 * scale, 7 * scale);
+    g.lineStyle(4, 0xf6f7f3, 1).strokeRect(x - 17 * scale, y - 42 * scale, 34 * scale, 7 * scale);
+    g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 69 * scale, 8 * scale, 27 * scale);
+    g.lineStyle(4, 0x111416, 1).strokeRect(x - 4 * scale, y - 69 * scale, 8 * scale, 27 * scale);
+    g.fillStyle(0x697173, 1).fillRect(x - 13 * scale, y - 75 * scale, 26 * scale, 7 * scale);
+    g.lineStyle(3, 0xf6f7f3, 1).strokeRect(x - 13 * scale, y - 75 * scale, 26 * scale, 7 * scale);
   }
 }
 

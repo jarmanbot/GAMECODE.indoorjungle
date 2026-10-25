@@ -148,6 +148,12 @@ export class GameScene extends Phaser.Scene {
   private streetPosition = new Phaser.Math.Vector2(START_POSITION.x, START_POSITION.y);
   private destinationMarker!: Phaser.GameObjects.Graphics;
   private interactionHighlight!: Phaser.GameObjects.Graphics;
+  private thoughtBubble?: Phaser.GameObjects.Container;
+  private thoughtBubbleBackdrop?: Phaser.GameObjects.Graphics;
+  private thoughtBubbleText?: Phaser.GameObjects.Text;
+  private thoughtBubbleRemainingMs = 0;
+  private thoughtBubbleIsAutomatic = false;
+  private housingThoughtElapsedMs = 0;
   private placementHighlight!: Phaser.GameObjects.Graphics;
   private placementOptionsHighlight!: Phaser.GameObjects.Graphics;
   private itemPlacementMode = false;
@@ -191,6 +197,7 @@ export class GameScene extends Phaser.Scene {
   private repairAnimating = false;
   private brokenPotPieceSelected = false;
   private rentalBondPaid = false;
+  private rentalKeyOwned = false;
   private starterKitClaimed = false;
   private rentalFeedbackAt = 0;
   private basilPotSelected = false;
@@ -238,6 +245,7 @@ export class GameScene extends Phaser.Scene {
       this.completeWindowJob();
     }
     this.streetObjects = [...this.children.list];
+    this.createThoughtBubble();
 
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
@@ -285,6 +293,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.hud.setDevTestMode(this.testSaveMode, this.devSessionMeta?.checkpointId ?? null);
     this.updateInteraction();
+    this.startHousingThoughtReminder();
   }
 
   update(time: number, delta: number): void {
@@ -293,6 +302,7 @@ export class GameScene extends Phaser.Scene {
     this.updateGrowingWatering(delta);
     this.updateGardeningAction(delta);
     this.updateWindowSpray(delta);
+    this.updateThoughtBubble(delta);
 
     if (this.modalOpen && time - this.gardeningPanelRefreshAt >= 500) {
       this.gardeningPanelRefreshAt = time;
@@ -691,17 +701,19 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; starterKitClaimed: boolean } {
+  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean } {
     return {
       coins: this.coins,
       rentalBondPaid: this.rentalBondPaid,
+      rentalKeyOwned: this.rentalKeyOwned,
       starterKitClaimed: this.starterKitClaimed,
     };
   }
 
-  getRentalState(): { rentalBondPaid: boolean; starterKitClaimed: boolean } {
+  getRentalState(): { rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean } {
     return {
       rentalBondPaid: this.rentalBondPaid,
+      rentalKeyOwned: this.rentalKeyOwned,
       starterKitClaimed: this.starterKitClaimed,
     };
   }
@@ -720,20 +732,32 @@ export class GameScene extends Phaser.Scene {
       toolSlots: this.progress.toolSlots,
       glueCharges: this.progress.glueCharges,
       brokenPotPieceSelected: this.brokenPotPieceSelected,
+      brokenPotPiecesOwned: this.progress.brokenPotPiecesOwned,
       canPlaceItem: this.itemPlacementMode && Boolean(this.placementTarget),
       starterKitClaimed: this.starterKitClaimed,
+      rentalBondPaid: this.rentalBondPaid,
+      rentalKeyOwned: this.rentalKeyOwned,
+      hasCollectedSaleableItem: this.inventoryHasPot || this.saleComplete || Boolean(this.progress.placedWorldItem) || this.progress.repairedPotSaleComplete,
+      saleComplete: this.saleComplete || this.progress.repairedPotSaleComplete,
+      paidWorkComplete: this.progress.windowJobComplete,
       starterPotPlaced: this.progress.starterPotPlaced,
       basilSeeds: this.progress.basilSeeds,
       basilHarvests: this.progress.basilHarvests,
       basilCycleCount: this.progress.basilCycleCount,
       basicFertilizerCharges: this.progress.basicFertilizerCharges,
+      seedQuantities: this.progress.seedQuantities,
+      harvestQuantities: this.progress.harvestQuantities,
+      growingPots: this.progress.growingPots,
     });
   }
 
   private loadProgress(): void {
+    let rentalKeyWasSaved = false;
     try {
       const raw = localStorage.getItem(this.getProgressStorageKey());
-      this.progress = sanitizeProgress(raw ? JSON.parse(raw) : DEFAULT_PROGRESS);
+      const saved = raw ? JSON.parse(raw) as Partial<ProgressState> : null;
+      rentalKeyWasSaved = saved?.rentalKeyOwned === true;
+      this.progress = sanitizeProgress(saved ?? DEFAULT_PROGRESS);
     } catch {
       this.progress = sanitizeProgress(DEFAULT_PROGRESS);
     }
@@ -744,6 +768,8 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = this.inventoryPot !== null;
     this.saleComplete = this.progress.saleComplete;
     this.rentalBondPaid = this.progress.rentalBondPaid;
+    this.rentalKeyOwned = this.progress.rentalKeyOwned;
+    if (this.rentalBondPaid && !rentalKeyWasSaved) this.saveProgress();
     this.starterKitClaimed = this.progress.starterKitClaimed;
     if (this.rentalBondPaid && this.starterKitClaimed && !this.progress.starterKitGranted) {
       // The previous apartment pass persisted the claim flag before the
@@ -807,6 +833,7 @@ export class GameScene extends Phaser.Scene {
       : this.inventoryPot ? 'special-repair-pot' : null;
     this.progress.saleComplete = this.saleComplete;
     this.progress.rentalBondPaid = this.rentalBondPaid;
+    this.progress.rentalKeyOwned = this.rentalKeyOwned;
     this.progress.starterKitClaimed = this.starterKitClaimed;
     this.progress.brokenPotOwned = this.inventoryPot === 'broken' || this.progress.brokenPotOwned;
     try { localStorage.setItem(this.getProgressStorageKey(), JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
@@ -830,7 +857,7 @@ export class GameScene extends Phaser.Scene {
       checkpointId: snapshot.id,
       scene: snapshot.scene,
       spawn: { ...snapshot.spawn },
-      zoom: 'close',
+      zoom: snapshot.zoom,
     };
     this.restoreDevSessionScene(this.devSessionMeta);
     this.updateProgressVisuals();
@@ -842,6 +869,7 @@ export class GameScene extends Phaser.Scene {
     this.persistDevSession();
     this.showToast(`Loaded checkpoint: ${snapshot.label}.`, 2200);
     this.updateInteraction();
+    this.startHousingThoughtReminder();
   }
 
   public resetDevTestSave(): void {
@@ -904,6 +932,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryHasPot = this.inventoryPot !== null;
     this.saleComplete = this.progress.saleComplete;
     this.rentalBondPaid = this.progress.rentalBondPaid;
+    this.rentalKeyOwned = this.progress.rentalKeyOwned;
     this.starterKitClaimed = this.progress.starterKitClaimed;
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
@@ -1316,6 +1345,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.equippedTool = 'repair';
     this.progress.brokenPotAvailable = true;
     this.progress.brokenPotPiecesRemaining = 3;
+    this.progress.brokenPotPiecesOwned = 0;
     this.progress.task = 'repair';
     this.selectedWindowSectionIndex = null;
     this.windowFacePromptRequired = false;
@@ -1740,27 +1770,41 @@ export class GameScene extends Phaser.Scene {
     this.showToast('Press B to clean window.', 1700);
   }
 
-  payRentalBond(): void {
+  payRentalBond(): boolean {
     if (this.rentalBondPaid) {
+      if (!this.rentalKeyOwned) {
+        this.rentalKeyOwned = true;
+        this.progress.rentalKeyOwned = true;
+        this.saveProgress();
+        this.syncHudState();
+        this.showToast('Received apartment key.', 1800);
+      }
       this.hud.refreshPropertyPanel('Your rental is already unlocked.');
-      return;
+      return false;
     }
     const bond = RENTAL_BOND_COST;
     if (this.coins < bond) {
       const shortfall = bond - this.coins;
       this.hud.refreshPropertyPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the bond.`);
       this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for the ${RENTAL_BOND_COST}-coin bond.`, 1800);
-      return;
+      return false;
     }
     this.coins -= bond;
     this.rentalBondPaid = true;
+    this.rentalKeyOwned = true;
     this.starterKitClaimed = false;
     this.progress.rentalBondPaid = true;
+    this.progress.rentalKeyOwned = true;
     this.progress.starterKitClaimed = false;
+    this.progress.task = 'place-pot';
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshPropertyPanel('Bond paid. Your rental and starter kit are unlocked.');
-    this.showToast('Bond paid. Your starter apartment is unlocked.', 2200);
+    this.hud.highlightBag();
+    this.toastTimer?.remove(false);
+    this.toastTimer = undefined;
+    this.hud.showDismissibleToast('RENTAL COMPLETE. Received apartment key ⚿. The key is in your Bag. Your starter apartment is unlocked; enter it to claim the starter kit.');
+    return true;
   }
 
   private claimStarterKit(): void {
@@ -2330,7 +2374,10 @@ export class GameScene extends Phaser.Scene {
     this.coins = 0;
     this.clearItemPlacement();
     this.rentalBondPaid = false;
+    this.rentalKeyOwned = false;
     this.starterKitClaimed = false;
+    this.housingThoughtElapsedMs = 0;
+    this.thoughtBubble?.setVisible(false);
     this.repairPickupReady = false;
     this.windowFacePromptRequired = false;
     this.basilPotSelected = false;
@@ -2357,12 +2404,102 @@ export class GameScene extends Phaser.Scene {
     this.hud.setMapPosition(START_POSITION.x / WORLD_WIDTH, START_POSITION.y);
     this.showToast('Prototype restarted.');
     this.updateInteraction();
+    this.startHousingThoughtReminder();
   }
 
   private createPlayer(): void {
     this.player = this.add.graphics().setDepth(30);
     this.player.setPosition(START_POSITION.x, START_POSITION.y);
     this.drawPlayer();
+  }
+
+  private createThoughtBubble(): void {
+    this.thoughtBubbleBackdrop = this.add.graphics();
+    this.thoughtBubbleText = this.add.text(0, 0, '', {
+      color: '#111416',
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      align: 'center',
+      wordWrap: { width: 208, useAdvancedWrap: true },
+    }).setOrigin(0.5);
+    this.thoughtBubble = this.add.container(this.player.x, this.player.y - 104, [this.thoughtBubbleBackdrop, this.thoughtBubbleText])
+      .setDepth(40)
+      .setVisible(false);
+  }
+
+  private showThought(text: string, automatic = false): void {
+    if (!this.thoughtBubble || !this.thoughtBubbleBackdrop || !this.thoughtBubbleText) return;
+    this.thoughtBubbleText.setText(text);
+    const width = 236;
+    const height = Math.max(58, this.thoughtBubbleText.height + 24);
+    this.thoughtBubbleBackdrop.clear();
+    this.thoughtBubbleBackdrop.fillStyle(0xf6f7f3, 0.98).fillRoundedRect(-width / 2, -height / 2, width, height, 8);
+    this.thoughtBubbleBackdrop.lineStyle(3, 0x111416, 1).strokeRoundedRect(-width / 2, -height / 2, width, height, 8);
+    this.thoughtBubbleBackdrop.fillStyle(0xf6f7f3, 0.98).fillTriangle(-12, height / 2 - 2, 12, height / 2 - 2, 0, height / 2 + 16);
+    this.thoughtBubbleBackdrop.lineStyle(3, 0x111416, 1).lineBetween(-12, height / 2 - 2, 0, height / 2 + 16).lineBetween(0, height / 2 + 16, 12, height / 2 - 2);
+    this.thoughtBubbleText.setPosition(0, 0);
+    this.thoughtBubbleIsAutomatic = automatic;
+    this.thoughtBubbleRemainingMs = 3000;
+    this.thoughtBubble.setVisible(true);
+    this.updateThoughtBubblePosition();
+  }
+
+  private updateThoughtBubblePosition(): void {
+    if (!this.thoughtBubble) return;
+    this.thoughtBubble.setPosition(this.player.x, this.player.y - 104 - this.hopVisualOffset);
+  }
+
+  private updateThoughtBubble(delta: number): void {
+    const blocked = this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning
+      || this.activeGardeningAction !== null || this.sprayAnimating || this.repairAnimating || this.hopActive;
+    if (blocked) {
+      this.thoughtBubble?.setVisible(false);
+      this.thoughtBubbleRemainingMs = 0;
+      return;
+    }
+    if (this.rentalBondPaid && this.thoughtBubbleIsAutomatic) {
+      this.thoughtBubble?.setVisible(false);
+      this.thoughtBubbleRemainingMs = 0;
+      return;
+    }
+    if (this.thoughtBubble?.visible) {
+      this.updateThoughtBubblePosition();
+      this.thoughtBubbleRemainingMs -= delta;
+      if (this.thoughtBubbleRemainingMs <= 0) this.thoughtBubble.setVisible(false);
+      return;
+    }
+    if (this.rentalBondPaid) return;
+    this.housingThoughtElapsedMs += delta;
+    if (this.housingThoughtElapsedMs >= 30000) {
+      this.housingThoughtElapsedMs = 0;
+      this.showThought('I need a place to live', true);
+    }
+  }
+
+  private startHousingThoughtReminder(): void {
+    this.housingThoughtElapsedMs = 0;
+    if (!this.rentalBondPaid) this.showThought('I need a place to live', true);
+  }
+
+  private getCurrentThought(): string {
+    if (!this.rentalBondPaid) return 'I need a place to live';
+    if (!this.starterKitClaimed) return 'I should claim the starter kit';
+    const thoughts: Partial<Record<TaskState, string>> = {
+      'place-pot': 'I need to place a pot on the grow table',
+      'plant-basil': 'I should plant a seed',
+      'water-basil': 'The basil needs water',
+      'grow-basil': 'I should let the basil grow',
+      'harvest-basil': 'The basil is ready to harvest',
+      'sell-basil': 'I should sell the basil harvest',
+      'buy-seeds': 'I should buy more seeds',
+      'plant-mint': 'I should plant mint in an empty pot',
+      'water-mint': 'The mint needs water',
+      'grow-mint': 'I should let the mint grow',
+      'harvest-mint': 'The mint is ready to harvest',
+      'sell-mint': 'I should sell the mint harvest',
+    };
+    return thoughts[this.progress.task] ?? 'I should keep working on my plants';
   }
 
   private drawPlayer(): void {
@@ -2651,6 +2788,12 @@ export class GameScene extends Phaser.Scene {
     if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld || this.activeGardeningAction) return;
     if (this.sprayAnimating) this.cancelToolUse(false);
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
+    if (this.isNearPoint(point, new Phaser.Math.Vector2(this.player.x, this.player.y), 54)) {
+      this.cancelTapWalk();
+      this.clearInteractionHighlight();
+      this.showThought(this.getCurrentThought());
+      return;
+    }
     if (this.shopInterior) {
       this.handleShopWorldPoint(point.x, point.y);
       return;
@@ -2823,9 +2966,9 @@ export class GameScene extends Phaser.Scene {
     const hit = (x: number, y: number, width: number, height: number): boolean =>
       Math.abs(dx - x) <= width / 2 && Math.abs(dy - y) <= height / 2;
     const remaining = this.progress.brokenPotPiecesRemaining;
-    return (remaining >= 1 && hit(-24, -2, 58, 58))
-      || (remaining >= 2 && hit(24, -2, 58, 58))
-      || (remaining >= 3 && hit(0, -42, 46, 42));
+    return (remaining >= 1 && hit(-39, -2, 58, 58))
+      || (remaining >= 2 && hit(39, -2, 58, 58))
+      || (remaining >= 3 && hit(0, -57, 46, 42));
   }
 
   private isNearBuySellDoor(point: Phaser.Math.Vector2): boolean {
@@ -3203,19 +3346,21 @@ export class GameScene extends Phaser.Scene {
     this.audio.playToolUse();
     this.brokenPotPieceSelected = false;
     this.progress.brokenPotPiecesRemaining = Math.max(0, this.progress.brokenPotPiecesRemaining - 1);
+    this.progress.brokenPotPiecesOwned = Math.min(3, this.progress.brokenPotPiecesOwned + 1);
     this.brokenPot.clear();
     drawBrokenPotPieces(this.brokenPot, 0, 0, 1.08, this.progress.brokenPotPiecesRemaining);
 
     if (this.progress.brokenPotPiecesRemaining > 0) {
       this.saveProgress();
       this.syncHudState();
-      this.showToast(`Piece picked up. Click another piece, then press B (${this.progress.brokenPotPiecesRemaining} left).`, 1700);
+      this.showToast(`Piece added to the Bag (${this.progress.brokenPotPiecesOwned}/3). Click another piece, then press B.`, 1700);
       return;
     }
 
     this.inventoryHasPot = true;
     this.inventoryPot = 'broken';
     this.inventoryInstanceId = SPECIAL_REPAIR_POT_INSTANCE_ID;
+    this.progress.brokenPotPiecesOwned = 0;
     this.progress.inventoryPot = 'broken';
     this.progress.inventoryItem = 'special-repair-pot';
     this.progress.brokenPotOwned = true;

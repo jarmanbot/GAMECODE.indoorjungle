@@ -37,6 +37,8 @@ export class HudController {
   private zoomInHandler: (() => void) | null = null;
   private readonly coinCount = document.querySelector<HTMLElement>('#coin-count')!;
   private readonly objectiveText = document.querySelector<HTMLElement>('#objective-text')!;
+  private readonly objectiveButton = document.querySelector<HTMLButtonElement>('#objective-button')!;
+  private readonly housingObjectiveDropdown = document.querySelector<HTMLElement>('#housing-objective-dropdown')!;
   private readonly zoomToggleButton = document.querySelector<HTMLButtonElement>('#zoom-toggle')!;
   private readonly zoomGlyph = document.querySelector<HTMLElement>('#zoom-glyph')!;
   private readonly zoomCaption = document.querySelector<HTMLElement>('#zoom-caption')!;
@@ -77,8 +79,14 @@ export class HudController {
   private assignedToolSlots: EquippedTool[] = [null, null, null];
   private glueCharges = 0;
   private brokenPotPieceSelected = false;
+  private brokenPotPiecesOwned = 0;
   private canPlaceItem = false;
   private starterKitClaimed = false;
+  private rentalBondPaid = false;
+  private rentalKeyOwned = false;
+  private hasCollectedSaleableItem = false;
+  private saleComplete = false;
+  private paidWorkComplete = false;
   private starterPotPlaced = false;
   private basilSeeds = 0;
   private basilHarvests = 0;
@@ -109,6 +117,14 @@ export class HudController {
       this.bindButtonActivation(button, () => this.openPanel(button.dataset.panel ?? 'more'));
     });
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#settings-button')!, () => this.openPanel('settings'));
+    this.bindButtonActivation(this.objectiveButton, () => this.toggleHousingObjective());
+    this.housingObjectiveDropdown.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-close-housing-objective]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeHousingObjective();
+    });
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#close-panel')!, () => this.closePanel());
     this.bindButtonActivation(this.toastClose, () => {
       this.scene?.suppressWorldInput();
@@ -210,13 +226,14 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[] }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[] }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
     this.potCondition = state.inventoryPotCondition ?? (state.inventoryHasPot ? 'ordinary' : null);
     this.inventoryItem = state.inventoryItem ?? (this.potCondition === 'ordinary' ? 'small-golden-pothos' : this.potCondition ? 'special-repair-pot' : null);
     this.brokenPotPieceSelected = state.brokenPotPieceSelected ?? false;
+    this.brokenPotPiecesOwned = state.brokenPotPiecesOwned ?? 0;
     this.canPlaceItem = state.canPlaceItem ?? false;
     this.setEquippedTool(state.equippedTool ?? null);
     this.repairToolOwned = state.repairToolOwned ?? this.repairToolOwned;
@@ -226,6 +243,11 @@ export class HudController {
     this.glueCharges = state.glueCharges ?? this.glueCharges;
     this.activeTask = state.task;
     this.starterKitClaimed = state.starterKitClaimed ?? this.starterKitClaimed;
+    this.rentalBondPaid = state.rentalBondPaid ?? this.rentalBondPaid;
+    this.rentalKeyOwned = state.rentalKeyOwned ?? this.rentalKeyOwned;
+    this.hasCollectedSaleableItem = state.hasCollectedSaleableItem ?? this.hasCollectedSaleableItem;
+    this.saleComplete = state.saleComplete ?? this.saleComplete;
+    this.paidWorkComplete = state.paidWorkComplete ?? this.paidWorkComplete;
     this.starterPotPlaced = state.starterPotPlaced ?? this.starterPotPlaced;
     this.basilSeeds = state.basilSeeds ?? this.basilSeeds;
     this.basilHarvests = state.basilHarvests ?? this.basilHarvests;
@@ -242,7 +264,7 @@ export class HudController {
       repair: 'Find broken pot pieces; repair with tool + glue',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
-      'place-pot': 'Place an owned pot on an empty grow-table slot',
+      'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit',
       'plant-basil': 'Plant basil in your starter pot',
       'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
       'grow-basil': 'Wait for the basil to grow',
@@ -255,7 +277,10 @@ export class HudController {
       'harvest-mint': 'Harvest the mature mint',
       'sell-mint': 'Sell the mint harvest at BUY / SELL',
     };
-    this.objectiveText.textContent = labels[state.task];
+    this.objectiveText.textContent = this.rentalBondPaid ? (this.starterKitClaimed ? labels[state.task] : 'Enter the apartment and claim the starter kit') : 'Find a place to live';
+    this.objectiveButton.classList.toggle('is-housing-objective', !this.rentalBondPaid);
+    this.objectiveButton.setAttribute('aria-expanded', String(!this.housingObjectiveDropdown.hidden && !this.rentalBondPaid));
+    this.renderHousingObjective();
   }
 
   setEquippedTool(tool: EquippedTool): void {
@@ -267,6 +292,38 @@ export class HudController {
     this.arcadeB.disabled = !tool && !this.brokenPotPieceSelected && !this.canPlaceItem;
     this.arcadeB.setAttribute('aria-label', this.brokenPotPieceSelected ? 'Pick up selected broken pot piece' : this.canPlaceItem ? 'Put down item on selected pavement square' : tool ? `Use ${label.toLowerCase()}` : 'No tool equipped');
     this.refreshToolPopup();
+  }
+
+  private toggleHousingObjective(): void {
+    if (this.rentalBondPaid) return;
+    this.renderHousingObjective();
+    this.housingObjectiveDropdown.hidden = !this.housingObjectiveDropdown.hidden;
+    this.objectiveButton.setAttribute('aria-expanded', String(!this.housingObjectiveDropdown.hidden));
+  }
+
+  private closeHousingObjective(): void {
+    this.housingObjectiveDropdown.hidden = true;
+    this.objectiveButton.setAttribute('aria-expanded', 'false');
+  }
+
+  private renderHousingObjective(): void {
+    if (this.rentalBondPaid) {
+      this.housingObjectiveDropdown.hidden = true;
+      this.objectiveButton.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    const coinProgress = this.coins >= RENTAL_BOND_COST
+      ? `${this.coins} coins · ENOUGH FOR BOND`
+      : `${this.coins} / ${RENTAL_BOND_COST} coins`;
+    const rows = [
+      ['Collect a saleable item', this.hasCollectedSaleableItem],
+      ['Sell an item', this.saleComplete],
+      ['Complete paid work', this.paidWorkComplete],
+      [`Have ${RENTAL_BOND_COST} coins for the bond`, this.coins >= RENTAL_BOND_COST || this.rentalBondPaid],
+      ['Rent the apartment', this.rentalBondPaid],
+      ['Receive the rental key', this.rentalKeyOwned],
+    ].map(([label, complete]) => `<li class="housing-check ${complete ? 'is-complete' : ''}"><span>${complete ? '✓' : '○'}</span><strong>${label}</strong></li>`).join('');
+    this.housingObjectiveDropdown.innerHTML = `<button class="housing-objective-close" type="button" aria-label="Close objective details" data-close-housing-objective>×</button><strong>Need ${RENTAL_BOND_COST} coins to rent an apartment.</strong><small>Find items, sell for coins, and find work in Buy/Sell.</small><div class="housing-coin-progress">COINS <b>${coinProgress}</b></div><ul>${rows}</ul>`;
   }
 
   setJoystickSide(side: 'left' | 'right'): void {
@@ -629,6 +686,8 @@ export class HudController {
   }
 
   openPanel(kind: string): void {
+    this.housingObjectiveDropdown.hidden = true;
+    this.objectiveButton.setAttribute('aria-expanded', 'false');
     this.closeToolPopup();
     this.cityMapPanCleanup?.();
     this.cityMapPanCleanup = null;
@@ -913,14 +972,16 @@ export class HudController {
       ].join('');
       const itemBlocks = [
         this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}${putDownButton}</div>` : '',
+        this.brokenPotPiecesOwned > 0 ? `<div class="inventory-item"><span class="inventory-art">◈</span><div><strong>Broken pot pieces ×${this.brokenPotPiecesOwned}</strong><small>Collected piece${this.brokenPotPiecesOwned === 1 ? '' : 's'} added to the Bag. Find the remaining pieces.</small></div></div>` : '',
         this.starterKitClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.seedQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>${getPlantDefinition(species).seedLabel} ×${this.seedQuantities[species]}</strong><small>Plant one in any empty placed pot.</small></div></div>` : ''),
+        this.rentalKeyOwned ? '<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>Starter apartment key</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>' : '',
         this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its 60 seconds.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>${getPlantDefinition(species).harvestLabel} ×${this.harvestQuantities[species]}</strong><small>Sell each harvest at BUY / SELL for ${getPlantDefinition(species).harvestPrice} coins.</small></div></div>` : ''),
       ].filter(Boolean).join('');
       return {
         title: 'Bag',
-        body: `${itemBlocks || '<div class="empty-state"><span class="empty-mark">—</span><strong>Inventory empty</strong><small>Find the Small Golden Pothos near BUY / SELL.</small></div>'}${toolNote}`,
+        body: `${itemBlocks || '<div class="empty-state"><span class="empty-mark">—</span><strong>Empty</strong></div>'}${toolNote}`,
       };
     }
     if (kind === 'map') {
@@ -940,7 +1001,7 @@ export class HudController {
       const taskLabel: Record<TaskState, string> = {
         find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
         repair: 'Find broken pot pieces; repair with tool + glue', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
-        'place-pot': 'Place an owned pot on an empty grow-table slot', 'plant-basil': 'Plant basil in a grow-table pot',
+        'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
         'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy seeds for another grow-table crop',
@@ -953,11 +1014,11 @@ export class HudController {
       };
     }
     if (kind === 'home') {
-      const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, starterKitClaimed: false };
+    const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, rentalKeyOwned: false, starterKitClaimed: false };
       return {
         title: 'Home',
         body: rental.rentalBondPaid
-          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small><small>${rental.starterKitClaimed ? 'Place the pot and begin the repeatable basil growing loop.' : 'Enter the apartment to claim the one-time starter kit.'}</small></div>`
+          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Apartment key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small><small>${rental.starterKitClaimed ? 'Place the pot and begin the repeatable basil growing loop.' : 'Enter the apartment to claim the one-time starter kit.'}</small></div>`
           : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at HOMES to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
       };
     }
@@ -1042,7 +1103,9 @@ export class HudController {
 
   private bindPropertyPanel(): void {
     const payBond = this.panelBody.querySelector<HTMLButtonElement>('[data-pay-bond]');
-    if (payBond) this.bindButtonActivation(payBond, () => this.scene?.payRentalBond());
+    if (payBond) this.bindButtonActivation(payBond, () => {
+      if (this.scene?.payRentalBond()) this.closePanel();
+    });
   }
 
   private bindBasilPanel(): void {
@@ -1186,6 +1249,7 @@ export class HudController {
     const state = this.scene?.getPropertyPanelState() ?? {
       coins: this.coins,
       rentalBondPaid: false,
+      rentalKeyOwned: false,
       starterKitClaimed: false,
     };
     if (listing === 'mid-rental') {
@@ -1196,7 +1260,7 @@ export class HudController {
     }
     const shortfall = Math.max(0, RENTAL_BOND_COST - state.coins);
     const rentalContent = state.rentalBondPaid
-      ? '<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Use the STARTER APARTMENT door on the street to enter. The one-time starter kit is waiting inside.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can · basic fertiliser</small></div>'
+      ? `<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Apartment key ${state.rentalKeyOwned ? 'received and stored in the Bag.' : 'will be restored from this rental.'} Use the STARTER APARTMENT door on the street to enter.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can · basic fertiliser</small></div>`
       : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time starter kit together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
     return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
   }

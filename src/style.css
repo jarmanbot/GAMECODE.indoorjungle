@@ -54,6 +54,21 @@ button { font: inherit; color: inherit; }
 .hud-objective { flex: 1; min-width: 0; text-align: center; display: grid; gap: 4px; }
 .eyebrow { color: #abb3b1; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
 .hud-objective strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(14px, 1.5vw, 20px); }
+.hud-objective-button { position: relative; border: 0; padding: 4px 10px; background: transparent; color: inherit; cursor: pointer; }
+.hud-objective-button:hover, .hud-objective-button[aria-expanded="true"] { background: #202729; }
+.hud-objective-button:not(.is-housing-objective) { cursor: default; }
+.housing-objective-dropdown { position: absolute; z-index: 30; top: calc(100% + 8px); left: 50%; width: min(380px, calc(100vw - 28px)); transform: translateX(-50%); padding: 14px; display: grid; gap: 9px; text-align: left; color: #f6f7f3; background: #171c1e; border: 3px solid #f6f7f3; box-shadow: 6px 6px 0 #060708; }
+.housing-objective-close { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; padding: 0; border: 2px solid #697271; color: #f6f7f3; background: #202729; font: inherit; font-size: 20px; line-height: 20px; cursor: pointer; touch-action: manipulation; }
+.housing-objective-close:hover, .housing-objective-close:focus-visible { color: #111416; background: #f6f7f3; outline: none; }
+.housing-objective-dropdown > strong { font-size: 13px; line-height: 1.3; }
+.housing-objective-dropdown > small { color: #c4ccca; font-size: 11px; line-height: 1.4; }
+.housing-coin-progress { padding: 8px 9px; border: 2px solid #697271; background: #202729; font-size: 10px; letter-spacing: .06em; }
+.housing-coin-progress b { float: right; color: #f6f7f3; }
+.housing-objective-dropdown ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.housing-check { display: flex; align-items: center; gap: 8px; padding: 5px 6px; color: #b9c0be; font-size: 10px; line-height: 1.25; }
+.housing-check span { width: 18px; height: 18px; display: grid; place-items: center; border: 2px solid #697271; color: #f6f7f3; }
+.housing-check.is-complete { color: #f6f7f3; background: #2b3234; }
+.housing-check.is-complete span { border-color: #f6f7f3; }
 
 .icon-button, .close-button { width: 48px; height: 48px; flex: 0 0 48px; border: 2px solid #f6f7f3; background: #1f2527; cursor: pointer; display: grid; place-items: center; font-size: 22px; touch-action: manipulation; }
 .icon-button:hover, .close-button:hover, .nav-button:hover, .zoom-controls button:hover, .restart-button:hover { background: #f6f7f3; color: #111416; }

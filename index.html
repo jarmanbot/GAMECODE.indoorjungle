@@ -13,11 +13,12 @@
           <span class="coin-mark" aria-hidden="true"></span>
           <span id="coin-count">0</span>
         </div>
-        <div class="hud-objective">
+        <button id="objective-button" class="hud-objective hud-objective-button" type="button" aria-expanded="false" aria-controls="housing-objective-dropdown">
           <span class="eyebrow">CURRENT OBJECTIVE</span>
-          <strong id="objective-text">Find a Small Golden Pothos</strong>
-        </div>
+          <strong id="objective-text">Find a place to live</strong>
+        </button>
         <button class="icon-button" id="settings-button" type="button" aria-label="Open settings">⚙</button>
+        <div id="housing-objective-dropdown" class="housing-objective-dropdown" hidden></div>
       </header>
 
       <section id="game-stage" aria-label="Indoor Jungle street">
