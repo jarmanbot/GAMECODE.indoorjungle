@@ -550,6 +550,7 @@ export class HudController {
   }
 
   private toggleToolPopup(): void {
+    if (this.scene?.isShopTransactionBusy()) return;
     if (this.toolPopupBackdrop.hidden) this.openToolPopup();
     else this.closeToolPopup();
   }
@@ -771,6 +772,7 @@ export class HudController {
   }
 
   openPanel(kind: string): void {
+    if (this.scene?.isShopTransactionBusy()) return;
     this.housingObjectiveDropdown.hidden = true;
     this.objectiveButton.setAttribute('aria-expanded', 'false');
     this.closeToolPopup();

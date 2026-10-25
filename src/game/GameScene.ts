@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, setBuySellDoorOpen, type BasilVisualStage } from './art';
+import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, drawMatchingDoor, setBuySellDoorOpen, type BasilVisualStage } from './art';
 import { AudioController } from './AudioController';
 import { PHONE_HYBRID_CONTROLS } from './config';
 import { createDevCheckpoint, type DevCheckpointScene } from './devCheckpoints';
@@ -70,6 +70,9 @@ import {
   SHOP_COUNTER,
   SHOP_COUNTER_APPROACH,
   SHOP_EXIT,
+  SHOP_EXIT_DOOR_BOTTOM,
+  SHOP_EXIT_DOOR_TOP,
+  SHOP_HANDOVER_POINT,
   SHOP_PLAYER_START,
   SHOP_WORLD_HEIGHT,
   SHOP_WORLD_WIDTH,
@@ -100,6 +103,8 @@ interface GardeningAction {
   species?: PlantSpecies;
   requiredTool?: EquippedTool;
 }
+type ShopPresentationItem = ShopStockItem | 'basil-seeds' | 'mint-seeds' | 'small-basic-plastic-pot';
+type ShopTransactionDirection = 'buy' | 'sell';
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
 
@@ -187,6 +192,12 @@ export class GameScene extends Phaser.Scene {
   private wantedSignText?: Phaser.GameObjects.Text;
   private wantedSignPulse?: Phaser.Tweens.Tween;
   private shopGoldenPothosDisplay: Phaser.GameObjects.GameObject[] = [];
+  private shopkeeper?: Phaser.GameObjects.Graphics;
+  private shopExitDoor?: Phaser.GameObjects.Graphics;
+  private shopkeeperCarry?: Phaser.GameObjects.Graphics;
+  private shopkeeperCarryLabel?: Phaser.GameObjects.Text;
+  private shopkeeperTransactionTween?: Phaser.Tweens.Tween;
+  private shopTransactionBusy = false;
   private hopActive = false;
   private hopElapsed = 0;
   private readonly hopDuration = 520;
@@ -351,6 +362,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.shopTransitioning) {
+      this.updateInteraction();
+      return;
+    }
+    if (this.shopTransactionBusy) {
       this.updateInteraction();
       return;
     }
@@ -627,7 +642,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   pressHop(): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive || this.activeGardeningAction) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.shopTransactionBusy || this.hopActive || this.activeGardeningAction) return;
     this.clearItemPlacement();
     this.audio.unlock();
     this.audio.playJump();
@@ -641,7 +656,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   pressTool(): void {
-    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.hopActive || this.activeGardeningAction) return;
+    if (this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.shopTransactionBusy || this.hopActive || this.activeGardeningAction) return;
     if (this.toolHeld) return;
     this.toolHeld = true;
     this.audio.unlock();
@@ -719,6 +734,10 @@ export class GameScene extends Phaser.Scene {
       starterKitClaimed: this.starterKitClaimed,
       shopStock: this.progress.shopStock.map((entry) => ({ ...entry, instanceIds: [...entry.instanceIds] })),
     };
+  }
+
+  public isShopTransactionBusy(): boolean {
+    return this.shopTransactionBusy;
   }
 
   getBasilPanelState(): { starterKitClaimed: boolean; starterPotPlaced: boolean; stage: BasilStage; seeds: number; harvests: number; timeRemainingMs: number; wateringCanOwned: boolean; basilCycleCount: number; basicFertilizerCharges: number; selectedPotId: string | null; growingPots: GrowingPotState[]; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number> } {
@@ -1160,6 +1179,12 @@ export class GameScene extends Phaser.Scene {
     this.openingZoomDemoStep = 0;
     this.graphicsUpgradePresentationActive = false;
     this.hud.hideGraphicsUpgrade();
+    this.shopkeeperTransactionTween?.stop();
+    this.shopkeeperTransactionTween = undefined;
+    this.clearShopkeeperCarry();
+    this.shopTransactionBusy = false;
+    this.shopkeeper = undefined;
+    this.shopExitDoor = undefined;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.cancelToolUse(true);
@@ -1974,7 +1999,7 @@ export class GameScene extends Phaser.Scene {
   sellOpeningPot(): void {
     // This method remains the opening delivery entry point, but also supports
     // reselling the same preserved instance after a buyback.
-    if (!this.shopInterior || this.inventoryPot !== 'ordinary') return;
+    if (!this.shopInterior || this.shopTransactionBusy || this.inventoryPot !== 'ordinary') return;
     const instanceId = this.inventoryInstanceId ?? OPENING_GOLDEN_POTHOS_INSTANCE_ID;
     if (!this.addShopStock('small-golden-pothos', 'ordinary', 1, instanceId)) return;
     const firstDelivery = !this.saleComplete;
@@ -1998,15 +2023,20 @@ export class GameScene extends Phaser.Scene {
     }
     this.saveProgress();
     this.syncHudState();
-    this.refreshShopStockDisplay();
     this.hud.refreshShopPanel(firstDelivery
       ? `Small Golden Pothos delivered. +${OPENING_POTHOS_SALE_PRICE} coins.`
       : `Small Golden Pothos resold for ${OPENING_POTHOS_SALE_PRICE} coins.`);
-    this.showToast(`${firstDelivery ? 'Small Golden Pothos sold' : 'Small Golden Pothos resold'} for ${OPENING_POTHOS_SALE_PRICE} coins.`);
+    this.startShopkeeperTransaction(
+      'small-golden-pothos',
+      1,
+      'sell',
+      this.getShopShelfPosition(instanceId),
+      `${firstDelivery ? 'Small Golden Pothos sold' : 'Small Golden Pothos resold'} for ${OPENING_POTHOS_SALE_PRICE} coins.`,
+    );
   }
 
   sellRepairedPot(): void {
-    if (!this.shopInterior || this.inventoryPot !== 'repaired') return;
+    if (!this.shopInterior || this.shopTransactionBusy || this.inventoryPot !== 'repaired') return;
     const instanceId = this.inventoryInstanceId ?? SPECIAL_REPAIR_POT_INSTANCE_ID;
     if (!this.addShopStock('special-repair-pot', 'repaired', 1, instanceId)) return;
     const firstSale = !this.progress.repairedPotSaleComplete;
@@ -2022,13 +2052,18 @@ export class GameScene extends Phaser.Scene {
     if (firstSale) this.progress.task = 'complete';
     this.saveProgress();
     this.syncHudState();
-    this.refreshShopStockDisplay();
     this.hud.refreshShopPanel(`Repaired pot ${firstSale ? 'sold' : 'resold'} for ${REPAIRED_POT_SALE_PRICE} coins.`);
-    this.showToast(`Repaired pot ${firstSale ? 'sold' : 'resold'} for ${REPAIRED_POT_SALE_PRICE} coins.`);
+    this.startShopkeeperTransaction(
+      'special-repair-pot',
+      1,
+      'sell',
+      this.getShopShelfPosition(instanceId),
+      `Repaired pot ${firstSale ? 'sold' : 'resold'} for ${REPAIRED_POT_SALE_PRICE} coins.`,
+    );
   }
 
   buyShopStock(stockId: string, quantity = 1): void {
-    if (!this.shopInterior) return;
+    if (!this.shopInterior || this.shopTransactionBusy) return;
     const entry = this.getShopStockEntry(stockId);
     if (!entry) {
       this.hud.refreshShopPanel('That stock is no longer available.');
@@ -2036,6 +2071,7 @@ export class GameScene extends Phaser.Scene {
     }
     const amount = this.normalizeTransactionQuantity(quantity, entry.quantity);
     if (!amount) return;
+    const sourcePosition = this.getShopShelfPosition(stockId);
     const isHarvest = entry.item === 'fresh-basil-leaves' || entry.item === 'fresh-mint-leaves';
     if (!isHarvest && amount !== 1) return;
     if (!isHarvest && (this.inventoryHasPot || this.progress.placedWorldItem)) {
@@ -2067,10 +2103,9 @@ export class GameScene extends Phaser.Scene {
     this.progress.coins = this.coins;
     this.saveProgress();
     this.syncHudState();
-    this.refreshShopStockDisplay();
     const label = removed.item === 'fresh-basil-leaves' ? 'Fresh basil leaves' : removed.item === 'fresh-mint-leaves' ? 'Fresh mint leaves' : removed.item === 'small-golden-pothos' ? 'Small Golden Pothos' : 'Empty repaired pot';
     this.hud.refreshShopPanel(`Bought ${amount} ${label}${amount === 1 ? '' : 's'} for ${total} coins.`);
-    this.showToast(`${label} added to the Bag.`, 1600);
+    this.startShopkeeperTransaction(removed.item, amount, 'buy', sourcePosition, `${label} added to the Bag.`);
   }
 
   acceptWindowJob(): void {
@@ -2424,7 +2459,7 @@ export class GameScene extends Phaser.Scene {
   sellBasilHarvest(quantity = 1): void { this.sellPlantHarvest('basil', quantity); }
 
   sellPlantHarvest(species: PlantSpecies, quantity = 1): void {
-    if (!this.shopInterior) return;
+    if (!this.shopInterior || this.shopTransactionBusy) return;
     const definition = getPlantDefinition(species);
     const amount = this.normalizeTransactionQuantity(quantity, this.progress.harvestQuantities[species]);
     if (!amount || !this.addShopStock(definition.harvestItem, 'fresh', amount)) return;
@@ -2434,15 +2469,14 @@ export class GameScene extends Phaser.Scene {
     this.progress.task = species === 'basil' && this.progress.additionalGrowingPotsPurchased < 2 ? 'place-pot' : 'buy-seeds';
     this.saveProgress();
     this.syncHudState();
-    this.refreshShopStockDisplay();
     this.hud.refreshShopPanel(`${definition.harvestLabel} ×${amount} sold for ${total} coins. Buy more seeds to grow again.`);
-    this.showToast(`${definition.harvestLabel} ×${amount} sold for ${total} coins.`, 1800);
+    this.startShopkeeperTransaction(definition.harvestItem, amount, 'sell', this.getShopItemShelfPosition(definition.harvestItem), `${definition.harvestLabel} ×${amount} sold for ${total} coins.`);
   }
 
   buyBasilSeed(quantity = 1): void { this.buyPlantSeed('basil', quantity); }
 
   buyPlantSeed(species: PlantSpecies, quantity = 1): void {
-    if (!this.shopInterior || !this.starterKitClaimed) return;
+    if (!this.shopInterior || this.shopTransactionBusy || !this.starterKitClaimed) return;
     const definition = getPlantDefinition(species);
     const amount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
     if (!amount) return;
@@ -2459,11 +2493,11 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel(`${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} added to the Bag.`);
-    this.showToast(`Bought ${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} for ${total} coins.`, 1600);
+    this.startShopkeeperTransaction(`${species}-seeds`, amount, 'buy', new Phaser.Math.Vector2(960, 612), `Bought ${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} for ${total} coins.`);
   }
 
   buyAdditionalGrowingPot(quantity = 1): void {
-    if (!this.shopInterior || !this.starterKitClaimed) {
+    if (!this.shopInterior || this.shopTransactionBusy || !this.starterKitClaimed) {
       if (this.shopInterior) this.hud.refreshShopPanel('Claim the starter kit before buying additional growing pots.');
       return;
     }
@@ -2481,7 +2515,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel(`Bought ${amount} Small basic plastic pot${amount === 1 ? '' : 's'} for ${total} coins. Place them on the grow table.`);
-    this.showToast('Growing pot added to the Bag.', 1700);
+    this.startShopkeeperTransaction('small-basic-plastic-pot', amount, 'buy', new Phaser.Math.Vector2(840, 612), `Bought ${amount} Small basic plastic pot${amount === 1 ? '' : 's'} for ${total} coins.`);
   }
 
   private getCropStage(pot: GrowingPotState): BasilStage {
@@ -3485,8 +3519,8 @@ export class GameScene extends Phaser.Scene {
 
   private isNearShopExit(point: Phaser.Math.Vector2): boolean {
     return Math.abs(point.x - SHOP_EXIT.x) <= 64
-      && point.y >= SHOP_EXIT.y - 86
-      && point.y <= SHOP_EXIT.y + 20;
+      && point.y >= SHOP_EXIT_DOOR_TOP - 18
+      && point.y <= SHOP_EXIT_DOOR_BOTTOM + 14;
   }
 
   private isNearHomeExit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
@@ -3539,12 +3573,11 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const exitThresholdX = SHOP_EXIT.x + 52;
-    const inExitLane = Math.abs(this.player.y - SHOP_EXIT.y) <= 48;
-    const movingIntoExit = direction.x < -0.45 && inExitLane
-      && previousX >= this.player.x
-      && previousX >= SHOP_EXIT.x - 52
-      && this.player.x <= exitThresholdX;
+    const inExitLane = Math.abs(this.player.x - SHOP_EXIT.x) <= BUY_SELL_DOOR_WIDTH / 2 + 8;
+    const movingIntoExit = direction.y > 0.45 && inExitLane
+      && previousY <= this.player.y
+      && previousY <= SHOP_EXIT_DOOR_BOTTOM + 8
+      && this.player.y >= SHOP_EXIT_DOOR_BOTTOM - 18;
     if (movingIntoExit) {
       this.exitShop();
       return true;
@@ -3563,7 +3596,7 @@ export class GameScene extends Phaser.Scene {
         BUY_SELL_DOOR_HEIGHT + 20,
       );
     } else if (interaction === 'exit-shop') {
-      this.interactionHighlight.strokeRect(point.x - 58, point.y - 62, 116, 70);
+      this.interactionHighlight.strokeRect(point.x - BUY_SELL_DOOR_WIDTH / 2 - 10, SHOP_EXIT_DOOR_TOP - 10, BUY_SELL_DOOR_WIDTH + 20, BUY_SELL_DOOR_HEIGHT + 20);
     } else if (interaction === 'window-clean') {
       this.interactionHighlight.strokeRect(HOMES_WINDOW.x - 6, HOMES_WINDOW.y + 4, HOMES_WINDOW.width - 8, HOMES_WINDOW.height - 8);
     } else if (interaction === 'place-growing-pot') {
@@ -3829,20 +3862,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   private exitShop(): void {
-    if (!this.shopInterior || this.shopTransitioning) return;
+    if (!this.shopInterior || this.shopTransitioning || this.shopTransactionBusy) return;
     this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
     this.cancelTapWalk();
-    this.cameras.main.fadeOut(120, 7, 9, 10);
-    this.time.delayedCall(120, () => this.exitShopNow());
+    if (this.shopExitDoor) drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, true);
+    this.tweens.add({
+      targets: this.player,
+      x: SHOP_EXIT.x,
+      y: SHOP_EXIT_DOOR_BOTTOM - 18,
+      duration: 280,
+      ease: 'Sine.inOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.player,
+          alpha: 0,
+          duration: 180,
+          ease: 'Quad.in',
+          onComplete: () => {
+            this.cameras.main.fadeOut(120, 7, 9, 10);
+            this.time.delayedCall(120, () => this.exitShopNow());
+          },
+        });
+      },
+    });
   }
 
   private exitShopNow(): void {
     this.shopObjects.forEach((object) => object.destroy());
     this.shopObjects = [];
+    this.shopkeeper = undefined;
+    this.shopExitDoor = undefined;
     this.shopGoldenPothosDisplay = [];
     this.shopInterior = false;
     setBuySellDoorOpen(this.buySellDoor!, false);
@@ -3964,31 +4017,191 @@ export class GameScene extends Phaser.Scene {
     counter.lineStyle(5, 0xf6f7f3, 0.95).strokeRect(SHOP_COUNTER.x - 180, SHOP_COUNTER.y - 62, 360, 112);
     this.shopObjects.push(counter);
 
-    const shopkeeper = this.add.graphics().setDepth(6);
-    const shopkeeperWidth = upgraded ? 70 : 56;
-    const shopkeeperHeight = upgraded ? 82 : 66;
-    const shopkeeperBottom = SHOP_COUNTER.y - 66;
-    const shopkeeperTop = shopkeeperBottom - shopkeeperHeight;
-    shopkeeper.fillStyle(upgraded ? 0xc95b52 : 0xf6f7f3, 1).fillRect(SHOP_COUNTER.x - shopkeeperWidth / 2, shopkeeperTop, shopkeeperWidth, shopkeeperHeight);
-    shopkeeper.lineStyle(4, upgraded ? 0x242a2c : 0x111416, 1).strokeRect(SHOP_COUNTER.x - shopkeeperWidth / 2, shopkeeperTop, shopkeeperWidth, shopkeeperHeight);
-    shopkeeper.fillStyle(upgraded ? 0x111416 : 0x111416, 1).fillRect(SHOP_COUNTER.x - 20, shopkeeperTop + 18, 8, 8).fillRect(SHOP_COUNTER.x + 12, shopkeeperTop + 18, 8, 8);
-    this.shopObjects.push(shopkeeper);
+    this.shopkeeper = this.add.graphics().setDepth(6);
+    this.shopkeeper.setPosition(SHOP_COUNTER.x, SHOP_COUNTER.y - 66);
+    this.drawShopkeeper(false);
+    this.shopObjects.push(this.shopkeeper);
 
-    const exit = this.add.graphics().setDepth(4);
-    exit.fillStyle(0x111416, 1).fillRect(SHOP_EXIT.x - 52, SHOP_EXIT.y - 72, 104, 78);
-    exit.lineStyle(5, 0xf6f7f3, 1).strokeRect(SHOP_EXIT.x - 52, SHOP_EXIT.y - 72, 104, 78);
-    this.shopObjects.push(exit);
+    this.shopExitDoor = this.add.graphics().setDepth(4);
+    drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, false);
+    this.shopObjects.push(this.shopExitDoor);
 
     const labels = [
       { text: 'BUY / SELL', x: SHOP_COUNTER.x, y: 150, size: '26px' },
       { text: 'COUNTER', x: SHOP_COUNTER.x, y: SHOP_COUNTER.y + 72, size: '15px' },
-      { text: 'EXIT', x: SHOP_EXIT.x, y: SHOP_EXIT.y + 28, size: '14px' },
     ];
     labels.forEach(({ text, x, y, size }) => {
       const label = this.add.text(x, y, text, {
         color: '#f6f7f3', fontFamily: 'monospace', fontSize: size, fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(7);
       this.shopObjects.push(label);
+    });
+  }
+
+  private drawShopkeeper(seated: boolean): void {
+    if (!this.shopkeeper) return;
+    const upgraded = this.progress.graphicsUpgradeInstalled;
+    const scale = upgraded ? 1.25 : 1;
+    const width = 56 * scale;
+    const height = 66 * scale;
+    const top = -height;
+    this.shopkeeper.clear();
+    this.shopkeeper.fillStyle(upgraded ? 0xc95b52 : 0xf6f7f3, 1).fillRect(-width / 2, top, width, height);
+    this.shopkeeper.lineStyle(4, upgraded ? 0x242a2c : 0x111416, 1).strokeRect(-width / 2, top, width, height);
+    this.shopkeeper.fillStyle(0x111416, 1)
+      .fillRect(-20 * scale, top + 18 * scale, 8 * scale, 8 * scale)
+      .fillRect(12 * scale, top + 18 * scale, 8 * scale, 8 * scale);
+    if (seated) {
+      this.shopkeeper.lineStyle(4, upgraded ? 0x8fb8c0 : 0x858d8d, 1).lineBetween(-width / 2, 0, width / 2, 0);
+    }
+  }
+
+  private getShopkeeperHandPosition(): Phaser.Math.Vector2 {
+    if (!this.shopkeeper) return new Phaser.Math.Vector2(SHOP_HANDOVER_POINT.x, SHOP_HANDOVER_POINT.y);
+    const scale = this.progress.graphicsUpgradeInstalled ? 1.25 : 1;
+    return new Phaser.Math.Vector2(this.shopkeeper.x + 34 * scale, this.shopkeeper.y - 30 * scale);
+  }
+
+  private drawHarvestCarry(g: Phaser.GameObjects.Graphics, species: PlantSpecies): void {
+    const leaf = species === 'mint' ? 0xbfc5c3 : 0xd8dddc;
+    g.clear();
+    g.fillStyle(0x111416, 1).fillRect(-26, 8, 52, 8);
+    g.lineStyle(2, 0xf6f7f3, 1).strokeRect(-26, 8, 52, 8);
+    g.fillStyle(leaf, 1)
+      .fillEllipse(-14, 0, 18, 9)
+      .fillEllipse(0, -7, 20, 10)
+      .fillEllipse(15, 1, 18, 9)
+      .fillEllipse(-2, 7, 18, 9);
+    g.lineStyle(2, 0x697173, 1).lineBetween(-18, 8, 1, -5).lineBetween(0, 8, 15, 1);
+  }
+
+  private drawShopkeeperCarry(item: ShopPresentationItem): void {
+    if (!this.shopkeeper) return;
+    this.shopkeeperCarry?.destroy();
+    this.shopkeeperCarryLabel?.destroy();
+    this.shopkeeperCarry = this.add.graphics().setDepth(8);
+    if (item === 'small-golden-pothos') drawGoldenPothos(this.shopkeeperCarry, 0, 12, 0.34, this.progress.graphicsUpgradeInstalled);
+    else if (item === 'special-repair-pot') drawBrokenPot(this.shopkeeperCarry, 0, 12, 0.72, 10, this.progress.graphicsUpgradeInstalled);
+    else if (item === 'fresh-basil-leaves' || item === 'fresh-mint-leaves') this.drawHarvestCarry(this.shopkeeperCarry, item === 'fresh-mint-leaves' ? 'mint' : 'basil');
+    else if (item === 'small-basic-plastic-pot') drawPot(this.shopkeeperCarry, 0, 12, 0.62, this.progress.graphicsUpgradeInstalled);
+    else {
+      this.shopkeeperCarry.fillStyle(0xf6f7f3, 1).fillRect(-24, -14, 48, 30);
+      this.shopkeeperCarry.lineStyle(3, 0x111416, 1).strokeRect(-24, -14, 48, 30);
+      this.shopkeeperCarry.fillStyle(0x697173, 1).fillRect(-15, -5, 30, 4);
+    }
+    this.shopkeeperCarryLabel = this.add.text(0, 30, '×1', {
+      color: '#f6f7f3', fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', backgroundColor: '#111416', padding: { left: 3, right: 3, top: 2, bottom: 2 },
+    }).setOrigin(0.5).setDepth(9);
+    this.updateShopkeeperCarryPosition();
+  }
+
+  private updateShopkeeperCarryPosition(): void {
+    if (!this.shopkeeperCarry || !this.shopkeeper) return;
+    const hand = this.getShopkeeperHandPosition();
+    this.shopkeeperCarry.setPosition(hand.x, hand.y);
+    this.shopkeeperCarryLabel?.setPosition(hand.x, hand.y + 30);
+  }
+
+  private clearShopkeeperCarry(): void {
+    this.shopkeeperCarry?.destroy();
+    this.shopkeeperCarryLabel?.destroy();
+    this.shopkeeperCarry = undefined;
+    this.shopkeeperCarryLabel = undefined;
+  }
+
+  private getShopShelfPosition(stockId: string): Phaser.Math.Vector2 {
+    const positions = [
+      { x: 180, y: 405 },
+      { x: 960, y: 405 },
+      { x: 180, y: 540 },
+    ];
+    const index = Math.max(0, this.progress.shopStock.findIndex((entry) => entry.stockId === stockId));
+    const position = positions[index] ?? { x: 960, y: 540 };
+    return new Phaser.Math.Vector2(position.x, position.y + 72);
+  }
+
+  private getShopItemShelfPosition(item: ShopStockItem): Phaser.Math.Vector2 {
+    const entry = this.progress.shopStock.find((candidate) => candidate.item === item && candidate.quantity > 0);
+    return entry ? this.getShopShelfPosition(entry.stockId) : new Phaser.Math.Vector2(960, 612);
+  }
+
+  private startShopkeeperTransaction(
+    item: ShopPresentationItem,
+    quantity: number,
+    direction: ShopTransactionDirection,
+    source: Phaser.Math.Vector2,
+    feedback: string,
+  ): void {
+    if (!this.shopInterior || this.shopTransactionBusy) return;
+    if (!this.shopkeeper) {
+      this.refreshShopStockDisplay();
+      this.showToast(feedback, 1800);
+      return;
+    }
+    this.shopTransactionBusy = true;
+    this.hud.closePanel();
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    this.cancelToolUse(true);
+    this.clearInteractionHighlight();
+    this.destinationMarker.setVisible(false);
+    this.showToast('Shopkeeper is handling the transaction…', 1800);
+
+    const handover = new Phaser.Math.Vector2(SHOP_HANDOVER_POINT.x, SHOP_HANDOVER_POINT.y);
+    const home = new Phaser.Math.Vector2(SHOP_COUNTER.x, SHOP_COUNTER.y - 66);
+    const firstStop = direction === 'buy' ? source : handover;
+    const secondStop = direction === 'buy' ? handover : source;
+    const finish = (): void => {
+      this.shopkeeperTransactionTween = this.tweens.add({
+        targets: this.shopkeeper,
+        x: home.x,
+        y: home.y,
+        duration: 360,
+        ease: 'Sine.inOut',
+        onUpdate: () => this.updateShopkeeperCarryPosition(),
+        onComplete: () => {
+          this.clearShopkeeperCarry();
+          this.shopkeeperTransactionTween = undefined;
+          this.shopTransactionBusy = false;
+          this.hud.resetHeldInputs();
+          this.refreshShopStockDisplay();
+          this.showToast(feedback, 1800);
+          this.updateInteraction();
+        },
+      });
+    };
+    const moveToSecond = (): void => {
+      this.shopkeeperTransactionTween = this.tweens.add({
+        targets: this.shopkeeper,
+        x: secondStop.x,
+        y: secondStop.y,
+        duration: 520,
+        ease: 'Sine.inOut',
+        onUpdate: () => this.updateShopkeeperCarryPosition(),
+        onComplete: () => {
+          this.clearShopkeeperCarry();
+          finish();
+        },
+      });
+    };
+    this.shopkeeperTransactionTween = this.tweens.add({
+      targets: this.shopkeeper,
+      x: firstStop.x,
+      y: firstStop.y,
+      duration: 420,
+      ease: 'Sine.inOut',
+      onUpdate: () => this.updateShopkeeperCarryPosition(),
+      onComplete: () => {
+        if (direction === 'buy' && item !== 'basil-seeds' && item !== 'mint-seeds' && item !== 'small-basic-plastic-pot') {
+          // The authoritative stock was already decremented before the
+          // animation. Remove the shelf representation at pickup time so the
+          // carried representative is not duplicated during the handover.
+          this.refreshShopStockDisplay();
+        }
+        this.drawShopkeeperCarry(item);
+        if (this.shopkeeperCarryLabel) this.shopkeeperCarryLabel.setText(`×${quantity}`);
+        moveToSecond();
+      },
     });
   }
 
@@ -4183,19 +4396,19 @@ export class GameScene extends Phaser.Scene {
     ];
     entries.forEach((entry, index) => {
       const position = positions[index] ?? { x: 960, y: 540 };
-      const item = this.add.graphics().setDepth(4);
+      const item = this.add.graphics().setDepth(4).setPosition(position.x, position.y);
       if (entry.item === 'small-golden-pothos') {
-        drawGoldenPothos(item, position.x, position.y, 0.55, this.progress.graphicsUpgradeInstalled);
+        drawGoldenPothos(item, 0, 0, 0.55, this.progress.graphicsUpgradeInstalled);
       } else if (entry.item === 'special-repair-pot') {
-        drawBrokenPot(item, position.x, position.y, 1.302, 10, this.progress.graphicsUpgradeInstalled);
+        drawBrokenPot(item, 0, 0, 1.302, 10, this.progress.graphicsUpgradeInstalled);
       } else {
-        drawGrowingCrop(item, position.x, position.y, entry.item === 'fresh-mint-leaves' ? 'mint' : 'basil', 'mature', 0.55, this.progress.graphicsUpgradeInstalled);
+        this.drawHarvestCarry(item, entry.item === 'fresh-mint-leaves' ? 'mint' : 'basil');
       }
       const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : entry.item === 'fresh-mint-leaves' ? 'FRESH MINT' : 'FRESH BASIL';
       const stockLabel = this.add.text(position.x, position.y - 40, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}`, {
         color: '#f6f7f3',
         fontFamily: 'monospace',
-        fontSize: '8px',
+        fontSize: '10px',
         fontStyle: 'bold',
         backgroundColor: '#111416',
         padding: { left: 3, right: 3, top: 2, bottom: 2 },
@@ -4203,7 +4416,7 @@ export class GameScene extends Phaser.Scene {
       const priceTag = this.add.text(position.x, position.y + 48, `${this.getShopBuyPrice(entry.item)} COINS EACH`, {
         color: '#111416',
         fontFamily: 'monospace',
-        fontSize: '9px',
+        fontSize: '10px',
         fontStyle: 'bold',
         backgroundColor: '#f6f7f3',
         padding: { left: 5, right: 5, top: 3, bottom: 3 },

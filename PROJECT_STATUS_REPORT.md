@@ -207,6 +207,26 @@ Developer checkpoints include a repair-one-action state, pending prompt, and
 installed/acknowledged state. Runtime and phone acceptance still require the
 manual checks listed in the Pass 3 brief.
 
+## Pass 4 Buy/Sell presentation
+
+The Buy/Sell interior now uses a matching front-wall exit door in the same
+right-side relationship as the exterior entrance, without a floating EXIT
+label. Tapping the door or walking down into its threshold runs the existing
+fade transition and returns Alex to the exterior doorway without enlarging
+the pavement hit area.
+
+Successful transactions commit coins, inventory, shop stock, and progress
+before the panel closes. A short serialized shopkeeper animation then carries
+one representative item, with a quantity label for stacks. The saved stock is
+rebuilt after the animation; reloads therefore cannot duplicate or undo a
+committed transaction. Pothos, repaired pots, and harvested basil/mint use
+distinct procedural appearances, while premium display items remain
+display-only.
+
+Pass 4 adds development-only shop fixtures for the pre-upgrade B&W sale,
+post-upgrade sale items, upgraded buyback stock, and seven-unit basil/mint
+harvest stacks. These use the existing development save namespace.
+
 ## Camera and zoom
 
 Only two street zoom levels exist; there is no intermediate or context-based
@@ -834,21 +854,25 @@ Current checkpoint registry:
 
 1. Fresh start
 2. Golden Pothos collected
-3. First plant sold
-4. Buyback stock ready
-5. Window-cleaning job accepted
-6. Window-cleaning job complete
-7. Broken special pot collected
-8. Repair partly complete
-9. Special pot repaired
-10. Repaired pot sold
-11. Apartment rented — starter kit unclaimed
-12. Starter kit claimed
-13. Basil planted — needs water
-14. Basil growing
-15. Basil mature
-16. Basil harvested — ready to sell
-17. First basil sale complete — ready to buy seeds
+3. B&W shop sale before graphics upgrade
+4. First plant sold
+5. Buyback stock ready
+6. Window-cleaning job accepted
+7. Window-cleaning job complete
+8. Broken special pot collected
+9. Repair partly complete
+10. Special pot repaired
+11. Repaired pot sold
+12. Upgraded shop — items ready to sell
+13. Upgraded shop stock ready to buy back
+14. Multiple matching harvest units
+15. Apartment rented — starter kit unclaimed
+16. Starter kit claimed
+17. Basil planted — needs water
+18. Basil growing
+19. Basil mature
+20. Basil harvested — ready to sell
+21. First basil sale complete — ready to buy seeds
 
 Checkpoint coin states:
 

@@ -2,6 +2,7 @@ import { createEmptyGrowingPot, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT
 import { getPlantDefinition } from './plants';
 import {
   BASIL_HARVEST_STOCK_ID,
+  MINT_HARVEST_STOCK_ID,
   DEFAULT_SHOP_STOCK_QUALITY,
   DEFAULT_PROGRESS,
   OPENING_GOLDEN_POTHOS_INSTANCE_ID,
@@ -56,6 +57,10 @@ const goldenPothosCollected = (): ProgressState => withState(freshStart(), {
   inventoryPot: 'ordinary', inventoryItem: 'small-golden-pothos', inventoryInstanceId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, task: 'clean',
 });
 
+const bwShopSaleBeforeUpgrade = (): ProgressState => withState(goldenPothosCollected(), {
+  task: 'sell',
+});
+
 const firstPlantSold = (): ProgressState => withState(goldenPothosCollected(), {
   coins: OPENING_POTHOS_SALE_PRICE, inventoryPot: null, inventoryItem: null, inventoryInstanceId: null, saleComplete: true, shopGoldenPothosStock: true,
   shopStock: [{ stockId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, item: 'small-golden-pothos', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'ordinary', quantity: 1, instanceIds: [OPENING_GOLDEN_POTHOS_INSTANCE_ID] }], task: 'clean',
@@ -88,6 +93,33 @@ const repairedPotSold = (): ProgressState => withState(upgradeInstalledAcknowled
   coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE, inventoryPot: null, inventoryItem: null, inventoryInstanceId: null, repairedPotSaleComplete: true,
   shopStock: [...specialPotRepaired().shopStock, { stockId: SPECIAL_REPAIR_POT_INSTANCE_ID, item: 'special-repair-pot', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'repaired', quantity: 1, instanceIds: [SPECIAL_REPAIR_POT_INSTANCE_ID] }], task: 'complete',
 });
+
+const upgradedShopItemsReadyToSell = (): ProgressState => withState(repairedPotSold(), {
+  starterKitClaimed: true,
+  starterKitGranted: true,
+  wateringCanOwned: true,
+  toolSlots: ['repair', 'watering-can', null],
+  harvestQuantities: { basil: 2, mint: 2 },
+  task: 'sell-basil',
+});
+
+const upgradedShopStockReadyToBuy = (): ProgressState => withState(repairedPotSold(), {
+  coins: getShopBuybackPrice(REPAIRED_POT_SALE_PRICE) + getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE),
+  task: 'buy-seeds',
+});
+
+const multipleMatchingHarvestUnits = (): ProgressState => {
+  const base = upgradedShopItemsReadyToSell();
+  return withState(base, {
+    harvestQuantities: { basil: 0, mint: 0 },
+    shopStock: [
+      ...base.shopStock,
+      { stockId: BASIL_HARVEST_STOCK_ID, item: 'fresh-basil-leaves', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'fresh', quantity: 7, instanceIds: [] },
+      { stockId: MINT_HARVEST_STOCK_ID, item: 'fresh-mint-leaves', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'fresh', quantity: 7, instanceIds: [] },
+    ],
+    task: 'buy-seeds',
+  });
+};
 
 const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
   coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
@@ -142,6 +174,7 @@ const mintMature = (): ProgressState => {
 const definitions: DevCheckpointDefinition[] = [
   { id: 'fresh-start', label: 'Fresh start', order: 10, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: freshStart },
   { id: 'golden-pothos-collected', label: 'Golden Pothos collected', order: 20, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: goldenPothosCollected },
+  { id: 'bw-shop-sale-before-upgrade', label: 'B&W shop sale before graphics upgrade', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: bwShopSaleBeforeUpgrade },
   { id: 'first-plant-sold', label: 'First plant sold', order: 30, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold },
   { id: 'buyback-stock-ready', label: 'Buyback stock ready', order: 35, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buybackStockReady },
   { id: 'window-job-accepted', label: 'Window-cleaning job accepted', order: 40, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobAccepted },
@@ -153,6 +186,9 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'graphics-upgrade-prompt-pending', label: 'Graphics upgrade prompt pending', order: 85, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradePromptPending },
   { id: 'graphics-upgrade-installed', label: 'Graphics upgrade installed and acknowledged', order: 87, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradeInstalledAcknowledged },
   { id: 'repaired-pot-sold', label: 'Repaired pot sold', order: 90, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: repairedPotSold },
+  { id: 'upgraded-shop-items-ready-to-sell', label: 'Upgraded shop · items ready to sell', order: 92, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopItemsReadyToSell },
+  { id: 'upgraded-shop-stock-ready-to-buy', label: 'Upgraded shop stock ready to buy back', order: 93, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopStockReadyToBuy },
+  { id: 'multiple-matching-harvest-units', label: 'Multiple matching harvest units', order: 94, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: multipleMatchingHarvestUnits },
   { id: 'apartment-rented', label: 'Apartment rented · starter kit unclaimed', order: 100, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: apartmentRented },
   { id: 'starter-kit-claimed', label: 'Starter kit claimed', order: 110, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: starterKitClaimed },
   { id: 'three-growing-pots-ready', label: 'Three growing pots ready', order: 115, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: threePotsReady },

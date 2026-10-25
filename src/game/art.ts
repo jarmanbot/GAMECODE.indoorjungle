@@ -321,20 +321,24 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building, graphicsUp
   return door;
 }
 
-function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean): void {
-  const doorX = BUY_SELL_ENTRANCE.x - BUY_SELL_DOOR_WIDTH / 2;
+export function drawMatchingDoor(g: Phaser.GameObjects.Graphics, centerX: number, doorTop: number, width: number, height: number, open: boolean): void {
+  const doorX = centerX - width / 2;
   g.clear();
   if (open) {
-    g.fillStyle(0x07090a, 1).fillRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
-    g.fillStyle(0x252a2d, 1).fillRect(doorX + 8, BUY_SELL_DOOR_TOP + 8, BUY_SELL_DOOR_WIDTH - 16, BUY_SELL_DOOR_HEIGHT - 8);
-    g.fillStyle(0x111416, 1).fillRect(doorX + 12, BUY_SELL_DOOR_TOP + 68, BUY_SELL_DOOR_WIDTH - 24, 28);
+    g.fillStyle(0x07090a, 1).fillRect(doorX, doorTop, width, height);
+    g.fillStyle(0x252a2d, 1).fillRect(doorX + 8, doorTop + 8, width - 16, height - 8);
+    g.fillStyle(0x111416, 1).fillRect(doorX + 12, doorTop + height - 36, width - 24, 28);
   } else {
-    g.fillStyle(WHITE, 1).fillRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
-    g.fillStyle(0x9ea5a5, 1).fillRect(doorX + 12, BUY_SELL_DOOR_TOP + 14, BUY_SELL_DOOR_WIDTH - 24, 42);
-    g.lineStyle(3, INK, 1).strokeRect(doorX + 12, BUY_SELL_DOOR_TOP + 14, BUY_SELL_DOOR_WIDTH - 24, 42);
-    g.fillStyle(INK, 1).fillRect(doorX + BUY_SELL_DOOR_WIDTH - 15, BUY_SELL_DOOR_TOP + 72, 5, 5);
+    g.fillStyle(WHITE, 1).fillRect(doorX, doorTop, width, height);
+    g.fillStyle(0x9ea5a5, 1).fillRect(doorX + 12, doorTop + 14, width - 24, 42);
+    g.lineStyle(3, INK, 1).strokeRect(doorX + 12, doorTop + 14, width - 24, 42);
+    g.fillStyle(INK, 1).fillRect(doorX + width - 15, doorTop + 72, 5, 5);
   }
-  g.lineStyle(4, open ? WHITE : INK, 1).strokeRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
+  g.lineStyle(4, open ? WHITE : INK, 1).strokeRect(doorX, doorTop, width, height);
+}
+
+function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean): void {
+  drawMatchingDoor(g, BUY_SELL_ENTRANCE.x, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, open);
 }
 
 export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {

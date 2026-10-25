@@ -215,9 +215,14 @@ export const START_POSITION = { x: 560, y: 890 };
 export const SHOP_WORLD_WIDTH = 1200;
 export const SHOP_WORLD_HEIGHT = 900;
 export const SHOP_PLAYER_START = { x: 260, y: 690 };
-export const SHOP_EXIT = { x: 135, y: 690 };
 export const SHOP_COUNTER = { x: 390, y: 500 };
 export const SHOP_COUNTER_APPROACH = { x: 390, y: 640 };
+// The interior exit sits in the bottom wall, farther right and close to the
+// room's lower edge so it reads as a real way out rather than a floating door.
+export const SHOP_EXIT = { x: 760, y: 840 };
+export const SHOP_EXIT_DOOR_TOP = SHOP_EXIT.y - BUY_SELL_DOOR_HEIGHT;
+export const SHOP_EXIT_DOOR_BOTTOM = SHOP_EXIT.y;
+export const SHOP_HANDOVER_POINT = { x: 650, y: 620 };
 export const HOME_WORLD_WIDTH = 900;
 export const HOME_WORLD_HEIGHT = 700;
 export const HOME_PLAYER_START = { x: 220, y: 560 };
