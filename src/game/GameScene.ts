@@ -220,6 +220,9 @@ export class GameScene extends Phaser.Scene {
   private openingSequenceActive = false;
   private openingSequenceTween?: Phaser.Tweens.Tween;
   private openingKick?: Phaser.GameObjects.Graphics;
+  private openingZoomDemoActive = false;
+  private openingZoomDemoTimer?: Phaser.Time.TimerEvent;
+  private openingZoomDemoStep = 0;
 
   constructor(hud: HudController, audio: AudioController) {
     super('game-scene');
@@ -316,7 +319,7 @@ export class GameScene extends Phaser.Scene {
     this.updateWindowSpray(delta);
     this.updateThoughtBubble(delta);
 
-    if (this.openingSequenceActive) {
+    if (this.openingSequenceActive || this.openingZoomDemoActive) {
       this.updateInteraction();
       return;
     }
@@ -477,19 +480,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   zoomBy(direction: 1 | -1): void {
-    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     const index = this.zoomOrder.indexOf(this.zoomMode);
     const nextIndex = Phaser.Math.Clamp(index + direction, 0, this.zoomOrder.length - 1);
     this.applyZoom(this.zoomOrder[nextIndex]);
   }
 
   setZoom(mode: ZoomMode): void {
-    if (this.openingSequenceActive || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
     this.applyZoom(mode);
   }
 
   tryInteract(): void {
-    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.modalOpen || this.phoneLandscapeBlocked) return;
     if (this.itemPlacementMode) {
       this.showToast(this.placementTarget ? 'Press B to put the item down.' : 'Tap a clear pavement square first.', 1500);
       return;
@@ -525,7 +528,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   setJoystickInput(x: number, y: number, pointerHeld: boolean): void {
-    if (this.openingSequenceActive) {
+    if (this.openingSequenceActive || this.openingZoomDemoActive) {
       this.joystickPointerHeld = false;
       this.joystickInput.set(0, 0);
       this.joystickSteering = false;
@@ -890,6 +893,10 @@ export class GameScene extends Phaser.Scene {
 
   private startOpeningSequence(): void {
     this.openingSequenceTween?.stop();
+    this.openingZoomDemoTimer?.remove(false);
+    this.openingZoomDemoTimer = undefined;
+    this.openingZoomDemoActive = false;
+    this.openingZoomDemoStep = 0;
     this.openingSequenceActive = true;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
@@ -912,21 +919,41 @@ export class GameScene extends Phaser.Scene {
     this.openingKick.fillStyle(0xf6f7f3, 1).fillRect(34, -4, 18, 12);
     this.openingKick.lineStyle(3, 0x111416, 1).strokeRect(-8, -7, 60, 18);
     this.openingKick.setPosition(OPENING_DROP_POINT.x + 20, OPENING_DROP_POINT.y + 18);
-    this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 620, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
-    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.showToast('Alex has been booted out. Recovering on the street...', 2200);
-    this.hud.showOpeningSkip(() => this.finishOpeningSequence());
-    this.openingSequenceTween = this.tweens.add({
-      targets: this.player,
-      y: START_POSITION.y,
-      duration: 6000,
-      ease: 'Bounce.easeOut',
-      onUpdate: () => {
-        this.drawPlayer();
-        this.updateThoughtBubblePosition();
-      },
-      onComplete: () => this.finishOpeningSequence(),
+    this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 1200, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
+    // Hold on the upper doorway first so the tower roofline and the kick are
+    // visible before the camera begins following Alex down the full drop.
+    this.cameras.main.stopFollow();
+    this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
+    this.cameras.main.centerOn(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y - 120);
+    this.time.delayedCall(1500, () => {
+      if (!this.openingSequenceActive) return;
+      this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+      this.openingSequenceTween = this.tweens.add({
+        targets: this.player,
+        y: START_POSITION.y - 24,
+        duration: 6000,
+        ease: 'Cubic.easeIn',
+        onUpdate: () => {
+          this.drawPlayer();
+          this.updateThoughtBubblePosition();
+        },
+        onComplete: () => {
+          if (!this.openingSequenceActive) return;
+          this.openingSequenceTween = this.tweens.add({
+            targets: this.player,
+            y: START_POSITION.y,
+            duration: 300,
+            ease: 'Bounce.easeOut',
+            onUpdate: () => {
+              this.drawPlayer();
+              this.updateThoughtBubblePosition();
+            },
+            onComplete: () => this.finishOpeningSequence(),
+          });
+        },
+      });
     });
+    this.showToast('Alex has been booted out. Recovering on the street...', 2200);
   }
 
   private finishOpeningSequence(): void {
@@ -936,14 +963,13 @@ export class GameScene extends Phaser.Scene {
     this.openingKick?.destroy();
     this.openingKick = undefined;
     this.openingSequenceActive = false;
-    this.hud.hideOpeningSkip();
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.player.setPosition(START_POSITION.x, START_POSITION.y).setAlpha(1).setVisible(true);
     this.cameras.main.stopFollow();
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    this.zoomMode = 'close';
-    this.streetZoomMode = 'close';
+    this.zoomMode = 'normal';
+    this.streetZoomMode = 'normal';
     this.applyZoom(this.zoomMode);
     this.hud.setZoomMode(this.zoomMode);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
@@ -951,9 +977,32 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.drawPlayer();
     this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
-    this.updateInteraction();
-    this.startHousingThoughtReminder();
-    this.showThought('I need a place to live', true);
+    // Hold the zoomed-out landing view briefly, then show two zoom flashes:
+    // in, out, in. The player remains at the safe spawn while it runs.
+    this.openingZoomDemoActive = true;
+    this.openingZoomDemoStep = 0;
+    this.openingZoomDemoTimer = this.time.delayedCall(1200, () => this.runOpeningZoomDemoStep());
+  }
+
+  private runOpeningZoomDemoStep(): void {
+    if (!this.openingZoomDemoActive) return;
+    if (this.openingZoomDemoStep >= 3) {
+      this.openingZoomDemoActive = false;
+      this.openingZoomDemoTimer = undefined;
+      // Resume the original zoomed-in starting view after the demonstration.
+      this.applyZoom('close');
+      this.updateInteraction();
+      this.startHousingThoughtReminder();
+      this.showThought('I need a place to stay', true);
+      return;
+    }
+
+    // The landing ends in Normal; show Close, Normal, Close, then leave Alex
+    // in Close for the first playable objective.
+    const mode: ZoomMode = this.openingZoomDemoStep % 2 === 0 ? 'close' : 'normal';
+    this.openingZoomDemoStep += 1;
+    this.applyZoom(mode);
+    this.openingZoomDemoTimer = this.time.delayedCall(800, () => this.runOpeningZoomDemoStep());
   }
 
   private saveProgress(): void {
@@ -1074,6 +1123,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearSceneForDevLoad(): void {
+    this.openingSequenceActive = false;
+    this.openingZoomDemoActive = false;
+    this.openingZoomDemoTimer?.remove(false);
+    this.openingZoomDemoTimer = undefined;
+    this.openingZoomDemoStep = 0;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.cancelToolUse(true);
@@ -2890,7 +2944,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readonly handleCanvasPointerDown = (event: PointerEvent): void => {
-    if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.modalOpen || this.phoneLandscapeBlocked || this.joystickPointerHeld || event.pointerType === 'mouse' && event.button !== 0) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -4155,13 +4209,13 @@ export class GameScene extends Phaser.Scene {
       const right = Math.max(this.player.x + 20, building.x + building.width);
       const top = building.kind === 'apartment' ? building.y - 76 : building.y - 18;
       const bottom = FRONT_PAVEMENT_MAX_Y + 16;
-      // Close is one camera level. Do not derive its magnification from the
-      // nearest storefront: different building widths otherwise create an
-      // apparent third zoom while Alex walks along the street.
-      const referenceBuilding = BUILDINGS.find((candidate) => candidate.key === (this.player.x < 1080 ? 'starter-apartment' : 'buy-sell')) ?? BUILDINGS[0];
-      const referenceLeft = Math.min(START_POSITION.x - 20, referenceBuilding.x);
-      const referenceRight = Math.max(START_POSITION.x + 20, referenceBuilding.x + referenceBuilding.width);
-      const referenceTop = referenceBuilding.kind === 'apartment' ? referenceBuilding.y - 76 : referenceBuilding.y - 18;
+      // Close has one fixed magnification across the whole starting street.
+      // Use the opening apartment's reference frame for every location so a
+      // different storefront cannot create an apparent third zoom.
+      const closeReference = BUILDINGS[0];
+      const referenceLeft = Math.min(START_POSITION.x - 20, closeReference.x);
+      const referenceRight = Math.max(START_POSITION.x + 20, closeReference.x + closeReference.width);
+      const referenceTop = closeReference.y - 76;
       const referenceBottom = FRONT_PAVEMENT_MAX_Y + 16;
       const zoom = this.fitZoom(
         viewportWidth,

@@ -52,11 +52,11 @@ Implemented in the current source:
 - Normal mode now opens with a monochrome start screen. Continue is shown for
   a valid normal save; New Game requires an inline overwrite confirmation.
   Developer test saves remain isolated from this screen and the normal save.
-- New Game runs a six-second, skippable boot-out/drop animation from a
+- New Game runs a six-second, unskippable boot-out/drop animation from a
   separate upper doorway in a six-times-height old city tower to the pavement.
   Movement, tools, zoom and world input
-  are blocked until it ends; skip and normal completion set the same saved
-  `openingComplete` state and start the housing reminder afterward.
+  are blocked until it ends. On landing, the camera immediately flashes
+  Close → Normal → Close, then shows “I need a place to stay”.
 - Existing saves without the new opening field migrate as already past the
   opening when they contain progress. Fresh developer checkpoints retain a
   testable opening; later checkpoints bypass it.
@@ -193,7 +193,8 @@ when crossing between pavements or stopping for interaction thresholds.
 
 ## Camera and zoom
 
-Only two street zoom levels remain:
+Only two street zoom levels exist; there is no intermediate or context-based
+street zoom:
 
 - Close
 - Normal
@@ -202,8 +203,10 @@ The game starts in Close mode. The single phone zoom button toggles between
 the two modes. Desktop controls are mouse wheel, comma to zoom out and period
 to zoom in.
 
-Close and Normal use the same world coordinates and object sizes. The camera
-changes viewport framing and zoom rather than moving or stretching scenery.
+Close and Normal use the same world coordinates and object sizes. Close uses
+one fixed reference frame across every storefront, so walking along the street
+cannot silently introduce a third-looking magnification. The camera changes
+viewport framing and zoom rather than moving or stretching scenery.
 
 ### Close camera
 

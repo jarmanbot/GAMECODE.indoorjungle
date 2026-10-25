@@ -68,7 +68,6 @@ export class HudController {
   private readonly startConfirm = document.querySelector<HTMLElement>('#start-confirm')!;
   private readonly startConfirmNew = document.querySelector<HTMLButtonElement>('#start-confirm-new')!;
   private readonly startCancelNew = document.querySelector<HTMLButtonElement>('#start-cancel-new')!;
-  private readonly openingSkip = document.querySelector<HTMLButtonElement>('#opening-skip')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
@@ -119,7 +118,6 @@ export class HudController {
   private actionHideTimer: number | null = null;
   private startContinueAction: (() => void) | null = null;
   private startNewAction: (() => void) | null = null;
-  private openingSkipAction: (() => void) | null = null;
 
   constructor(audio: AudioController) {
     this.audio = audio;
@@ -163,7 +161,6 @@ export class HudController {
     this.bindButtonActivation(this.startNew, () => { this.startConfirm.hidden = false; this.startNew.hidden = true; });
     this.bindButtonActivation(this.startConfirmNew, () => this.startNewAction?.());
     this.bindButtonActivation(this.startCancelNew, () => { this.startConfirm.hidden = true; this.startNew.hidden = false; });
-    this.bindButtonActivation(this.openingSkip, () => this.openingSkipAction?.());
     this.bindJoystickControls();
     this.bindArcadeControls();
     this.applyJoystickSide();
@@ -203,16 +200,6 @@ export class HudController {
     this.startScreen.hidden = true;
     this.startContinueAction = null;
     this.startNewAction = null;
-  }
-
-  showOpeningSkip(action: () => void): void {
-    this.openingSkipAction = action;
-    this.openingSkip.hidden = false;
-  }
-
-  hideOpeningSkip(): void {
-    this.openingSkip.hidden = true;
-    this.openingSkipAction = null;
   }
 
   setPhoneHybridLayout(enabled: boolean): void {
@@ -449,6 +436,8 @@ export class HudController {
     this.zoomGlyph.textContent = glyph;
     this.zoomCaption.textContent = caption;
     this.zoomToggleButton.setAttribute('aria-label', label);
+    this.zoomToggleButton.classList.toggle('is-zoom-in', zoomingIn);
+    this.zoomToggleButton.classList.toggle('is-zoom-out', !zoomingIn);
   }
 
   setMapPosition(ratio: number, worldY = this.mapPositionY): void {
