@@ -16,6 +16,8 @@ import {
   OPENING_POTHOS_SALE_PRICE,
   REPAIRED_POT_SALE_PRICE,
   RENTAL_BOND_COST,
+  SECOND_RENTAL_MOVE_COST,
+  SECOND_RENTAL_TOTAL_BOND,
   SHOP_PLAYER_START,
   START_POSITION,
   WINDOW_JOB_REWARD,
@@ -149,6 +151,45 @@ const basilHarvested = (): ProgressState => withState(basilPlanted(), {
 const firstBasilSaleComplete = (): ProgressState => withState(basilHarvested(), {
   coins: apartmentRented().coins + getPlantDefinition('basil').harvestPrice, harvestQuantities: { basil: 0, mint: 0 },
   shopStock: [...basilHarvested().shopStock, { stockId: BASIL_HARVEST_STOCK_ID, item: 'fresh-basil-leaves', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'fresh', quantity: 1, instanceIds: [] }], task: 'buy-seeds',
+  basilHarvestSaleRecorded: true,
+});
+
+const secondRentalEligibleBase = (): ProgressState => withState(starterKitClaimed(), {
+  coins: SECOND_RENTAL_MOVE_COST,
+  basilHarvestSaleRecorded: true,
+  mintHarvestSaleRecorded: true,
+  growingEvents: { basil: 1, mint: 1 },
+  task: 'move-rental',
+});
+
+const secondRentalEligibleInsufficient = (): ProgressState => withState(secondRentalEligibleBase(), { coins: 20 });
+const secondRentalEligibleSufficient = (): ProgressState => secondRentalEligibleBase();
+
+const readyToMoveMixedPots = (): ProgressState => {
+  const base = secondRentalEligibleSufficient();
+  const basil = createEmptyGrowingPot(STARTER_GROWING_POT_ID, 0);
+  basil.crop = { species: 'basil', stage: 'seedling', wateredAt: Date.now(), growthStartedAt: Date.now() };
+  const mint = createEmptyGrowingPot('growing-pot-2', 1);
+  mint.crop = { species: 'mint', stage: 'mature', wateredAt: Date.now() - getPlantDefinition('mint').growthDurationMs - 1, growthStartedAt: Date.now() - getPlantDefinition('mint').growthDurationMs - 1 };
+  return withState(base, { growingPots: [basil, mint, createEmptyGrowingPot('growing-pot-3', 2)] });
+};
+
+const secondRentalOccupied = (): ProgressState => withState(readyToMoveMixedPots(), {
+  coins: 0,
+  activeProperty: 'second-rental',
+  rentalBondTotal: SECOND_RENTAL_TOTAL_BOND,
+  task: 'complete',
+});
+
+const sixGrowingPositionsMixed = (): ProgressState => withState(secondRentalOccupied(), {
+  growingPots: [
+    readyToMoveMixedPots().growingPots[0],
+    readyToMoveMixedPots().growingPots[1],
+    createEmptyGrowingPot('growing-pot-3', 2),
+    createEmptyGrowingPot('growing-pot-4', 3),
+    createEmptyGrowingPot('growing-pot-5', 4),
+    createEmptyGrowingPot('growing-pot-6', 5),
+  ],
 });
 
 const threePotsReady = (): ProgressState => withState(starterKitClaimed(), {
@@ -199,12 +240,18 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'basil-mature', label: 'Basil mature', order: 140, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'mature', build: basilMature },
   { id: 'basil-harvested', label: 'Basil harvested · ready to sell', order: 150, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: basilHarvested },
   { id: 'first-basil-sale', label: 'First basil sale complete · ready to buy seeds', order: 160, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstBasilSaleComplete },
+  { id: 'second-rental-eligible-insufficient', label: 'Second rental eligible · insufficient coins', order: 170, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: secondRentalEligibleInsufficient },
+  { id: 'second-rental-eligible-sufficient', label: 'Second rental eligible · sufficient coins', order: 171, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: secondRentalEligibleSufficient },
+  { id: 'ready-to-move-mixed-pots', label: 'Ready to move · mixed empty, growing and mature pots', order: 172, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: readyToMoveMixedPots },
+  { id: 'second-rental-occupied', label: 'Second rental occupied', order: 173, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: secondRentalOccupied },
+  { id: 'six-growing-positions-mixed', label: 'Six growing positions · mixed basil and mint', order: 174, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: sixGrowingPositionsMixed },
 ];
 
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {
   const result = sanitizeProgress(progress);
   if (result.coins < 0) throw new Error(`Developer checkpoint ${id} has negative coins.`);
   if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);
+  if (result.activeProperty === 'second-rental' && result.rentalBondTotal !== SECOND_RENTAL_TOTAL_BOND) throw new Error(`Developer checkpoint ${id} has an invalid second-rental bond.`);
   if (result.starterKitGranted && !result.starterKitClaimed) throw new Error(`Developer checkpoint ${id} grants an unclaimed kit.`);
   const ids = new Set<string>(); const slots = new Set<number>();
   for (const pot of result.growingPots) {

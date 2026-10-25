@@ -79,8 +79,8 @@ The game currently contains:
 - REAL ESTATE AGENT window-cleaning job.
 - Broken-pot collection and repair loop.
 - Starter apartment rental.
-- Starter kit and a three-slot grow table.
-- Three independent growing pots with stable IDs, reusable medium, basil and mint crops, growth timing, fertiliser and harvest state.
+- Starter kit and a three-slot starter grow table, plus the Pass 5 six-slot second-rental grow room.
+- Independent growing pots with stable IDs, reusable medium, basil and mint crops, growth timing, fertiliser and harvest state.
 - Basil and mint seed purchasing, fresh-leaf selling and species-specific shop stacks.
 - City map with locked future districts.
 - Phone hybrid controls with joystick and A/B buttons.
@@ -226,6 +226,45 @@ display-only.
 Pass 4 adds development-only shop fixtures for the pre-upgrade B&W sale,
 post-upgrade sale items, upgraded buyback stock, and seven-unit basil/mint
 harvest stacks. These use the existing development save namespace.
+
+## Pass 5 second rental and expanded growing
+
+The existing `mid-rental` Real Estate listing now represents a provisional
+second rental. It becomes actionable only after the permanent recorded events
+`basilHarvestSaleRecorded` and `mintHarvestSaleRecorded` are both true. These
+flags are set by genuine harvest-sale transactions and are not removed when
+coins are spent or stock is bought back. Older saves with no reliable event
+record remain unchanged and can satisfy the requirement through a future
+genuine sale.
+
+The move is one atomic state change: the starter rental's 60-coin bond is
+transferred, 60 additional coins are deducted, and the recorded refundable bond
+becomes 120 coins. There is no recurring rent, bill, moving fee, or additional
+deposit. All placed pots, stable IDs, crop species, conditions, growth
+timestamps, watering/fertiliser state, inventory, tools, shop stock and
+achievements remain intact. Placed pots are compacted into the first available
+positions in stable slot order; unplaced pots remain unplaced.
+
+The second rental uses the shared growing system and has six selectable
+positions in a two-room interior. The starter home retains its original three
+visible positions. The shop's existing basic-pot supply extends to five
+additional pots so the six-position rental can be populated; each still costs
+the existing 10 coins and is not unlimited stock. Basil and mint remain
+independent crops with their existing prices and growth times.
+
+The second rental is represented by `activeProperty` in the normal progress
+schema. The starter entrance is unavailable after moving, the old property is
+advertised as available, and the new entrance/Home destination is used after
+reload. The future high-level property remains unavailable. Alex's separate
+future component-repair design is unresolved and was not invented in Pass 5.
+
+Pass 5 developer fixtures are registered in `src/game/devCheckpoints.ts`:
+
+- Second rental eligible with insufficient coins.
+- Second rental eligible with sufficient coins.
+- Ready to move with mixed empty, growing and mature pots.
+- Second rental occupied.
+- Six growing positions populated with mixed basil and mint.
 
 ## Camera and zoom
 
@@ -599,10 +638,9 @@ Rental bond = 60 coins
 89 − 60 = 29 coins after renting
 ~~~
 
-The rental unlocks the apartment door. No new district is unlocked.
-
-The current task enum does not contain a separate rental task, so the task can
-remain complete until the starter kit is claimed.
+The rental unlocks the apartment door. No new district is unlocked. After the
+initial basil/mint introduction and both recorded harvest sales, the task can
+become `move-rental` and its checklist tracks the second-rental requirements.
 
 ### 10. Claim the starter kit
 
@@ -629,7 +667,7 @@ task = place-pot
 
 ### 11. Place the pot on the grow table
 
-The grow table has three selectable positions:
+The starter grow table has three selectable positions:
 
 ~~~text
 Slot 1: (380, 470)
@@ -810,7 +848,9 @@ Canonical progression:
 If the optional Golden Pothos sale is delayed:
 
 ~~~text
-9 + 75 − 60 = 24 coins after renting
+9 + 75 − 60 = 24 coins after renting in the older pre-Pass-5 accounting section;
+the canonical opening ledger is 89 − 60 = 29 coins, and Pass 5 deducts only
+the additional 60 coins when moving to the second rental.
 ~~~
 
 The Golden Pothos can still be sold later for 5 coins.
@@ -873,6 +913,11 @@ Current checkpoint registry:
 19. Basil mature
 20. Basil harvested — ready to sell
 21. First basil sale complete — ready to buy seeds
+22. Second rental eligible — insufficient coins
+23. Second rental eligible — sufficient coins
+24. Ready to move — mixed empty, growing and mature pots
+25. Second rental occupied
+26. Six growing positions — mixed basil and mint
 
 Checkpoint coin states:
 
@@ -895,6 +940,11 @@ Checkpoint coin states:
 | Basil mature | 29 |
 | Basil harvested | 29 |
 | First basil sale | 34 |
+| Second rental eligible — insufficient | 20 |
+| Second rental eligible — sufficient | 60 |
+| Ready to move — mixed pots | 60 |
+| Second rental occupied | 0 |
+| Six growing positions — mixed | 0 |
 
 Checkpoint loading clears movement, tool actions, sprays, repair animations,
 fades and transitions. Growing checkpoints use timestamps relative to load
@@ -1046,6 +1096,19 @@ Verified during the read-only audit:
 - Source-level checkpoint builders for fresh start, the opening loop,
   apartment/starter-kit stages, three ready pots, basil crop stages and
   second-pot mint stages.
+
+Pass 5 source checks additionally covered the second-rental state fields,
+eligibility flags, one-time 60-coin move commit, active-property save
+migration, six-slot checkpoint builders, and shared growing-pot rendering.
+`git diff --check` and `npm run build` passed after the Pass 5 changes.
+
+Not performed for Pass 5 in this environment:
+
+- Browser visual walkthrough of the new Real Estate confirmation and second
+  rental interior.
+- Physical phone touch, rotation, safe-area, and short-viewport checks.
+- End-to-end runtime verification of moving mixed pots and six simultaneous
+  crops.
 
 The production build completed successfully. Vite emitted only the existing
 large JavaScript chunk warning.

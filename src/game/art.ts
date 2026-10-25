@@ -17,6 +17,7 @@ import {
   WORLD_WIDTH,
   OPENING_TOWER,
   OPENING_DROP_POINT,
+  type PropertyId,
   type Building,
 } from './world';
 
@@ -27,7 +28,7 @@ const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none'): Phaser.GameObjects.Graphics | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -48,7 +49,7 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
 
   let buySellDoor: Phaser.GameObjects.Graphics | undefined;
   BUILDINGS.forEach((building) => {
-    const door = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled);
+    const door = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty);
     if (door) buySellDoor = door;
   });
   drawStreetDetails(scene);
@@ -235,7 +236,7 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none'): Phaser.GameObjects.Graphics | undefined {
   if (building.kind === 'shop') {
     return drawBuySellBuilding(scene, building, graphicsUpgradeInstalled);
   }
@@ -256,7 +257,11 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
 
   if (building.kind === 'homes') drawHomes(scene, g, building);
   if (building.kind === 'plants') drawPlants(scene, g, building, graphicsUpgradeInstalled);
-  if (building.kind === 'apartment') drawApartment(scene, g, building, apartmentRented);
+  if (building.kind === 'apartment') {
+    const secondRental = building.key === 'second-rental';
+    const occupied = secondRental ? activeProperty === 'second-rental' : activeProperty === 'starter-apartment' || (activeProperty === 'none' && apartmentRented);
+    drawApartment(scene, g, building, occupied, secondRental);
+  }
 }
 
 function drawBuySellBuilding(scene: Phaser.Scene, building: Building, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics {
@@ -390,7 +395,7 @@ function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buildin
   }
 }
 
-function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean): void {
+function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean, secondRental = false): void {
   const x = building.x;
   const y = building.y;
   g.fillStyle(0x1b2022, 1).fillTriangle(x - 18, y + 10, x + building.width / 2, y - 62, x + building.width + 18, y + 10);
@@ -415,8 +420,13 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
   g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 64, y + 82, 128, 28);
   const rentalLabel = addWorldLabel(scene, x + building.width / 2, y + 92, rented ? 'YOUR HOME' : 'TO LET', WHITE, 12, true);
   rentalLabel.setData('apartment-rental-sign', true);
-  const rentalPrice = addWorldLabel(scene, x + building.width / 2, y + 108, rented ? 'ACCESS UNLOCKED' : '60 COINS', 0xc4ccca, 9, true);
+  rentalLabel.setData('property-id', secondRental ? 'second-rental' : 'starter-apartment');
+  rentalLabel.setData('rental-sign-role', 'title');
+  const rentalPrice = addWorldLabel(scene, x + building.width / 2, y + 108, rented ? 'ACCESS UNLOCKED' : secondRental ? 'MOVE TO RENTAL' : '60 COINS', 0xc4ccca, 9, true);
   rentalPrice.setData('apartment-rental-sign', true);
+  rentalPrice.setData('property-id', secondRental ? 'second-rental' : 'starter-apartment');
+  rentalPrice.setData('rental-sign-role', 'detail');
+  if (secondRental) addWorldLabel(scene, x + building.width / 2, y + 205, '2 ROOMS · 6 SLOTS', WHITE, 9, true);
   addWorldLabel(scene, x + building.width / 2, y + 207, 'HOME DOOR', WHITE, 9, true);
 }
 

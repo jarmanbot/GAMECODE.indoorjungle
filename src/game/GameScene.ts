@@ -44,10 +44,14 @@ import {
   FRONT_PAVEMENT_MIN_Y,
   HOME_EXIT,
   HOME_GROWING_SPOTS,
+  SECOND_HOME_GROWING_SPOTS,
   HOME_PLAYER_START,
   HOME_STARTER_KIT,
   HOME_WORLD_HEIGHT,
   HOME_WORLD_WIDTH,
+  SECOND_RENTAL_ENTRANCE,
+  SECOND_RENTAL_DOOR_TOP,
+  SECOND_RENTAL_DOOR_BOTTOM,
   OPENING_TOWER,
   OPENING_DROP_POINT,
   BASIL_GROWTH_DURATION_MS,
@@ -60,6 +64,8 @@ import {
   WINDOW_JOB_REWARD,
   REPAIRED_POT_SALE_PRICE,
   RENTAL_BOND_COST,
+  SECOND_RENTAL_TOTAL_BOND,
+  SECOND_RENTAL_MOVE_COST,
   HOMES_LISTINGS,
   HOMES_WINDOW,
   HOMES_WINDOW_CLEAN_SECTIONS,
@@ -81,6 +87,7 @@ import {
   STARTING_WALKABLE_MIN_X,
   WORLD_HEIGHT,
   WORLD_WIDTH,
+  type PropertyId,
   type PropertyListingKey,
   type ZoomMode,
 } from './world';
@@ -169,6 +176,7 @@ export class GameScene extends Phaser.Scene {
   private placementTarget: Phaser.Math.Vector2 | null = null;
   private placementOptionTargets: Phaser.Math.Vector2[] = [];
   private streetObjects: Phaser.GameObjects.GameObject[] = [];
+  private streetArtworkObjects: Phaser.GameObjects.GameObject[] = [];
   private shopObjects: Phaser.GameObjects.GameObject[] = [];
   private homeObjects: Phaser.GameObjects.GameObject[] = [];
   private homeStarterKitObjects: Phaser.GameObjects.GameObject[] = [];
@@ -213,6 +221,9 @@ export class GameScene extends Phaser.Scene {
   private brokenPotPieceSelected = false;
   private rentalBondPaid = false;
   private rentalKeyOwned = false;
+  private activeProperty: PropertyId = 'none';
+  private rentalBondTotal = 0;
+  private secondRentalMoveConfirmation = false;
   private starterKitClaimed = false;
   private rentalFeedbackAt = 0;
   private basilPotSelected = false;
@@ -249,7 +260,8 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
-    this.buySellDoor = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled);
+    this.buySellDoor = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty);
+    this.streetArtworkObjects = [...this.children.list];
     this.createWantedSign();
     this.createWindowDirtOverlay();
     this.createCars();
@@ -307,6 +319,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setZoomMode(this.zoomMode);
     this.syncHudState();
     this.updateProgressVisuals();
+    this.updateApartmentRentalSign();
     this.updatePhoneOrientationState();
     if (this.testSaveMode && this.devSessionMeta && this.devSessionMeta.scene !== 'street') {
       this.restoreDevSessionScene(this.devSessionMeta);
@@ -759,20 +772,27 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean } {
+  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number; basilHarvestSaleRecorded: boolean; mintHarvestSaleRecorded: boolean; secondRentalMoveConfirmation: boolean } {
     return {
       coins: this.coins,
       rentalBondPaid: this.rentalBondPaid,
       rentalKeyOwned: this.rentalKeyOwned,
       starterKitClaimed: this.starterKitClaimed,
+      activeProperty: this.activeProperty,
+      rentalBondTotal: this.rentalBondTotal,
+      basilHarvestSaleRecorded: this.progress.basilHarvestSaleRecorded,
+      mintHarvestSaleRecorded: this.progress.mintHarvestSaleRecorded,
+      secondRentalMoveConfirmation: this.secondRentalMoveConfirmation,
     };
   }
 
-  getRentalState(): { rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean } {
+  getRentalState(): { rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number } {
     return {
       rentalBondPaid: this.rentalBondPaid,
       rentalKeyOwned: this.rentalKeyOwned,
       starterKitClaimed: this.starterKitClaimed,
+      activeProperty: this.activeProperty,
+      rentalBondTotal: this.rentalBondTotal,
     };
   }
 
@@ -795,6 +815,10 @@ export class GameScene extends Phaser.Scene {
       starterKitClaimed: this.starterKitClaimed,
       rentalBondPaid: this.rentalBondPaid,
       rentalKeyOwned: this.rentalKeyOwned,
+      activeProperty: this.activeProperty,
+      rentalBondTotal: this.rentalBondTotal,
+      basilHarvestSaleRecorded: this.progress.basilHarvestSaleRecorded,
+      mintHarvestSaleRecorded: this.progress.mintHarvestSaleRecorded,
       hasCollectedSaleableItem: this.inventoryHasPot || this.saleComplete || Boolean(this.progress.placedWorldItem) || this.progress.repairedPotSaleComplete,
       saleComplete: this.saleComplete || this.progress.repairedPotSaleComplete,
       paidWorkComplete: this.progress.windowJobComplete,
@@ -839,8 +863,11 @@ export class GameScene extends Phaser.Scene {
     this.saleComplete = this.progress.saleComplete;
     this.rentalBondPaid = this.progress.rentalBondPaid;
     this.rentalKeyOwned = this.progress.rentalKeyOwned;
+    this.activeProperty = this.progress.activeProperty;
+    this.rentalBondTotal = this.progress.rentalBondTotal;
     if (this.rentalBondPaid && !rentalKeyWasSaved) this.saveProgress();
     this.starterKitClaimed = this.progress.starterKitClaimed;
+    this.updateSecondRentalObjective();
     if (this.rentalBondPaid && this.starterKitClaimed && !this.progress.starterKitGranted) {
       // The previous apartment pass persisted the claim flag before the
       // repeatable kit contents existed. Migrate that valid old claim once.
@@ -924,6 +951,9 @@ export class GameScene extends Phaser.Scene {
     this.saleComplete = false;
     this.rentalBondPaid = false;
     this.rentalKeyOwned = false;
+    this.activeProperty = 'none';
+    this.rentalBondTotal = 0;
+    this.secondRentalMoveConfirmation = false;
     this.starterKitClaimed = false;
     this.clearItemPlacement();
     this.cancelTapWalk();
@@ -1061,6 +1091,8 @@ export class GameScene extends Phaser.Scene {
     this.progress.saleComplete = this.saleComplete;
     this.progress.rentalBondPaid = this.rentalBondPaid;
     this.progress.rentalKeyOwned = this.rentalKeyOwned;
+    this.progress.activeProperty = this.activeProperty;
+    this.progress.rentalBondTotal = this.rentalBondTotal;
     this.progress.starterKitClaimed = this.starterKitClaimed;
     this.progress.brokenPotOwned = this.inventoryPot === 'broken' || this.progress.brokenPotOwned;
     try { localStorage.setItem(this.getProgressStorageKey(), JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
@@ -1070,6 +1102,13 @@ export class GameScene extends Phaser.Scene {
       spawn: { x: this.player.x, y: this.player.y },
       zoom: this.zoomMode,
     });
+  }
+
+  private updateSecondRentalObjective(): void {
+    if (this.activeProperty !== 'starter-apartment' || !this.starterKitClaimed) return;
+    if (this.progress.basilHarvestSaleRecorded && this.progress.mintHarvestSaleRecorded
+      && this.progress.growingEvents.basil > 0 && this.progress.growingEvents.mint > 0
+      && this.progress.task === 'buy-seeds') this.progress.task = 'move-rental';
   }
 
   public loadDevCheckpoint(id: string): void {
@@ -1162,6 +1201,9 @@ export class GameScene extends Phaser.Scene {
     this.saleComplete = this.progress.saleComplete;
     this.rentalBondPaid = this.progress.rentalBondPaid;
     this.rentalKeyOwned = this.progress.rentalKeyOwned;
+    this.activeProperty = this.progress.activeProperty;
+    this.rentalBondTotal = this.progress.rentalBondTotal;
+    this.secondRentalMoveConfirmation = false;
     this.starterKitClaimed = this.progress.starterKitClaimed;
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
@@ -1454,8 +1496,18 @@ export class GameScene extends Phaser.Scene {
       && point.y <= APARTMENT_DOOR_BOTTOM + 14;
   }
 
+  private isNearSecondRentalDoor(point: Phaser.Math.Vector2): boolean {
+    return Math.abs(point.x - SECOND_RENTAL_ENTRANCE.x) <= APARTMENT_DOOR_WIDTH / 2 + 18
+      && point.y >= SECOND_RENTAL_DOOR_TOP - 18
+      && point.y <= SECOND_RENTAL_DOOR_BOTTOM + 14;
+  }
+
   private getApartmentApproachPoint(): Phaser.Math.Vector2 {
     return new Phaser.Math.Vector2(APARTMENT_ENTRANCE.x, APARTMENT_ENTRANCE.y);
+  }
+
+  private getActiveHomeEntrance(): { x: number; y: number } {
+    return this.activeProperty === 'second-rental' ? SECOND_RENTAL_ENTRANCE : APARTMENT_ENTRANCE;
   }
 
   private isFacingWindow(): boolean {
@@ -2143,9 +2195,13 @@ export class GameScene extends Phaser.Scene {
     this.coins -= bond;
     this.rentalBondPaid = true;
     this.rentalKeyOwned = true;
+    this.activeProperty = 'starter-apartment';
+    this.rentalBondTotal = RENTAL_BOND_COST;
     this.starterKitClaimed = false;
     this.progress.rentalBondPaid = true;
     this.progress.rentalKeyOwned = true;
+    this.progress.activeProperty = this.activeProperty;
+    this.progress.rentalBondTotal = this.rentalBondTotal;
     this.progress.starterKitClaimed = false;
     this.progress.task = 'place-pot';
     this.updateApartmentRentalSign();
@@ -2157,6 +2213,72 @@ export class GameScene extends Phaser.Scene {
     this.toastTimer = undefined;
     this.hud.showDismissibleToast('RENTAL COMPLETE. Received apartment key ⚿. The key is in your Bag. Your starter apartment is unlocked; enter it to claim the starter kit.');
     return true;
+  }
+
+  reviewSecondRentalMove(): void {
+    if (this.activeProperty === 'second-rental') {
+      this.hud.refreshPropertyPanel('Alex already lives in the two-room rental.');
+      return;
+    }
+    if (!this.rentalBondPaid || !this.progress.basilHarvestSaleRecorded || !this.progress.mintHarvestSaleRecorded) {
+      this.hud.refreshPropertyPanel('Sell one genuine basil harvest and one genuine mint harvest first.');
+      return;
+    }
+    this.secondRentalMoveConfirmation = true;
+    this.hud.refreshPropertyPanel();
+  }
+
+  cancelSecondRentalMove(): void {
+    this.secondRentalMoveConfirmation = false;
+    this.hud.refreshPropertyPanel();
+  }
+
+  confirmSecondRentalMove(): boolean {
+    if (this.activeProperty === 'second-rental' || !this.secondRentalMoveConfirmation) return false;
+    if (!this.rentalBondPaid || !this.progress.basilHarvestSaleRecorded || !this.progress.mintHarvestSaleRecorded) {
+      this.secondRentalMoveConfirmation = false;
+      this.hud.refreshPropertyPanel('The move requirements are not complete.');
+      return false;
+    }
+    if (this.coins < SECOND_RENTAL_MOVE_COST) {
+      this.hud.refreshPropertyPanel(`Need ${SECOND_RENTAL_MOVE_COST - this.coins} more coin${SECOND_RENTAL_MOVE_COST - this.coins === 1 ? '' : 's'} for the move.`);
+      this.showToast(`Save ${SECOND_RENTAL_MOVE_COST - this.coins} more coin${SECOND_RENTAL_MOVE_COST - this.coins === 1 ? '' : 's'} before moving.`, 1800);
+      return false;
+    }
+
+    // Commit the transfer as one state change. The starter bond is not
+    // refunded and a second 120-coin charge is never performed.
+    const placedPots = this.progress.growingPots
+      .filter((pot) => pot.slot !== null)
+      .sort((left, right) => (left.slot ?? 0) - (right.slot ?? 0));
+    placedPots.forEach((pot, index) => { pot.slot = index; });
+    this.progress.growingPots.filter((pot) => pot.slot === null).forEach((pot) => { pot.slot = null; });
+    this.coins -= SECOND_RENTAL_MOVE_COST;
+    this.activeProperty = 'second-rental';
+    this.rentalBondTotal = SECOND_RENTAL_TOTAL_BOND;
+    this.progress.activeProperty = this.activeProperty;
+    this.progress.rentalBondTotal = this.rentalBondTotal;
+    this.progress.task = 'complete';
+    this.secondRentalMoveConfirmation = false;
+    this.saveProgress();
+    this.rebuildStreetArtwork();
+    this.updateApartmentRentalSign();
+    this.syncHudState();
+    this.showToast(`Move complete. ${SECOND_RENTAL_TOTAL_BOND}-coin bond recorded; ${SECOND_RENTAL_MOVE_COST} coins paid.`, 2200);
+    return true;
+  }
+
+  private rebuildStreetArtwork(): void {
+    const oldArtwork = new Set(this.streetArtworkObjects);
+    this.streetArtworkObjects.forEach((object) => object.destroy());
+    const before = new Set(this.children.list);
+    this.buySellDoor = drawNeighborhood(this, this.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty);
+    const added = this.children.list.filter((object) => !before.has(object));
+    this.streetArtworkObjects = added;
+    this.streetObjects = this.streetObjects.filter((object) => !oldArtwork.has(object));
+    this.streetObjects.push(...added);
+    this.refreshWantedSign();
+    this.updateProgressVisuals();
   }
 
   private claimStarterKit(): void {
@@ -2466,7 +2588,10 @@ export class GameScene extends Phaser.Scene {
     const total = definition.harvestPrice * amount;
     this.progress.harvestQuantities[species] -= amount;
     this.coins += total;
+    if (species === 'basil') this.progress.basilHarvestSaleRecorded = true;
+    if (species === 'mint') this.progress.mintHarvestSaleRecorded = true;
     this.progress.task = species === 'basil' && this.progress.additionalGrowingPotsPurchased < 2 ? 'place-pot' : 'buy-seeds';
+    this.updateSecondRentalObjective();
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel(`${definition.harvestLabel} ×${amount} sold for ${total} coins. Buy more seeds to grow again.`);
@@ -2604,6 +2729,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBasilVisual(): void {
+    const growingSpots = this.getActiveGrowingSpots();
     for (const pot of this.progress.growingPots) {
       let display = this.growingPotDisplays.get(pot.id);
       if (!display && this.homeInterior) {
@@ -2613,7 +2739,8 @@ export class GameScene extends Phaser.Scene {
         if (pot.id === STARTER_GROWING_POT_ID) this.basilPot = display;
       }
       if (!display || pot.slot === null) { display?.setVisible(false); continue; }
-      const spot = HOME_GROWING_SPOTS[pot.slot];
+      const spot = growingSpots[pot.slot];
+      if (!spot) { display.setVisible(false); continue; }
       display.setPosition(spot.x, spot.y).clear().setVisible(this.starterKitClaimed);
       const stage = this.getCropStage(pot);
       drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9, this.progress.graphicsUpgradeInstalled);
@@ -2636,11 +2763,19 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(spot.x - 54, spot.y);
   }
 
-  private getGrowingSpotForPot(pot: GrowingPotState): { x: number; y: number } { return HOME_GROWING_SPOTS[Phaser.Math.Clamp(pot.slot ?? this.selectedGrowingSpotIndex ?? 1, 0, HOME_GROWING_SPOTS.length - 1)] ?? HOME_GROWING_SPOTS[1]; }
+  private getActiveGrowingSpots(): readonly { x: number; y: number }[] {
+    return this.activeProperty === 'second-rental' ? SECOND_HOME_GROWING_SPOTS : HOME_GROWING_SPOTS;
+  }
+
+  private getGrowingSpotForPot(pot: GrowingPotState): { x: number; y: number } {
+    const spots = this.getActiveGrowingSpots();
+    return spots[Phaser.Math.Clamp(pot.slot ?? this.selectedGrowingSpotIndex ?? 1, 0, spots.length - 1)] ?? spots[1] ?? spots[0];
+  }
 
   private getActiveGrowingSpot(): { x: number; y: number } {
     const selected = this.getSelectedGrowingPot();
-    return selected ? this.getGrowingSpotForPot(selected) : HOME_GROWING_SPOTS[Phaser.Math.Clamp(this.selectedGrowingSpotIndex ?? 1, 0, HOME_GROWING_SPOTS.length - 1)] ?? HOME_GROWING_SPOTS[1];
+    const spots = this.getActiveGrowingSpots();
+    return selected ? this.getGrowingSpotForPot(selected) : spots[Phaser.Math.Clamp(this.selectedGrowingSpotIndex ?? 1, 0, spots.length - 1)] ?? spots[1] ?? spots[0];
   }
 
   private getSelectedGrowingPot(): GrowingPotState | null { return this.selectedGrowingPotId ? this.progress.growingPots.find((pot) => pot.id === this.selectedGrowingPotId) ?? null : null; }
@@ -2648,7 +2783,7 @@ export class GameScene extends Phaser.Scene {
   private getPotAtGrowingSpotIndex(index: number): GrowingPotState | null { return this.progress.growingPots.find((pot) => pot.slot === index) ?? null; }
 
   private getGrowingSpotIndexAtPoint(point: Phaser.Math.Vector2): number | null {
-    const index = HOME_GROWING_SPOTS.findIndex((spot) => Math.abs(point.x - spot.x) <= 42 && point.y >= spot.y - 78 && point.y <= spot.y + 34);
+    const index = this.getActiveGrowingSpots().findIndex((spot) => Math.abs(point.x - spot.x) <= 42 && point.y >= spot.y - 78 && point.y <= spot.y + 34);
     return index >= 0 ? index : null;
   }
 
@@ -2666,7 +2801,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const pot = this.progress.growingPots.find((candidate) => candidate.slot === null);
-    const spot = HOME_GROWING_SPOTS[index];
+    const spot = this.getActiveGrowingSpots()[index];
     if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) > 120) return;
     this.pendingInteraction = null;
     this.growingSlotReadyToPlace = true;
@@ -2686,7 +2821,7 @@ export class GameScene extends Phaser.Scene {
     if (index === null || this.getPotAtGrowingSpotIndex(index)) { this.showToast('Choose an empty grow-table slot.', 1500); return; }
     const pot = this.progress.growingPots.find((candidate) => candidate.id === STARTER_GROWING_POT_ID && candidate.slot === null)
       ?? this.progress.growingPots.find((candidate) => candidate.slot === null);
-    const spot = HOME_GROWING_SPOTS[index];
+    const spot = this.getActiveGrowingSpots()[index];
     if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) > 120) return;
     pot.slot = index;
     this.growingSlotReadyToPlace = false;
@@ -2728,6 +2863,9 @@ export class GameScene extends Phaser.Scene {
     this.clearItemPlacement();
     this.rentalBondPaid = false;
     this.rentalKeyOwned = false;
+    this.activeProperty = 'none';
+    this.rentalBondTotal = 0;
+    this.secondRentalMoveConfirmation = false;
     this.starterKitClaimed = false;
     this.progress.openingComplete = false;
     this.housingThoughtElapsedMs = 0;
@@ -2766,7 +2904,11 @@ export class GameScene extends Phaser.Scene {
       if (!('getData' in child) || !('setText' in child)) return;
       const object = child as Phaser.GameObjects.Text;
       if (!object.getData('apartment-rental-sign')) return;
-      object.setText(object.y < 575 ? (this.rentalBondPaid ? 'YOUR HOME' : 'TO LET') : (this.rentalBondPaid ? 'ACCESS UNLOCKED' : '60 COINS'));
+      const property = object.getData('property-id') as PropertyId;
+      const occupied = property === this.activeProperty;
+      object.setText(object.getData('rental-sign-role') === 'title'
+        ? (occupied ? 'YOUR HOME' : 'TO LET')
+        : (occupied ? 'ACCESS UNLOCKED' : property === 'second-rental' ? 'MOVE TO RENTAL' : '60 COINS'));
     });
   }
 
@@ -3293,11 +3435,31 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.isNearSecondRentalDoor(point)) {
+      const approach = new Phaser.Math.Vector2(SECOND_RENTAL_ENTRANCE.x, SECOND_RENTAL_ENTRANCE.y);
+      if (this.activeProperty !== 'second-rental') {
+        this.cancelTapWalk();
+        this.showToast('Arrange the two-room rental at the REAL ESTATE AGENT first.', 1800);
+        return;
+      }
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 120) {
+        this.selectPendingInteraction('enter-home', approach);
+      } else {
+        const tapPath = this.getTapPath(approach.x, approach.y);
+        if (!tapPath) {
+          this.cancelTapWalk();
+          this.showToast('The two-room rental entrance cannot be reached.', 1600);
+          return;
+        }
+        this.selectPendingInteraction('enter-home', approach, tapPath);
+      }
+      return;
+    }
     if (this.isNearApartmentDoor(point)) {
       const approach = this.getApartmentApproachPoint();
-      if (!this.rentalBondPaid) {
+      if (this.activeProperty !== 'starter-apartment') {
         this.cancelTapWalk();
-        this.showToast('Rent the starter apartment at the REAL ESTATE AGENT first.', 1800);
+        this.showToast('The starter apartment has been returned. Use the two-room rental.', 1800);
         return;
       }
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 120) {
@@ -3468,7 +3630,7 @@ export class GameScene extends Phaser.Scene {
       }
       this.selectedGrowingSpotIndex = growingSpotIndex;
       const pot = this.getPotAtGrowingSpotIndex(growingSpotIndex);
-      const spot = HOME_GROWING_SPOTS[growingSpotIndex];
+      const spot = this.getActiveGrowingSpots()[growingSpotIndex];
       const approach = new Phaser.Math.Vector2(spot.x - 54, spot.y);
       const unplacedPot = this.progress.growingPots.find((candidate) => candidate.slot === null);
       const interaction: PendingInteraction = pot ? 'select-growing-pot' : unplacedPot ? 'place-growing-pot' : 'select-growing-pot';
@@ -3546,13 +3708,24 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
       const inApartmentLane = Math.abs(this.player.x - APARTMENT_ENTRANCE.x) <= APARTMENT_DOOR_WIDTH / 2 + 8;
-      const movingIntoApartment = direction.y < -0.45 && inApartmentLane
+      const movingIntoApartment = this.activeProperty === 'starter-apartment' && direction.y < -0.45 && inApartmentLane
         && previousY >= this.player.y && this.player.y <= FRONT_PAVEMENT_MIN_Y + 10;
       if (movingIntoApartment) {
         if (this.rentalBondPaid) this.enterHome();
         else if (performance.now() - this.rentalFeedbackAt > 900) {
           this.rentalFeedbackAt = performance.now();
           this.showToast('Rent the starter apartment at the REAL ESTATE AGENT first.', 1500);
+        }
+        return true;
+      }
+      const inSecondRentalLane = Math.abs(this.player.x - SECOND_RENTAL_ENTRANCE.x) <= APARTMENT_DOOR_WIDTH / 2 + 8;
+      const movingIntoSecondRental = direction.y < -0.45 && inSecondRentalLane
+        && previousY >= this.player.y && this.player.y <= FRONT_PAVEMENT_MIN_Y + 10;
+      if (movingIntoSecondRental) {
+        if (this.activeProperty === 'second-rental') this.enterHome();
+        else if (performance.now() - this.rentalFeedbackAt > 900) {
+          this.rentalFeedbackAt = performance.now();
+          this.showToast('Arrange the two-room rental at the REAL ESTATE AGENT first.', 1500);
         }
         return true;
       }
@@ -3601,7 +3774,7 @@ export class GameScene extends Phaser.Scene {
       this.interactionHighlight.strokeRect(HOMES_WINDOW.x - 6, HOMES_WINDOW.y + 4, HOMES_WINDOW.width - 8, HOMES_WINDOW.height - 8);
     } else if (interaction === 'place-growing-pot') {
       const index = this.selectedGrowingSpotIndex;
-      const spot = index === null ? point : HOME_GROWING_SPOTS[index];
+      const spot = index === null ? point : this.getActiveGrowingSpots()[index];
       this.interactionHighlight.strokeRect(spot.x - 48, spot.y - 34, 96, 68);
     } else if (interaction === 'select-growing-pot' || interaction === 'gardening-action') {
       this.interactionHighlight.strokeRect(point.x - 48, point.y - 34, 96, 68);
@@ -3813,7 +3986,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private enterHome(): void {
-    if (this.shopInterior || this.homeInterior || this.shopTransitioning || !this.rentalBondPaid) return;
+    if (this.shopInterior || this.homeInterior || this.shopTransitioning || !this.rentalBondPaid || this.activeProperty === 'none') return;
     this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
@@ -3824,10 +3997,12 @@ export class GameScene extends Phaser.Scene {
     this.streetPosition.set(this.player.x, this.player.y);
     this.streetZoomMode = this.zoomMode;
     this.player.setAlpha(1);
+    const entrance = this.getActiveHomeEntrance();
+    const doorBottom = this.activeProperty === 'second-rental' ? SECOND_RENTAL_DOOR_BOTTOM : APARTMENT_DOOR_BOTTOM;
     this.tweens.add({
       targets: this.player,
-      x: APARTMENT_ENTRANCE.x,
-      y: APARTMENT_DOOR_BOTTOM - 18,
+      x: entrance.x,
+      y: doorBottom - 18,
       duration: 360,
       ease: 'Sine.inOut',
       onComplete: () => {
@@ -3936,7 +4111,8 @@ export class GameScene extends Phaser.Scene {
     this.basilPotSelected = false;
     this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
-    this.player.setPosition(APARTMENT_ENTRANCE.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
+    const entrance = this.getActiveHomeEntrance();
+    this.player.setPosition(entrance.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.setRepairPickupPresentationVisible(this.repairPickupReady);
     this.updateProgressVisuals();
     this.destinationMarker.setVisible(false);
@@ -4206,11 +4382,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawHomeInterior(): void {
+    const growingSpots = this.getActiveGrowingSpots();
+    const secondRental = this.activeProperty === 'second-rental';
     const room = this.add.graphics().setDepth(-100);
-    room.fillStyle(0x252a2d, 1).fillRect(0, 0, HOME_WORLD_WIDTH, HOME_WORLD_HEIGHT);
+    room.fillStyle(secondRental ? 0x314246 : 0x252a2d, 1).fillRect(0, 0, HOME_WORLD_WIDTH, HOME_WORLD_HEIGHT);
     room.fillStyle(0x454c4e, 1).fillRect(48, 80, HOME_WORLD_WIDTH - 96, HOME_WORLD_HEIGHT - 128);
     room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(48, 80, HOME_WORLD_WIDTH - 96, HOME_WORLD_HEIGHT - 128);
     room.lineStyle(3, 0x697271, 0.8).lineBetween(48, 430, HOME_WORLD_WIDTH - 48, 430);
+    if (secondRental) {
+      room.lineStyle(6, 0x9aa5a3, 0.9).lineBetween(450, 120, 450, 420);
+      room.lineStyle(4, 0xf6f7f3, 0.9).lineBetween(450, 430, 450, 640);
+      room.fillStyle(0x1d2527, 0.9).fillRect(82, 112, 330, 34).fillRect(500, 112, 330, 34);
+      this.homeObjects.push(this.add.text(247, 129, 'LIVING ROOM', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
+      this.homeObjects.push(this.add.text(665, 129, 'GROWING ROOM · 6 POSITIONS', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
+    }
     this.homeObjects.push(room);
 
     const window = this.add.graphics().setDepth(3);
@@ -4220,18 +4405,18 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.push(window);
 
     const growTable = this.add.graphics().setDepth(3);
-    const firstSlot = HOME_GROWING_SPOTS[0];
-    const lastSlot = HOME_GROWING_SPOTS[HOME_GROWING_SPOTS.length - 1];
+    const firstSlot = growingSpots[0];
+    const lastSlot = growingSpots[growingSpots.length - 1];
     const tableLeft = firstSlot.x - 48;
     const tableRight = lastSlot.x + 48;
     growTable.fillStyle(0x111416, 1).fillRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
     growTable.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
-    HOME_GROWING_SPOTS.forEach((spot) => {
+    growingSpots.forEach((spot) => {
       growTable.fillStyle(0x697271, 1).fillRect(spot.x - 38, spot.y - 27, 76, 54);
       growTable.lineStyle(3, 0xf6f7f3, 0.95).strokeRect(spot.x - 38, spot.y - 27, 76, 54);
     });
     this.homeObjects.push(growTable);
-    HOME_GROWING_SPOTS.forEach((spot, index) => {
+    growingSpots.forEach((spot, index) => {
       const slotLabel = this.add.text(spot.x, spot.y + 31, `SLOT ${index + 1}`, {
         color: '#f6f7f3', fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(7);
@@ -4255,7 +4440,7 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.push(exit);
 
     const labels = [
-      { text: 'YOUR RENTAL', x: HOME_WORLD_WIDTH / 2, y: 112, size: '26px' },
+      { text: secondRental ? 'TWO-ROOM RENTAL' : 'YOUR RENTAL', x: HOME_WORLD_WIDTH / 2, y: 112, size: '26px' },
       { text: 'GROW TABLE', x: HOME_WORLD_WIDTH / 2, y: firstSlot.y + 70, size: '14px' },
       { text: 'WINDOW', x: 705, y: 326, size: '14px' },
       { text: 'EXIT', x: HOME_EXIT.x, y: HOME_EXIT.y + 28, size: '14px' },
@@ -4272,7 +4457,7 @@ export class GameScene extends Phaser.Scene {
   private drawHomeInteriorKit(): void {
     this.homeStarterKitObjects.forEach((object) => object.destroy());
     this.homeStarterKitObjects = [];
-    if (!this.homeInterior) return;
+    if (!this.homeInterior || this.activeProperty === 'second-rental') return;
     const kit = this.add.graphics().setDepth(4);
     kit.fillStyle(0x111416, 1).fillRect(HOME_STARTER_KIT.x - 95, HOME_STARTER_KIT.y - 46, 190, 72);
     kit.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(HOME_STARTER_KIT.x - 95, HOME_STARTER_KIT.y - 46, 190, 72);
@@ -4587,10 +4772,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     const bounds = desktop
-      ? { left: 560, right: 2530, top: 390, bottom: 1240 }
+      ? { left: 560, right: 2990, top: 390, bottom: 1240 }
       : compactLandscape
-        ? { left: 540, right: 2400, top: 430, bottom: 1210 }
-        : { left: 540, right: 2450, top: 390, bottom: 1240 };
+        ? { left: 540, right: 2880, top: 430, bottom: 1210 }
+        : { left: 540, right: 2940, top: 390, bottom: 1240 };
     const fittedZoom = this.fitZoom(
       viewportWidth,
       viewportHeight,

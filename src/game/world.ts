@@ -1,5 +1,6 @@
 export type BuildingKind = 'shop' | 'homes' | 'plants' | 'apartment';
 export type PropertyListingKey = 'cheap-rental' | 'mid-rental' | 'high-property';
+export type PropertyId = 'none' | 'starter-apartment' | 'second-rental';
 
 export interface Building {
   key: string;
@@ -24,13 +25,14 @@ export const OPPOSITE_PAVEMENT_MAX_Y = 1240;
 export const CROSSING_START_X = 1406;
 export const CROSSING_END_X = 1666;
 export const STARTING_WALKABLE_MIN_X = 540;
-export const STARTING_WALKABLE_MAX_X = 2540;
+export const STARTING_WALKABLE_MAX_X = 3000;
 
 export const BUILDINGS: Building[] = [
   { key: 'starter-apartment', label: 'STARTER APARTMENT', kind: 'apartment', x: 620, y: 465, width: 430, height: 365 },
   { key: 'buy-sell', label: 'BUY / SELL', kind: 'shop', x: 1120, y: 505, width: 350, height: 325 },
   { key: 'homes', label: 'REAL ESTATE AGENT', kind: 'homes', x: 1510, y: 490, width: 380, height: 340 },
   { key: 'plants', label: 'NURSERY COMING SOON', kind: 'plants', x: 1940, y: 510, width: 360, height: 320 },
+  { key: 'second-rental', label: 'TWO-ROOM RENTAL', kind: 'apartment', x: 2460, y: 465, width: 430, height: 365 },
 ];
 
 export interface FutureZone {
@@ -57,7 +59,7 @@ export const FUTURE_ZONES: FutureZone[] = [
     key: 'east-gardens',
     label: 'EAST GARDENS',
     condition: 'Provisional garden district',
-    x: 2600,
+    x: 3060,
     y: 520,
     width: 690,
     height: 270,
@@ -205,6 +207,9 @@ export const APARTMENT_DOOR_WIDTH = 60;
 export const APARTMENT_DOOR_TOP = 683;
 export const APARTMENT_DOOR_BOTTOM = 769;
 export const APARTMENT_ENTRANCE = { x: 835, y: 864 };
+export const SECOND_RENTAL_ENTRANCE = { x: 2675, y: 864 };
+export const SECOND_RENTAL_DOOR_TOP = 683;
+export const SECOND_RENTAL_DOOR_BOTTOM = 769;
 export const OPENING_TOWER = { x: 540, y: -1320, width: 500, height: 2210 };
 export const OPENING_DROP_POINT = { x: 715, y: -1080 };
 // The collectible sits on the lower edge of the front pavement: with its
@@ -233,6 +238,14 @@ export const HOME_GROWING_SPOTS = [
   { x: 495, y: 470 },
   { x: 610, y: 470 },
 ] as const;
+export const SECOND_HOME_GROWING_SPOTS = [
+  { x: 170, y: 470 },
+  { x: 300, y: 470 },
+  { x: 430, y: 470 },
+  { x: 560, y: 470 },
+  { x: 690, y: 470 },
+  { x: 800, y: 470 },
+] as const;
 // Backwards-compatible centre reference for callers that do not need slot
 // selection. The active pot uses HOME_GROWING_SPOTS[starterPotSlot].
 export const HOME_GROWING_SPOT = HOME_GROWING_SPOTS[1];
@@ -248,6 +261,11 @@ export const OPENING_POTHOS_SALE_PRICE = 5;
 export const WINDOW_JOB_REWARD = 9;
 export const REPAIRED_POT_SALE_PRICE = 75;
 export const RENTAL_BOND_COST = 60;
+// Pass 5 prototype values. These are intentionally provisional and are not
+// a rent/bills system: the starter bond transfers and only the difference is
+// paid when moving to the second rental.
+export const SECOND_RENTAL_TOTAL_BOND = 120;
+export const SECOND_RENTAL_MOVE_COST = 60;
 export const SHOP_BUYBACK_MARKUP_NUMERATOR = 140;
 export const SHOP_BUYBACK_MARKUP_DENOMINATOR = 100;
 

@@ -18,6 +18,8 @@ import {
   REPAIRED_POT_SALE_PRICE,
   WINDOW_JOB_REWARD,
   RENTAL_BOND_COST,
+  SECOND_RENTAL_MOVE_COST,
+  SECOND_RENTAL_TOTAL_BOND,
   SMALL_BASIC_PLASTIC_POT_PRICE,
   WORLD_WIDTH,
   type PropertyListingKey,
@@ -26,6 +28,7 @@ import {
 import { DEFAULT_SHOP_STOCK_QUALITY } from '../game/progress';
 import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool } from '../game/progress';
 import type { AlexGraphics } from '../game/progress';
+import type { PropertyId } from '../game/world';
 import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
 import type { GrowingPotState } from '../game/growing';
 
@@ -95,6 +98,10 @@ export class HudController {
   private starterKitClaimed = false;
   private rentalBondPaid = false;
   private rentalKeyOwned = false;
+  private activeProperty: PropertyId = 'none';
+  private rentalBondTotal = 0;
+  private basilHarvestSaleRecorded = false;
+  private mintHarvestSaleRecorded = false;
   private hasCollectedSaleableItem = false;
   private saleComplete = false;
   private paidWorkComplete = false;
@@ -306,7 +313,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -325,6 +332,10 @@ export class HudController {
     this.starterKitClaimed = state.starterKitClaimed ?? this.starterKitClaimed;
     this.rentalBondPaid = state.rentalBondPaid ?? this.rentalBondPaid;
     this.rentalKeyOwned = state.rentalKeyOwned ?? this.rentalKeyOwned;
+    this.activeProperty = state.activeProperty ?? this.activeProperty;
+    this.rentalBondTotal = state.rentalBondTotal ?? this.rentalBondTotal;
+    this.basilHarvestSaleRecorded = state.basilHarvestSaleRecorded ?? this.basilHarvestSaleRecorded;
+    this.mintHarvestSaleRecorded = state.mintHarvestSaleRecorded ?? this.mintHarvestSaleRecorded;
     this.hasCollectedSaleableItem = state.hasCollectedSaleableItem ?? this.hasCollectedSaleableItem;
     this.saleComplete = state.saleComplete ?? this.saleComplete;
     this.paidWorkComplete = state.paidWorkComplete ?? this.paidWorkComplete;
@@ -359,6 +370,7 @@ export class HudController {
       'grow-mint': 'Wait for the mint to grow',
       'harvest-mint': 'Harvest the mature mint',
       'sell-mint': 'Sell the mint harvest at BUY / SELL',
+      'move-rental': 'Move into a bigger rental',
     };
     this.objectiveText.textContent = this.rentalBondPaid ? (this.starterKitClaimed ? labels[state.task] : 'Enter the apartment and claim the starter kit') : 'Find a place to live';
     this.objectiveButton.classList.toggle('is-housing-objective', !this.rentalBondPaid);
@@ -1062,7 +1074,7 @@ export class HudController {
         this.brokenPotPiecesOwned > 0 ? `<div class="inventory-item"><span class="inventory-art">◈</span><div><strong>Broken pot pieces ×${this.brokenPotPiecesOwned}</strong><small>Collected piece${this.brokenPotPiecesOwned === 1 ? '' : 's'} added to the Bag. Find the remaining pieces.</small></div></div>` : '',
         this.starterKitClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.seedQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>${getPlantDefinition(species).seedLabel} ×${this.seedQuantities[species]}</strong><small>Plant one in any empty placed pot.</small></div></div>` : ''),
-        this.rentalKeyOwned ? '<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>Starter apartment key</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>' : '',
+        this.rentalKeyOwned ? `<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>${this.activeProperty === 'second-rental' ? 'Two-room rental key' : 'Starter apartment key'}</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>` : '',
         this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its growth timer.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>${getPlantDefinition(species).harvestLabel} ×${this.harvestQuantities[species]}</strong><small>Sell each harvest at BUY / SELL for ${getPlantDefinition(species).harvestPrice} coins.</small></div></div>` : ''),
       ].filter(Boolean).join('');
@@ -1093,19 +1105,21 @@ export class HudController {
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
         'sell-basil': 'Sell the basil harvest at BUY / SELL', 'buy-seeds': 'Buy seeds for another grow-table crop',
         'plant-mint': 'Plant mint in an empty grow-table pot', 'water-mint': 'Water the planted mint',
-        'grow-mint': 'Wait for the mint to grow', 'harvest-mint': 'Harvest the mature mint', 'sell-mint': 'Sell the mint harvest at BUY / SELL',
+        'grow-mint': 'Wait for the mint to grow', 'harvest-mint': 'Harvest the mature mint', 'sell-mint': 'Sell the mint harvest at BUY / SELL', 'move-rental': 'Move into a bigger rental',
       };
+      const rental = this.scene?.getPropertyPanelState();
+      const moveChecklist = this.activeTask === 'move-rental' && rental ? `<div class="housing-checklist"><div class="housing-check ${rental.basilHarvestSaleRecorded ? 'is-complete' : ''}"><span>${rental.basilHarvestSaleRecorded ? '✓' : '○'}</span>Sell a basil harvest</div><div class="housing-check ${rental.mintHarvestSaleRecorded ? 'is-complete' : ''}"><span>${rental.mintHarvestSaleRecorded ? '✓' : '○'}</span>Sell a mint harvest</div><div class="housing-check ${rental.coins >= SECOND_RENTAL_MOVE_COST || rental.activeProperty === 'second-rental' ? 'is-complete' : ''}"><span>${rental.coins >= SECOND_RENTAL_MOVE_COST || rental.activeProperty === 'second-rental' ? '✓' : '○'}</span>Save the additional ${SECOND_RENTAL_MOVE_COST} coins</div><div class="housing-check ${rental.activeProperty === 'second-rental' ? 'is-complete' : ''}"><span>${rental.activeProperty === 'second-rental' ? '✓' : '○'}</span>Arrange the move at the Real Estate Agent</div><div class="housing-check ${rental.activeProperty === 'second-rental' ? 'is-complete' : ''}"><span>${rental.activeProperty === 'second-rental' ? '✓' : '○'}</span>Enter the new rental</div></div>` : '';
       return {
         title: 'Tasks',
-        body: `<div class="task-card ${complete ? 'is-complete' : ''}"><span class="task-check">${complete ? '✓' : '○'}</span><div><strong>${taskLabel[this.activeTask]}</strong><small>${complete ? 'The opening jobs are complete.' : 'The next objective updates as Alex works.'}</small></div></div>`,
+        body: `<div class="task-card ${complete ? 'is-complete' : ''}"><span class="task-check">${complete ? '✓' : '○'}</span><div><strong>${taskLabel[this.activeTask]}</strong><small>${this.activeTask === 'move-rental' ? 'A larger rental keeps the starter bond and adds growing space.' : complete ? 'The opening jobs are complete.' : 'The next objective updates as Alex works.'}</small></div></div>${moveChecklist}`,
       };
     }
     if (kind === 'home') {
-    const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, rentalKeyOwned: false, starterKitClaimed: false };
+    const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, rentalKeyOwned: false, starterKitClaimed: false, activeProperty: 'none' as PropertyId, rentalBondTotal: 0 };
       return {
         title: 'Home',
         body: rental.rentalBondPaid
-          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>YOUR STARTER RENTAL</strong><small>Apartment key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Access: use the STARTER APARTMENT door on the street.</small><small>${rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small><small>${rental.starterKitClaimed ? 'Place the pot and begin the repeatable basil growing loop.' : 'Enter the apartment to claim the one-time starter kit.'}</small></div>`
+          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>${rental.activeProperty === 'second-rental' ? 'YOUR TWO-ROOM RENTAL' : 'YOUR STARTER RENTAL'}</strong><small>Key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Bond recorded: ${rental.rentalBondTotal} coins.</small><small>Access: use the ${rental.activeProperty === 'second-rental' ? 'TWO-ROOM RENTAL' : 'STARTER APARTMENT'} door on the street.</small><small>${rental.activeProperty === 'second-rental' ? 'Two rooms · six growing positions. Rental space does not include six free pots.' : rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small></div>`
           : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at the REAL ESTATE AGENT to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
       };
     }
@@ -1193,6 +1207,14 @@ export class HudController {
     if (payBond) this.bindButtonActivation(payBond, () => {
       if (this.scene?.payRentalBond()) this.closePanel();
     });
+    const reviewMove = this.panelBody.querySelector<HTMLButtonElement>('[data-review-second-rental]');
+    if (reviewMove) this.bindButtonActivation(reviewMove, () => this.scene?.reviewSecondRentalMove());
+    const confirmMove = this.panelBody.querySelector<HTMLButtonElement>('[data-confirm-second-rental]');
+    if (confirmMove) this.bindButtonActivation(confirmMove, () => {
+      if (this.scene?.confirmSecondRentalMove()) this.closePanel();
+    });
+    const cancelMove = this.panelBody.querySelector<HTMLButtonElement>('[data-cancel-second-rental]');
+    if (cancelMove) this.bindButtonActivation(cancelMove, () => this.scene?.cancelSecondRentalMove());
   }
 
   private bindBasilPanel(): void {
@@ -1344,9 +1366,24 @@ export class HudController {
       rentalBondPaid: false,
       rentalKeyOwned: false,
       starterKitClaimed: false,
+      activeProperty: 'none' as PropertyId,
+      rentalBondTotal: 0,
+      basilHarvestSaleRecorded: false,
+      mintHarvestSaleRecorded: false,
+      secondRentalMoveConfirmation: false,
     };
     if (listing === 'mid-rental') {
-      return '<div class="property-details"><div class="property-heading">TO RENT <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Larger future rental preview"><span>ROOMS</span><span>GARDEN</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>Mid-level rental</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A larger future home for a later part of the prototype. No price or unlock condition has been set yet.</p></div>';
+      const eligible = state.basilHarvestSaleRecorded && state.mintHarvestSaleRecorded;
+      const occupied = state.activeProperty === 'second-rental';
+      const checklist = `<div class="property-details-list"><span>BASIL HARVEST SOLD <b>${state.basilHarvestSaleRecorded ? 'COMPLETE' : 'REQUIRED'}</b></span><span>MINT HARVEST SOLD <b>${state.mintHarvestSaleRecorded ? 'COMPLETE' : 'REQUIRED'}</b></span><span>GROWING POSITIONS <b>6</b></span><span>TOTAL REFUNDABLE BOND <b>${SECOND_RENTAL_TOTAL_BOND} COINS</b></span><span>EXISTING BOND TRANSFERRED <b>${RENTAL_BOND_COST} COINS</b></span><span>ADDITIONAL PAYMENT <b>${SECOND_RENTAL_MOVE_COST} COINS</b></span></div>`;
+      const moveContent = occupied
+        ? '<div class="property-status is-unlocked">YOUR TWO-ROOM RENTAL · ACCESS UNLOCKED</div><p class="property-note">The starter apartment was returned. Pots and crops moved with Alex; extra positions do not create free pots.</p>'
+        : !eligible
+          ? '<p class="property-warning">Complete one genuine basil harvest sale and one genuine mint harvest sale before arranging the move.</p>'
+          : state.secondRentalMoveConfirmation
+            ? `<div class="property-confirmation"><strong>CONFIRM MOVE</strong><p class="property-note">The existing ${RENTAL_BOND_COST}-coin bond transfers. Pay ${SECOND_RENTAL_MOVE_COST} additional coins. Pots and plants move with Alex, and the old apartment is returned.</p><button class="property-action" type="button" data-confirm-second-rental>CONFIRM MOVE · ${SECOND_RENTAL_MOVE_COST} COINS</button><button class="property-secondary-action" type="button" data-cancel-second-rental>CANCEL</button></div>`
+            : `<p class="property-note">The starter bond transfers. Save ${SECOND_RENTAL_MOVE_COST} additional coins to move.</p><button class="property-action" type="button" data-review-second-rental>ARRANGE MOVE</button>`;
+      return `<div class="property-details"><div class="property-heading">TO RENT <span>TWO-ROOM RENTAL</span></div><div class="property-preview" aria-label="Two-room rental preview"><span>LIVING<br>ROOM</span><span>GROWING<br>ROOM</span><span>6<br>SLOTS</span></div>${checklist}${moveContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
     }
     if (listing === 'high-property') {
       return '<div class="property-details"><div class="property-heading">FOR SALE <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Future property preview"><span>HOUSE</span><span>LAND</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>High-level property</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A future property listing. Price, unlock conditions and interior access are not available in this prototype.</p></div>';

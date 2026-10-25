@@ -1,5 +1,7 @@
 import { createEmptyGrowingPot, GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, type GrowingCropState, type GrowingPotState } from './growing';
 import { emptyPlantQuantities, PLANT_SPECIES, type PlantSpecies, type PlantStage } from './plants';
+import { RENTAL_BOND_COST, SECOND_RENTAL_TOTAL_BOND } from './world';
+import type { PropertyId } from './world';
 
 export type PotCondition = 'ordinary' | 'broken' | 'repaired';
 export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot';
@@ -35,7 +37,7 @@ export const DEFAULT_SHOP_STOCK_QUALITY = 'standard';
 
 export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' | 'complete'
   | 'place-pot' | 'plant-basil' | 'water-basil' | 'grow-basil' | 'harvest-basil' | 'sell-basil'
-  | 'plant-mint' | 'water-mint' | 'grow-mint' | 'harvest-mint' | 'sell-mint' | 'buy-seeds';
+  | 'plant-mint' | 'water-mint' | 'grow-mint' | 'harvest-mint' | 'sell-mint' | 'buy-seeds' | 'move-rental';
 
 export interface ProgressState {
   openingComplete: boolean;
@@ -68,6 +70,10 @@ export interface ProgressState {
   task: TaskState;
   rentalBondPaid: boolean;
   rentalKeyOwned: boolean;
+  activeProperty: PropertyId;
+  rentalBondTotal: number;
+  basilHarvestSaleRecorded: boolean;
+  mintHarvestSaleRecorded: boolean;
   starterKitClaimed: boolean;
   starterKitGranted: boolean;
 
@@ -123,6 +129,10 @@ export const DEFAULT_PROGRESS: ProgressState = {
   task: 'find',
   rentalBondPaid: false,
   rentalKeyOwned: false,
+  activeProperty: 'none',
+  rentalBondTotal: 0,
+  basilHarvestSaleRecorded: false,
+  mintHarvestSaleRecorded: false,
   starterKitClaimed: false,
   starterKitGranted: false,
   growingPots: [],
@@ -236,7 +246,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const rawTask = input.task;
   const task: TaskState = rawTask === 'sell' || rawTask === 'clean' || rawTask === 'repair' || rawTask === 'sell-repaired' || rawTask === 'complete'
     || rawTask === 'place-pot' || rawTask === 'plant-basil' || rawTask === 'water-basil' || rawTask === 'grow-basil' || rawTask === 'harvest-basil' || rawTask === 'sell-basil'
-    || rawTask === 'plant-mint' || rawTask === 'water-mint' || rawTask === 'grow-mint' || rawTask === 'harvest-mint' || rawTask === 'sell-mint' || rawTask === 'buy-seeds' ? rawTask : 'find';
+    || rawTask === 'plant-mint' || rawTask === 'water-mint' || rawTask === 'grow-mint' || rawTask === 'harvest-mint' || rawTask === 'sell-mint' || rawTask === 'buy-seeds' || rawTask === 'move-rental' ? rawTask : 'find';
   const cleanerOwned = Boolean(input.cleanerOwned);
   const repairToolOwned = Boolean(input.repairToolOwned);
   const wateringCanOwned = Boolean(input.wateringCanOwned);
@@ -279,6 +289,12 @@ export function sanitizeProgress(value: unknown): ProgressState {
     || Boolean(input.placedWorldItem)
     || (Array.isArray(input.growingPots) && input.growingPots.length > 0);
   const openingComplete = typeof input.openingComplete === 'boolean' ? input.openingComplete : legacyProgressExists;
+  const rentalBondPaid = Boolean(input.rentalBondPaid);
+  const requestedProperty = input.activeProperty === 'second-rental' || input.activeProperty === 'starter-apartment' ? input.activeProperty : null;
+  const activeProperty: PropertyId = rentalBondPaid ? (requestedProperty ?? 'starter-apartment') : 'none';
+  const rentalBondTotal = rentalBondPaid ? (activeProperty === 'second-rental' ? SECOND_RENTAL_TOTAL_BOND : RENTAL_BOND_COST) : 0;
+  const shopHasBasilSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-basil-leaves');
+  const shopHasMintSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-mint-leaves');
   const progress: ProgressState = {
     openingComplete,
     graphicsUpgradeUnlocked,
@@ -293,7 +309,10 @@ export function sanitizeProgress(value: unknown): ProgressState {
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
     brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,
-    rentalBondPaid: Boolean(input.rentalBondPaid), rentalKeyOwned: Boolean(input.rentalKeyOwned) || Boolean(input.rentalBondPaid), starterKitClaimed: Boolean(input.starterKitClaimed), starterKitGranted: Boolean(input.starterKitGranted),
+    rentalBondPaid, rentalKeyOwned: Boolean(input.rentalKeyOwned) || rentalBondPaid, activeProperty, rentalBondTotal,
+    basilHarvestSaleRecorded: Boolean(input.basilHarvestSaleRecorded) || shopHasBasilSaleEvidence,
+    mintHarvestSaleRecorded: Boolean(input.mintHarvestSaleRecorded) || shopHasMintSaleEvidence,
+    starterKitClaimed: Boolean(input.starterKitClaimed), starterKitGranted: Boolean(input.starterKitGranted),
     growingPots: sanitizeGrowingPots(input), seedQuantities: seeds, harvestQuantities: harvests, growingEvents: events,
     additionalGrowingPotsPurchased: Math.max(0, Math.min(MAX_ADDITIONAL_GROWING_POTS, quantity(input.additionalGrowingPotsPurchased))),
     starterPotPlaced: false, starterPotSlot: 1, basilPlanted: false, basilSeeds: 0, basilHarvests: 0, basilGrowthStartedAt: null, basilCycleCount: 0,
