@@ -1327,7 +1327,11 @@ export class GameScene extends Phaser.Scene {
     this.updateProgressVisuals();
     this.saveProgress();
     this.syncHudState();
-    this.showToast(`HOMES window clean. +${WINDOW_JOB_REWARD} coins. A repair tool and glue were added.`);
+    this.hud.highlightToolSelector();
+    this.hud.highlightBag();
+    this.toastTimer?.remove(false);
+    this.toastTimer = undefined;
+    this.hud.showDismissibleToast(`WINDOW JOB COMPLETE. +${WINDOW_JOB_REWARD} COINS. REPAIR TOOL EQUIPPED IN TOOLS BESIDE ZOOM. GLUE ×1 IS IN BAG. COLLECT THE BROKEN POT PIECES OUTSIDE.`);
   }
 
   beginPortableRepair(): void {

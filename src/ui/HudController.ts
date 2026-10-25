@@ -239,7 +239,7 @@ export class HudController {
       find: 'Find a Small Golden Pothos',
       sell: 'Sell the Small Golden Pothos at BUY / SELL',
       clean: 'Clean the HOMES estate-agent window',
-      repair: 'Repair the broken pot',
+      repair: 'Find broken pot pieces; repair with tool + glue',
       'sell-repaired': 'Sell the repaired pot at BUY / SELL',
       complete: 'Prototype task complete',
       'place-pot': 'Place an owned pot on an empty grow-table slot',
@@ -306,6 +306,11 @@ export class HudController {
     if (!bagButton) return;
     bagButton.classList.add('is-highlighted');
     window.setTimeout(() => bagButton.classList.remove('is-highlighted'), 1200);
+  }
+
+  highlightToolSelector(): void {
+    this.toolSelector.classList.add('is-highlighted');
+    window.setTimeout(() => this.toolSelector.classList.remove('is-highlighted'), 2200);
   }
 
   refreshShopPanel(feedback = ''): void {
@@ -934,7 +939,7 @@ export class HudController {
       const complete = this.activeTask === 'complete';
       const taskLabel: Record<TaskState, string> = {
         find: 'Find a Small Golden Pothos', sell: 'Sell the Small Golden Pothos at BUY / SELL', clean: 'Clean the HOMES estate-agent window',
-        repair: 'Repair the broken pot', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
+        repair: 'Find broken pot pieces; repair with tool + glue', 'sell-repaired': 'Sell the repaired pot at BUY / SELL', complete: 'Prototype jobs complete',
         'place-pot': 'Place an owned pot on an empty grow-table slot', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
