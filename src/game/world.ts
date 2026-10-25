@@ -218,7 +218,7 @@ export const POT_POSITION = { x: 1080, y: 930 };
 export const START_POSITION = { x: 560, y: 890 };
 
 export const SHOP_WORLD_WIDTH = 900;
-export const SHOP_WORLD_HEIGHT = 700;
+export const SHOP_WORLD_HEIGHT = 900;
 export const SHOP_PLAYER_START = { x: 220, y: 555 };
 export const SHOP_COUNTER = { x: 450, y: 400 };
 export const SHOP_COUNTER_APPROACH = { x: 450, y: 525 };
@@ -239,9 +239,19 @@ export const SHOP_SHELF_SLOTS = [
 ] as const;
 // The interior exit sits in the bottom wall, farther right and close to the
 // room's lower edge so it reads as a real way out rather than a floating door.
-export const SHOP_EXIT = { x: 700, y: 646 };
-export const SHOP_EXIT_DOOR_TOP = SHOP_EXIT.y - BUY_SELL_DOOR_HEIGHT;
+// Alex is about 74 world units tall. A 1.15 scale makes this doorway roughly
+// 1.6 Alex heights: compact within the room, but still clearly usable.
+// Its interaction area remains separate and generous for touch input.
+export const SHOP_EXIT_DOOR_SCALE = 1.15;
+export const SHOP_EXIT_DOOR_WIDTH = Math.round(BUY_SELL_DOOR_WIDTH * SHOP_EXIT_DOOR_SCALE);
+export const SHOP_EXIT_DOOR_HEIGHT = Math.round(BUY_SELL_DOOR_HEIGHT * SHOP_EXIT_DOOR_SCALE);
+export const SHOP_EXIT = { x: 700, y: 850 };
+export const SHOP_EXIT_DOOR_TOP = SHOP_EXIT.y - SHOP_EXIT_DOOR_HEIGHT;
 export const SHOP_EXIT_DOOR_BOTTOM = SHOP_EXIT.y;
+export const SHOP_EXIT_ACTIVATION_HALF_WIDTH = 112;
+export const SHOP_EXIT_ACTIVATION_TOP = SHOP_EXIT_DOOR_BOTTOM - 270;
+export const SHOP_EXIT_ACTIVATION_BOTTOM = SHOP_EXIT_DOOR_BOTTOM + 28;
+export const SHOP_EXIT_MOVEMENT_TRIGGER_Y = SHOP_EXIT_DOOR_BOTTOM - 58;
 export const SHOP_HANDOVER_POINT = { x: 570, y: 515 };
 export const HOME_WORLD_WIDTH = 900;
 export const HOME_WORLD_HEIGHT = 700;

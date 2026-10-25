@@ -79,8 +79,14 @@ import {
   SHOP_COUNTER_HEIGHT,
   SHOP_COUNTER_WIDTH,
   SHOP_EXIT,
+  SHOP_EXIT_ACTIVATION_BOTTOM,
+  SHOP_EXIT_ACTIVATION_HALF_WIDTH,
+  SHOP_EXIT_ACTIVATION_TOP,
   SHOP_EXIT_DOOR_BOTTOM,
+  SHOP_EXIT_DOOR_HEIGHT,
   SHOP_EXIT_DOOR_TOP,
+  SHOP_EXIT_DOOR_WIDTH,
+  SHOP_EXIT_MOVEMENT_TRIGGER_Y,
   SHOP_HANDOVER_POINT,
   SHOP_PLAYER_START,
   SHOP_SHELF_SLOTS,
@@ -3606,7 +3612,7 @@ export class GameScene extends Phaser.Scene {
   private handleShopWorldPoint(pointX: number, pointY: number): void {
     const point = new Phaser.Math.Vector2(pointX, pointY);
     if (this.isNearShopExit(point)) {
-      const approach = new Phaser.Math.Vector2(SHOP_EXIT.x, SHOP_EXIT_DOOR_BOTTOM - 18);
+      const approach = new Phaser.Math.Vector2(SHOP_EXIT.x, SHOP_EXIT_DOOR_BOTTOM - 22);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
         this.selectPendingInteraction('exit-shop', approach);
       } else {
@@ -3720,9 +3726,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isNearShopExit(point: Phaser.Math.Vector2): boolean {
-    return Math.abs(point.x - SHOP_EXIT.x) <= 64
-      && point.y >= SHOP_EXIT_DOOR_TOP - 18
-      && point.y <= SHOP_EXIT_DOOR_BOTTOM + 14;
+    return Math.abs(point.x - SHOP_EXIT.x) <= SHOP_EXIT_ACTIVATION_HALF_WIDTH
+      && point.y >= SHOP_EXIT_ACTIVATION_TOP
+      && point.y <= SHOP_EXIT_ACTIVATION_BOTTOM;
   }
 
   private isNearHomeExit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
@@ -3786,11 +3792,11 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const inExitLane = Math.abs(this.player.x - SHOP_EXIT.x) <= BUY_SELL_DOOR_WIDTH / 2 + 8;
+    const inExitLane = Math.abs(this.player.x - SHOP_EXIT.x) <= SHOP_EXIT_ACTIVATION_HALF_WIDTH;
     const movingIntoExit = direction.y > 0.45 && inExitLane
       && previousY <= this.player.y
       && previousY <= SHOP_EXIT_DOOR_BOTTOM + 8
-      && this.player.y >= SHOP_EXIT_DOOR_BOTTOM - 26;
+      && this.player.y >= SHOP_EXIT_MOVEMENT_TRIGGER_Y;
     if (movingIntoExit) {
       this.exitShop();
       return true;
@@ -3809,7 +3815,7 @@ export class GameScene extends Phaser.Scene {
         BUY_SELL_DOOR_HEIGHT + 20,
       );
     } else if (interaction === 'exit-shop') {
-      this.interactionHighlight.strokeRect(point.x - BUY_SELL_DOOR_WIDTH / 2 - 10, SHOP_EXIT_DOOR_TOP - 10, BUY_SELL_DOOR_WIDTH + 20, BUY_SELL_DOOR_HEIGHT + 20);
+      this.interactionHighlight.strokeRect(point.x - SHOP_EXIT_DOOR_WIDTH / 2 - 10, SHOP_EXIT_DOOR_TOP - 10, SHOP_EXIT_DOOR_WIDTH + 20, SHOP_EXIT_DOOR_HEIGHT + 20);
     } else if (interaction === 'window-clean') {
       this.interactionHighlight.strokeRect(HOMES_WINDOW.x - 6, HOMES_WINDOW.y + 4, HOMES_WINDOW.width - 8, HOMES_WINDOW.height - 8);
     } else if (interaction === 'place-growing-pot') {
@@ -4086,7 +4092,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
     this.cancelTapWalk();
-    if (this.shopExitDoor) drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, true);
+    if (this.shopExitDoor) drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, SHOP_EXIT_DOOR_WIDTH, SHOP_EXIT_DOOR_HEIGHT, true);
     this.tweens.add({
       targets: this.player,
       x: SHOP_EXIT.x,
@@ -4173,9 +4179,9 @@ export class GameScene extends Phaser.Scene {
     const fittedZoom = Math.min(
       this.scale.width / SHOP_WORLD_WIDTH,
       this.scale.height / SHOP_WORLD_HEIGHT,
-    ) * 0.92;
-    // The compact room now fits almost entirely within a portrait gameplay
-    // viewport while retaining a small minimum scale on very short phones.
+    );
+    // The square room fits the square portrait gameplay viewport while
+    // retaining a small minimum scale on very short phones.
     const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
     const zoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
     this.cameras.main.setBounds(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
@@ -4245,7 +4251,7 @@ export class GameScene extends Phaser.Scene {
     this.shopObjects.push(this.shopkeeper);
 
     this.shopExitDoor = this.add.graphics().setDepth(4);
-    drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, false);
+    drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, SHOP_EXIT_DOOR_WIDTH, SHOP_EXIT_DOOR_HEIGHT, false);
     this.shopObjects.push(this.shopExitDoor);
 
     const labels = [

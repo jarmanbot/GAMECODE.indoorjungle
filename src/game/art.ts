@@ -364,18 +364,27 @@ function drawBuySellBuilding(scene: Phaser.Scene, building: Building, graphicsUp
 
 export function drawMatchingDoor(g: Phaser.GameObjects.Graphics, centerX: number, doorTop: number, width: number, height: number, open: boolean): void {
   const doorX = centerX - width / 2;
+  const frameInset = Math.max(4, Math.round(width * 0.1875));
+  const openInset = Math.max(4, Math.round(width * 0.125));
+  const windowTop = Math.max(5, Math.round(height * 0.135));
+  const windowHeight = Math.max(12, Math.round(height * 0.404));
+  const knobSize = Math.max(3, Math.round(width * 0.078));
+  const knobRightInset = Math.max(7, Math.round(width * 0.234));
+  const knobY = Math.round(height * 0.692);
+  const lowerPanelHeight = Math.max(12, Math.round(height * 0.269));
+  const borderWidth = Math.max(2, Math.round(width * 0.0625));
   g.clear();
   if (open) {
     g.fillStyle(0x07090a, 1).fillRect(doorX, doorTop, width, height);
-    g.fillStyle(0x252a2d, 1).fillRect(doorX + 8, doorTop + 8, width - 16, height - 8);
-    g.fillStyle(0x111416, 1).fillRect(doorX + 12, doorTop + height - 36, width - 24, 28);
+    g.fillStyle(0x252a2d, 1).fillRect(doorX + openInset, doorTop + openInset, width - openInset * 2, height - openInset);
+    g.fillStyle(0x111416, 1).fillRect(doorX + frameInset, doorTop + height - lowerPanelHeight - openInset, width - frameInset * 2, lowerPanelHeight);
   } else {
     g.fillStyle(WHITE, 1).fillRect(doorX, doorTop, width, height);
-    g.fillStyle(0x9ea5a5, 1).fillRect(doorX + 12, doorTop + 14, width - 24, 42);
-    g.lineStyle(3, INK, 1).strokeRect(doorX + 12, doorTop + 14, width - 24, 42);
-    g.fillStyle(INK, 1).fillRect(doorX + width - 15, doorTop + 72, 5, 5);
+    g.fillStyle(0x9ea5a5, 1).fillRect(doorX + frameInset, doorTop + windowTop, width - frameInset * 2, windowHeight);
+    g.lineStyle(Math.max(2, borderWidth - 1), INK, 1).strokeRect(doorX + frameInset, doorTop + windowTop, width - frameInset * 2, windowHeight);
+    g.fillStyle(INK, 1).fillRect(doorX + width - knobRightInset, doorTop + knobY, knobSize, knobSize);
   }
-  g.lineStyle(4, open ? WHITE : INK, 1).strokeRect(doorX, doorTop, width, height);
+  g.lineStyle(borderWidth, open ? WHITE : INK, 1).strokeRect(doorX, doorTop, width, height);
 }
 
 function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean): void {
