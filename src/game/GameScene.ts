@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, drawMatchingDoor, setBuySellDoorOpen, type BasilVisualStage } from './art';
+import { drawNeighborhood, drawPot, drawGoldenPothos, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, drawMatchingDoor, drawStarterApartmentDoor, setBuySellDoorOpen, setStarterApartmentDoorOpen, type BasilVisualStage } from './art';
 import { AudioController } from './AudioController';
 import { PHONE_HYBRID_CONTROLS } from './config';
 import { createDevCheckpoint, type DevCheckpointScene } from './devCheckpoints';
@@ -151,6 +151,7 @@ export class GameScene extends Phaser.Scene {
   private repairPotDisplay?: Phaser.GameObjects.Graphics;
   private repairPickupPrompt?: Phaser.GameObjects.Text;
   private buySellDoor?: Phaser.GameObjects.Graphics;
+  private starterApartmentDoor?: Phaser.GameObjects.Graphics;
   private cars: Car[] = [];
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
@@ -288,6 +289,7 @@ export class GameScene extends Phaser.Scene {
     this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
     this.buySellDoor = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty);
+    this.starterApartmentDoor = drawStarterApartmentDoor(this);
     this.streetArtworkObjects = [...this.children.list];
     this.createWantedSign();
     this.createWindowDirtOverlay();
@@ -1364,6 +1366,7 @@ export class GameScene extends Phaser.Scene {
     this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
     if (this.buySellDoor) setBuySellDoorOpen(this.buySellDoor, false);
+    if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false);
     this.player.setAlpha(1).setVisible(true);
     this.cameras.main.stopFollow().resetFX();
     this.sprayEffect.clear().setVisible(false);
@@ -2420,6 +2423,7 @@ export class GameScene extends Phaser.Scene {
     this.streetArtworkObjects.forEach((object) => object.destroy());
     const before = new Set(this.children.list);
     this.buySellDoor = drawNeighborhood(this, this.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty);
+    this.starterApartmentDoor = drawStarterApartmentDoor(this);
     const added = this.children.list.filter((object) => !before.has(object));
     this.streetArtworkObjects = added;
     this.streetObjects = this.streetObjects.filter((object) => !oldArtwork.has(object));
@@ -2440,7 +2444,7 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.toastTimer?.remove(false);
     this.toastTimer = undefined;
-    this.hud.showDismissibleToast('Starter kit claimed: pot, watering can, basil seed ×1, mint seed ×1 and basic fertiliser ×1. Place the pot on the grow table.');
+    this.hud.showStarterKitClaimed();
     this.drawHomeInteriorKit();
     this.syncHudState();
   }
@@ -3055,7 +3059,7 @@ export class GameScene extends Phaser.Scene {
       const property = object.getData('property-id') as PropertyId;
       const occupied = property === this.activeProperty;
       object.setText(object.getData('rental-sign-role') === 'title'
-        ? (occupied ? 'YOUR HOME' : 'TO LET')
+        ? (occupied ? 'YOUR HOME' : property === 'starter-apartment' ? 'SINGLE ROOM TO LET' : 'TO LET')
         : (occupied ? 'ACCESS UNLOCKED' : property === 'second-rental' ? 'MOVE TO RENTAL' : '60 COINS'));
     });
   }
@@ -3610,7 +3614,9 @@ export class GameScene extends Phaser.Scene {
       const approach = this.getApartmentApproachPoint();
       if (this.activeProperty !== 'starter-apartment') {
         this.cancelTapWalk();
-        this.showToast('The starter apartment has been returned. Use the two-room rental.', 1800);
+        this.showToast(this.activeProperty === 'second-rental'
+          ? 'The starter apartment has been returned. Use the two-room rental.'
+          : 'Rental available. See the REAL ESTATE AGENT.', 1800);
         return;
       }
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 120) {
@@ -3860,13 +3866,15 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
       const inApartmentLane = Math.abs(this.player.x - APARTMENT_ENTRANCE.x) <= APARTMENT_DOOR_WIDTH / 2 + 8;
-      const movingIntoApartment = this.activeProperty === 'starter-apartment' && direction.y < -0.45 && inApartmentLane
+      const movingIntoApartment = direction.y < -0.45 && inApartmentLane
         && previousY >= this.player.y && this.player.y <= FRONT_PAVEMENT_MIN_Y + 10;
       if (movingIntoApartment) {
-        if (this.rentalBondPaid) this.enterHome();
+        if (this.rentalBondPaid && this.activeProperty === 'starter-apartment') this.enterHome();
         else if (performance.now() - this.rentalFeedbackAt > 900) {
           this.rentalFeedbackAt = performance.now();
-          this.showToast('Rent the starter apartment at the REAL ESTATE AGENT first.', 1500);
+          this.showToast(this.activeProperty === 'second-rental'
+            ? 'The starter apartment has been returned. Use the two-room rental.'
+            : 'Rental available. See the REAL ESTATE AGENT.', 1500);
         }
         return true;
       }
@@ -4154,6 +4162,9 @@ export class GameScene extends Phaser.Scene {
     this.player.setAlpha(1);
     const entrance = this.getActiveHomeEntrance();
     const doorBottom = this.activeProperty === 'second-rental' ? SECOND_RENTAL_DOOR_BOTTOM : APARTMENT_DOOR_BOTTOM;
+    if (this.activeProperty === 'starter-apartment' && this.starterApartmentDoor) {
+      setStarterApartmentDoorOpen(this.starterApartmentDoor, true);
+    }
     this.tweens.add({
       targets: this.player,
       x: entrance.x,
@@ -4287,6 +4298,7 @@ export class GameScene extends Phaser.Scene {
     this.basilPotSelected = false;
     this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
+    if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false);
     const entrance = this.getActiveHomeEntrance();
     this.player.setPosition(entrance.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.setRepairPickupPresentationVisible(this.repairPickupReady);

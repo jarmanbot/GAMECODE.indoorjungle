@@ -28,7 +28,7 @@ export const STARTING_WALKABLE_MIN_X = 540;
 export const STARTING_WALKABLE_MAX_X = 3000;
 
 export const BUILDINGS: Building[] = [
-  { key: 'starter-apartment', label: 'STARTER APARTMENT', kind: 'apartment', x: 620, y: 465, width: 430, height: 365 },
+  { key: 'starter-apartment', label: 'POVO APPARTMENTS', kind: 'apartment', x: 780, y: 555, width: 300, height: 275 },
   { key: 'buy-sell', label: 'BUY / SELL', kind: 'shop', x: 1120, y: 505, width: 350, height: 325 },
   { key: 'homes', label: 'REAL ESTATE AGENT', kind: 'homes', x: 1510, y: 490, width: 380, height: 340 },
   { key: 'plants', label: 'NURSERY COMING SOON', kind: 'plants', x: 1940, y: 510, width: 360, height: 320 },
@@ -203,10 +203,11 @@ export const HOMES_LISTINGS: Array<{ key: PropertyListingKey; x: number; y: numb
   { key: 'mid-rental', x: 1680, y: 637, width: 78, height: 90 },
   { key: 'high-property', x: 1773, y: 637, width: 78, height: 90 },
 ];
-export const APARTMENT_DOOR_WIDTH = 60;
-export const APARTMENT_DOOR_TOP = 683;
-export const APARTMENT_DOOR_BOTTOM = 769;
-export const APARTMENT_ENTRANCE = { x: 835, y: 864 };
+export const APARTMENT_DOOR_WIDTH = BUY_SELL_DOOR_WIDTH;
+export const APARTMENT_DOOR_HEIGHT = BUY_SELL_DOOR_HEIGHT;
+export const APARTMENT_DOOR_TOP = BUY_SELL_DOOR_TOP;
+export const APARTMENT_DOOR_BOTTOM = BUY_SELL_DOOR_BOTTOM;
+export const APARTMENT_ENTRANCE = { x: 1030, y: 864 };
 export const SECOND_RENTAL_ENTRANCE = { x: 2675, y: 864 };
 export const SECOND_RENTAL_DOOR_TOP = 683;
 export const SECOND_RENTAL_DOOR_BOTTOM = 769;

@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import {
   BUILDINGS,
+  APARTMENT_DOOR_BOTTOM,
+  APARTMENT_DOOR_HEIGHT,
+  APARTMENT_DOOR_TOP,
+  APARTMENT_DOOR_WIDTH,
+  APARTMENT_ENTRANCE,
   BUY_SELL_DOOR_BOTTOM,
   BUY_SELL_DOOR_HEIGHT,
   BUY_SELL_DOOR_TOP,
@@ -289,7 +294,8 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
     }
   }
   g.fillStyle(INK, 1).fillRect(x + 18, y + 16, width - 36, 64);
-  addWorldLabel(scene, x + width / 2, y + 29, building.label, WHITE, building.kind === 'apartment' ? 17 : 23, true);
+  addWorldLabel(scene, x + width / 2, y + 29, building.label, WHITE,
+    building.key === 'starter-apartment' ? 22 : building.kind === 'apartment' ? 17 : 23, true);
 
   if (building.kind === 'homes') drawHomes(scene, g, building);
   if (building.kind === 'plants') drawPlants(scene, g, building, graphicsUpgradeInstalled);
@@ -395,6 +401,16 @@ export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: bool
   drawBuySellDoor(door, open);
 }
 
+export function drawStarterApartmentDoor(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
+  const door = scene.add.graphics().setDepth(29);
+  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, false);
+  return door;
+}
+
+export function setStarterApartmentDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
+  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, open);
+}
+
 function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
   const x = building.x;
   const y = building.y;
@@ -443,6 +459,39 @@ function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buildin
 function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean, secondRental = false): void {
   const x = building.x;
   const y = building.y;
+  if (!secondRental) {
+    g.fillStyle(0x1b2022, 1).fillTriangle(x - 14, y + 10, x + building.width / 2, y - 50, x + building.width + 14, y + 10);
+    g.lineStyle(7, WHITE, 0.95)
+      .lineBetween(x - 14, y + 10, x + building.width / 2, y - 50)
+      .lineBetween(x + building.width / 2, y - 50, x + building.width + 14, y + 10);
+    g.fillStyle(0x242a2c, 1).fillRect(x + 18, y + 80, building.width - 36, building.height - 80);
+    g.lineStyle(5, WHITE, 0.9).strokeRect(x + 18, y + 80, building.width - 36, building.height - 80);
+
+    const windowX = x + 28;
+    const windowY = y + 165;
+    g.fillStyle(0xadb4b3, 1).fillRect(windowX, windowY, 140, 80);
+    g.lineStyle(4, INK, 1).strokeRect(windowX, windowY, 140, 80);
+    g.lineBetween(windowX + 70, windowY, windowX + 70, windowY + 80);
+    g.lineBetween(windowX, windowY + 40, windowX + 140, windowY + 40);
+
+    g.fillStyle(INK, 1).fillRect(x + 24, y + 90, 190, 64);
+    g.lineStyle(3, WHITE, 0.9).strokeRect(x + 24, y + 90, 190, 64);
+    const rentalLabel = addWorldLabel(scene, x + 119, y + 108, rented ? 'YOUR HOME' : 'SINGLE ROOM TO LET', WHITE, 14, true);
+    rentalLabel.setData('apartment-rental-sign', true);
+    rentalLabel.setData('property-id', 'starter-apartment');
+    rentalLabel.setData('rental-sign-role', 'title');
+    const rentalPrice = addWorldLabel(scene, x + 119, y + 137, rented ? 'ACCESS UNLOCKED' : '60 COINS', 0xc4ccca, 13, true);
+    rentalPrice.setData('apartment-rental-sign', true);
+    rentalPrice.setData('property-id', 'starter-apartment');
+    rentalPrice.setData('rental-sign-role', 'detail');
+
+    const doorX = APARTMENT_ENTRANCE.x - APARTMENT_DOOR_WIDTH / 2;
+    g.fillStyle(0x6e7677, 1).fillRect(doorX - 10, APARTMENT_DOOR_BOTTOM, APARTMENT_DOOR_WIDTH + 20, 8);
+    g.fillStyle(0x858d8d, 1).fillRect(doorX - 6, APARTMENT_DOOR_BOTTOM + 8, APARTMENT_DOOR_WIDTH + 12, 8);
+    g.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 10, APARTMENT_DOOR_BOTTOM, doorX + APARTMENT_DOOR_WIDTH + 10, APARTMENT_DOOR_BOTTOM);
+    g.lineBetween(doorX - 6, APARTMENT_DOOR_BOTTOM + 8, doorX + APARTMENT_DOOR_WIDTH + 6, APARTMENT_DOOR_BOTTOM + 8);
+    return;
+  }
   g.fillStyle(0x1b2022, 1).fillTriangle(x - 18, y + 10, x + building.width / 2, y - 62, x + building.width + 18, y + 10);
   g.lineStyle(8, WHITE, 0.95)
     .lineBetween(x - 18, y + 10, x + building.width / 2, y - 62)
@@ -472,7 +521,6 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
   rentalPrice.setData('property-id', secondRental ? 'second-rental' : 'starter-apartment');
   rentalPrice.setData('rental-sign-role', 'detail');
   if (secondRental) addWorldLabel(scene, x + building.width / 2, y + 205, '2 ROOMS · 6 SLOTS', WHITE, 9, true);
-  addWorldLabel(scene, x + building.width / 2, y + 207, 'HOME DOOR', WHITE, 9, true);
 }
 
 function drawMiniHome(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number, height: number, actual: boolean): void {

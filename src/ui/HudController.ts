@@ -535,7 +535,7 @@ export class HudController {
   showToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-dismissible', 'is-opening-intro');
+    this.toast.classList.remove('is-dismissible', 'is-opening-intro', 'is-starter-kit');
     this.toastOk.hidden = true;
     this.toastClose.hidden = true;
     this.toast.classList.toggle('is-visible', Boolean(message));
@@ -544,7 +544,7 @@ export class HudController {
   showDismissibleToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-opening-intro');
+    this.toast.classList.remove('is-opening-intro', 'is-starter-kit');
     this.toast.classList.add('is-dismissible');
     this.toastOk.hidden = true;
     this.toastClose.hidden = false;
@@ -554,7 +554,18 @@ export class HudController {
   showOpeningIntro(message: string, action: () => void): void {
     this.toastDismissAction = action;
     this.toastMessage.textContent = message;
+    this.toast.classList.remove('is-starter-kit');
     this.toast.classList.add('is-dismissible', 'is-opening-intro');
+    this.toastOk.hidden = false;
+    this.toastClose.hidden = true;
+    this.toast.classList.add('is-visible');
+  }
+
+  showStarterKitClaimed(): void {
+    this.toastDismissAction = null;
+    this.toastMessage.innerHTML = '<strong>STARTER KIT CLAIMED</strong><span>Small basic pot ×1</span><span>Watering can ×1</span><span>Basil seeds ×1</span><span>Mint seeds ×1</span><span>Basic fertiliser ×1</span>';
+    this.toast.classList.remove('is-opening-intro');
+    this.toast.classList.add('is-dismissible', 'is-starter-kit');
     this.toastOk.hidden = false;
     this.toastClose.hidden = true;
     this.toast.classList.add('is-visible');
@@ -802,7 +813,7 @@ export class HudController {
     const mapRect = mapButton.getBoundingClientRect();
     const consoleRect = console.getBoundingClientRect();
     const halfJoystick = joystickRect.width / 2;
-    const desiredCenter = mapRect.left + mapRect.width / 2;
+    const desiredCenter = mapRect.left + mapRect.width / 2 + Math.min(14, mapRect.width * 0.3);
     const minimumCenter = panelRect.left + halfJoystick + 8;
     const maximumCenter = consoleRect.left - halfJoystick - 10;
     const safeCenter = maximumCenter >= minimumCenter
