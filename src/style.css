@@ -159,6 +159,10 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .toast { position: absolute; z-index: 40; left: 50%; top: 86px; display: flex; align-items: center; gap: 12px; transform: translate(-50%, -12px); opacity: 0; pointer-events: none; max-width: min(520px, calc(100vw - 32px)); padding: 12px 12px 12px 18px; background: #f6f7f3; color: #111416; border: 3px solid #111416; box-shadow: 5px 5px 0 #111416; text-align: center; font-size: 13px; font-weight: 900; transition: opacity .16s ease, transform .16s ease; }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 .toast.is-dismissible { pointer-events: auto; }
+.toast.is-opening-intro { width: min(680px, calc(100vw - 28px)); max-width: none; display: grid; grid-template-columns: 1fr; justify-items: stretch; gap: 16px; padding: 20px; text-align: left; font-size: clamp(14px, 2.2vw, 18px); line-height: 1.55; }
+.toast.is-opening-intro .toast-action { width: min(220px, 100%); min-height: 42px; height: auto; justify-self: center; }
+.toast-action { flex: 0 0 auto; min-width: 52px; height: 30px; padding: 0 10px; border: 2px solid #111416; background: #111416; color: #f6f7f3; font: inherit; font-weight: 900; cursor: pointer; }
+.toast-action:hover { background: #4a5253; }
 .toast-close { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border: 2px solid #111416; background: #f6f7f3; color: #111416; font: inherit; font-size: 22px; line-height: 24px; cursor: pointer; }
 .toast-close:hover { background: #111416; color: #f6f7f3; }
 

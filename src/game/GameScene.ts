@@ -1004,48 +1004,66 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.stopFollow();
     this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
     this.applyZoom(this.zoomMode);
+    // applyZoom restores ordinary street bounds; reinstate the negative-Y
+    // opening bounds so Alex and the tower roof are not clipped away.
+    this.cameras.main.stopFollow();
+    this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
     this.hud.setZoomMode(this.zoomMode);
     this.openingKick?.destroy();
+    this.openingKick = undefined;
+    if (this.toastTimer) this.toastTimer.remove(false);
+    this.toastTimer = undefined;
+    this.cameras.main.centerOn(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y - 120);
+    this.hud.showOpeningIntro(
+      'Alex the plant care service robot is considered obsolete. They are about to be tossed to the scrap heap.',
+      () => this.beginOpeningDescent(),
+    );
+  }
+
+  private beginOpeningDescent(): void {
+    if (!this.openingSequenceActive || this.openingSequenceTween) return;
+    // Begin from the exact tower drop point and keep Alex below the camera
+    // centre so the roof and upper doorway remain visible as the fall starts.
+    this.player.setPosition(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y).setRotation(0);
+    this.cameras.main.stopFollow();
+    this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
+    this.cameras.main.centerOn(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y - 120);
     this.openingKick = this.add.graphics().setDepth(32);
     this.openingKick.fillStyle(0x111416, 1).fillRect(-8, -7, 54, 18);
     this.openingKick.fillStyle(0xf6f7f3, 1).fillRect(34, -4, 18, 12);
     this.openingKick.lineStyle(3, 0x111416, 1).strokeRect(-8, -7, 60, 18);
     this.openingKick.setPosition(OPENING_DROP_POINT.x + 20, OPENING_DROP_POINT.y + 18);
-    this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 1200, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
-    // Hold on the upper doorway first so the tower roofline and the kick are
-    // visible before the camera begins following Alex down the full drop.
-    this.cameras.main.stopFollow();
-    this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
-    this.cameras.main.centerOn(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y - 120);
-    this.time.delayedCall(1500, () => {
-      if (!this.openingSequenceActive) return;
-      this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-      this.openingSequenceTween = this.tweens.add({
-        targets: this.player,
-        y: START_POSITION.y - 24,
-        duration: 6000,
-        ease: 'Cubic.easeIn',
-        onUpdate: () => {
+    this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 850, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12, 0, 120);
+    this.openingSequenceTween = this.tweens.add({
+      targets: this.player,
+      y: START_POSITION.y - 24,
+      duration: 4700,
+      ease: 'Cubic.easeIn',
+      onUpdate: (tween: Phaser.Tweens.Tween) => {
+        const progress = tween.progress;
+        const drift = Phaser.Math.Linear(OPENING_DROP_POINT.x, START_POSITION.x, progress);
+        const wobble = Math.sin(progress * Math.PI * 10) * (34 - progress * 12);
+        this.player.setX(drift + wobble).setRotation(Math.sin(progress * Math.PI * 8) * 0.12);
+        this.drawPlayer();
+        this.updateThoughtBubblePosition();
+      },
+      onComplete: () => {
+        if (!this.openingSequenceActive) return;
+        this.player.setX(START_POSITION.x).setRotation(0);
+        this.openingSequenceTween = this.tweens.add({
+          targets: this.player,
+          y: START_POSITION.y,
+          duration: 300,
+          ease: 'Bounce.easeOut',
+          onUpdate: () => {
           this.drawPlayer();
           this.updateThoughtBubblePosition();
-        },
-        onComplete: () => {
-          if (!this.openingSequenceActive) return;
-          this.openingSequenceTween = this.tweens.add({
-            targets: this.player,
-            y: START_POSITION.y,
-            duration: 300,
-            ease: 'Bounce.easeOut',
-            onUpdate: () => {
-              this.drawPlayer();
-              this.updateThoughtBubblePosition();
-            },
-            onComplete: () => this.finishOpeningSequence(),
-          });
-        },
-      });
+          },
+          onComplete: () => this.finishOpeningSequence(),
+        });
+      },
     });
-    this.showToast('Alex has been booted out. Recovering on the street...', 2200);
   }
 
   private finishOpeningSequence(): void {
@@ -1057,7 +1075,7 @@ export class GameScene extends Phaser.Scene {
     this.openingSequenceActive = false;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
-    this.player.setPosition(START_POSITION.x, START_POSITION.y).setAlpha(1).setVisible(true);
+    this.player.setPosition(START_POSITION.x, START_POSITION.y).setRotation(0).setAlpha(1).setVisible(true);
     this.cameras.main.stopFollow();
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.zoomMode = 'normal';

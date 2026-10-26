@@ -54,6 +54,7 @@ export class HudController {
   private readonly panelTitle = document.querySelector<HTMLElement>('#panel-title')!;
   private readonly panelBody = document.querySelector<HTMLElement>('#panel-body')!;
   private readonly toastMessage = document.querySelector<HTMLElement>('#toast-message')!;
+  private readonly toastOk = document.querySelector<HTMLButtonElement>('#toast-ok')!;
   private readonly toastClose = document.querySelector<HTMLButtonElement>('#toast-close')!;
   private readonly mapCentreButton = document.querySelector<HTMLButtonElement>('#map-centre')!;
   private readonly rotateOverlay = document.querySelector<HTMLElement>('#rotate-overlay')!;
@@ -132,6 +133,7 @@ export class HudController {
   private actionHideTimer: number | null = null;
   private startContinueAction: (() => void) | null = null;
   private startNewAction: (() => void) | null = null;
+  private toastDismissAction: (() => void) | null = null;
   private graphicsUpgradeAction: (() => void) | null = null;
   private graphicsUpgradeInstalled = false;
   private alexGraphics: AlexGraphics = 'atari-bw';
@@ -151,10 +153,8 @@ export class HudController {
       this.closeHousingObjective();
     });
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#close-panel')!, () => this.closePanel());
-    this.bindButtonActivation(this.toastClose, () => {
-      this.scene?.suppressWorldInput();
-      this.showToast('');
-    });
+    this.bindButtonActivation(this.toastOk, () => this.dismissActionToast());
+    this.bindButtonActivation(this.toastClose, () => this.dismissActionToast());
     this.bindButtonActivation(this.mapCentreButton, () => this.centreCityMap());
     this.panelBackdrop.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -530,17 +530,39 @@ export class HudController {
   }
 
   showToast(message: string): void {
+    this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-dismissible');
+    this.toast.classList.remove('is-dismissible', 'is-opening-intro');
+    this.toastOk.hidden = true;
     this.toastClose.hidden = true;
     this.toast.classList.toggle('is-visible', Boolean(message));
   }
 
   showDismissibleToast(message: string): void {
+    this.toastDismissAction = null;
     this.toastMessage.textContent = message;
+    this.toast.classList.remove('is-opening-intro');
     this.toast.classList.add('is-dismissible');
+    this.toastOk.hidden = true;
     this.toastClose.hidden = false;
     this.toast.classList.add('is-visible');
+  }
+
+  showOpeningIntro(message: string, action: () => void): void {
+    this.toastDismissAction = action;
+    this.toastMessage.textContent = message;
+    this.toast.classList.add('is-dismissible', 'is-opening-intro');
+    this.toastOk.hidden = false;
+    this.toastClose.hidden = true;
+    this.toast.classList.add('is-visible');
+  }
+
+  private dismissActionToast(): void {
+    this.scene?.suppressWorldInput();
+    const action = this.toastDismissAction;
+    this.toastDismissAction = null;
+    this.showToast('');
+    action?.();
   }
 
   private bindButtonActivation(button: HTMLButtonElement, action: () => void): void {

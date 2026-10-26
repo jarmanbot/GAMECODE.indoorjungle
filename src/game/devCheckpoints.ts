@@ -53,7 +53,9 @@ const withState = (base: ProgressState, overrides: Partial<ProgressState>): Prog
   toolSlots: overrides.toolSlots ? [...overrides.toolSlots] : [...base.toolSlots],
   ownedPremiumPlants: overrides.ownedPremiumPlants ? [...overrides.ownedPremiumPlants] : [...base.ownedPremiumPlants],
 });
-const freshStart = (): ProgressState => sanitizeProgress(DEFAULT_PROGRESS);
+// Keep this fixture explicitly before the opening milestone so its next
+// action exercises the intro popup followed by Alex's descent.
+const freshStart = (): ProgressState => sanitizeProgress({ ...DEFAULT_PROGRESS, openingComplete: false });
 
 const goldenPothosCollected = (): ProgressState => withState(freshStart(), {
   openingComplete: true,
@@ -217,7 +219,7 @@ const mintMature = (): ProgressState => {
 };
 
 const definitions: DevCheckpointDefinition[] = [
-  { id: 'fresh-start', label: 'Fresh start', order: 10, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: freshStart },
+  { id: 'fresh-start', label: 'Fresh start · opening intro', order: 10, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: freshStart },
   { id: 'golden-pothos-collected', label: 'Golden Pothos collected', order: 20, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: goldenPothosCollected },
   { id: 'bw-shop-sale-before-upgrade', label: 'B&W shop sale before graphics upgrade', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: bwShopSaleBeforeUpgrade },
   { id: 'first-plant-sold', label: 'First plant sold', order: 30, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold },
