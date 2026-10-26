@@ -222,7 +222,7 @@ export class HudController {
 
   showGraphicsUpgradePrompt(action: () => void): void {
     this.graphicsUpgradeAction = action;
-    this.graphicsUpgradeCard.classList.remove('is-installing');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS UPGRADE DETECTED</h2><p>Install?</p>';
     this.graphicsUpgradeOk.hidden = false;
     this.graphicsUpgradeOk.textContent = 'OK';
@@ -231,6 +231,7 @@ export class HudController {
 
   showGraphicsInstallation(): void {
     this.graphicsUpgradeAction = null;
+    this.graphicsUpgradeCard.classList.remove('is-complete');
     this.graphicsUpgradeCard.classList.add('is-installing');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
     this.graphicsUpgradeOk.hidden = true;
@@ -252,7 +253,8 @@ export class HudController {
 
   showGraphicsAcknowledgement(action: () => void): void {
     this.graphicsUpgradeAction = action;
-    this.graphicsUpgradeCard.classList.add('is-installing');
+    this.graphicsUpgradeCard.classList.remove('is-installing');
+    this.graphicsUpgradeCard.classList.add('is-complete');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GREEN SCREEN MODULES LOADED</h2><p>Installation complete.</p>';
     this.graphicsUpgradeOk.hidden = false;
     this.graphicsUpgradeOk.textContent = 'OK';
@@ -261,6 +263,7 @@ export class HudController {
 
   hideGraphicsUpgrade(): void {
     this.graphicsUpgradeAction = null;
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
     this.graphicsUpgradeOverlay.hidden = true;
   }
 

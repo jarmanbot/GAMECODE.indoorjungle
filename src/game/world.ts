@@ -255,22 +255,35 @@ export const SHOP_EXIT_ACTIVATION_BOTTOM = SHOP_EXIT_DOOR_BOTTOM + 28;
 export const SHOP_EXIT_MOVEMENT_TRIGGER_Y = SHOP_EXIT_DOOR_BOTTOM - 58;
 export const SHOP_HANDOVER_POINT = { x: 570, y: 515 };
 export const HOME_WORLD_WIDTH = 900;
-export const HOME_WORLD_HEIGHT = 700;
-export const HOME_PLAYER_START = { x: 220, y: 560 };
-export const HOME_EXIT = { x: 115, y: 560 };
+export const HOME_WORLD_HEIGHT = 900;
+export const SECOND_HOME_WORLD_WIDTH = 1200;
+export const SECOND_HOME_WORLD_HEIGHT = 900;
+// Enter near the shared bottom exit, but outside its activation lane so held
+// input cannot immediately send Alex back to the street.
+export const HOME_PLAYER_START = { x: 560, y: 720 };
+export const SECOND_HOME_PLAYER_START = { x: 560, y: 720 };
+export const HOME_EXIT = { ...SHOP_EXIT };
+export const HOME_EXIT_DOOR_WIDTH = SHOP_EXIT_DOOR_WIDTH;
+export const HOME_EXIT_DOOR_HEIGHT = SHOP_EXIT_DOOR_HEIGHT;
+export const HOME_EXIT_DOOR_TOP = HOME_EXIT.y - HOME_EXIT_DOOR_HEIGHT;
+export const HOME_EXIT_DOOR_BOTTOM = HOME_EXIT.y;
+export const HOME_EXIT_ACTIVATION_HALF_WIDTH = 84;
+export const HOME_EXIT_ACTIVATION_TOP = HOME_EXIT_DOOR_TOP - 30;
+export const HOME_EXIT_ACTIVATION_BOTTOM = HOME_EXIT_DOOR_BOTTOM + 18;
+export const HOME_EXIT_MOVEMENT_TRIGGER_Y = HOME_EXIT_DOOR_BOTTOM - 58;
 export const HOME_STARTER_KIT = { x: 250, y: 300 };
 export const HOME_GROWING_SPOTS = [
-  { x: 380, y: 470 },
-  { x: 495, y: 470 },
-  { x: 610, y: 470 },
+  { x: 380, y: 580 },
+  { x: 495, y: 580 },
+  { x: 610, y: 580 },
 ] as const;
 export const SECOND_HOME_GROWING_SPOTS = [
-  { x: 170, y: 470 },
-  { x: 300, y: 470 },
-  { x: 430, y: 470 },
-  { x: 560, y: 470 },
-  { x: 690, y: 470 },
-  { x: 800, y: 470 },
+  { x: 190, y: 580 },
+  { x: 365, y: 580 },
+  { x: 540, y: 580 },
+  { x: 715, y: 580 },
+  { x: 890, y: 580 },
+  { x: 1065, y: 580 },
 ] as const;
 // Backwards-compatible centre reference for callers that do not need slot
 // selection. The active pot uses HOME_GROWING_SPOTS[starterPotSlot].

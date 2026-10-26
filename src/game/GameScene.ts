@@ -45,12 +45,23 @@ import {
   FRONT_PAVEMENT_MAX_Y,
   FRONT_PAVEMENT_MIN_Y,
   HOME_EXIT,
+  HOME_EXIT_ACTIVATION_BOTTOM,
+  HOME_EXIT_ACTIVATION_HALF_WIDTH,
+  HOME_EXIT_ACTIVATION_TOP,
+  HOME_EXIT_DOOR_BOTTOM,
+  HOME_EXIT_DOOR_HEIGHT,
+  HOME_EXIT_DOOR_TOP,
+  HOME_EXIT_DOOR_WIDTH,
+  HOME_EXIT_MOVEMENT_TRIGGER_Y,
   HOME_GROWING_SPOTS,
   SECOND_HOME_GROWING_SPOTS,
   HOME_PLAYER_START,
   HOME_STARTER_KIT,
   HOME_WORLD_HEIGHT,
   HOME_WORLD_WIDTH,
+  SECOND_HOME_PLAYER_START,
+  SECOND_HOME_WORLD_HEIGHT,
+  SECOND_HOME_WORLD_WIDTH,
   SECOND_RENTAL_ENTRANCE,
   SECOND_RENTAL_DOOR_TOP,
   SECOND_RENTAL_DOOR_BOTTOM,
@@ -215,6 +226,7 @@ export class GameScene extends Phaser.Scene {
   private shopPremiumPlantDisplay: Phaser.GameObjects.GameObject[] = [];
   private shopkeeper?: Phaser.GameObjects.Graphics;
   private shopExitDoor?: Phaser.GameObjects.Graphics;
+  private homeExitDoor?: Phaser.GameObjects.Graphics;
   private shopkeeperCarry?: Phaser.GameObjects.Graphics;
   private shopkeeperCarryLabel?: Phaser.GameObjects.Text;
   private shopkeeperTransactionTween?: Phaser.Tweens.Tween;
@@ -256,9 +268,9 @@ export class GameScene extends Phaser.Scene {
   private openingSequenceActive = false;
   private openingSequenceTween?: Phaser.Tweens.Tween;
   private openingKick?: Phaser.GameObjects.Graphics;
+  private openingFallThoughtTimer?: Phaser.Time.TimerEvent;
   private openingZoomDemoActive = false;
   private openingZoomDemoTimer?: Phaser.Time.TimerEvent;
-  private openingZoomDemoStep = 0;
   private graphicsUpgradePresentationActive = false;
   private graphicsUpgradeInstallElapsed = 0;
   private readonly graphicsUpgradeInstallDuration = 2300;
@@ -472,9 +484,9 @@ export class GameScene extends Phaser.Scene {
       const movementDelta = Math.min(delta, 32);
       const speed = hasKeyboardInput || hasJoystickInput ? 235 : 190;
       const minX = this.shopInterior ? 82 : this.homeInterior ? 72 : STARTING_WALKABLE_MIN_X;
-      const maxX = this.shopInterior ? SHOP_WORLD_WIDTH - 82 : this.homeInterior ? HOME_WORLD_WIDTH - 72 : STARTING_WALKABLE_MAX_X;
+      const maxX = this.shopInterior ? SHOP_WORLD_WIDTH - 82 : this.homeInterior ? this.getActiveHomeWorldWidth() - 72 : STARTING_WALKABLE_MAX_X;
       const minY = this.shopInterior ? 160 : this.homeInterior ? 90 : FRONT_PAVEMENT_MIN_Y;
-      const maxY = this.shopInterior ? SHOP_WORLD_HEIGHT - 72 : this.homeInterior ? HOME_WORLD_HEIGHT - 72 : OPPOSITE_PAVEMENT_MAX_Y;
+      const maxY = this.shopInterior ? SHOP_WORLD_HEIGHT - 72 : this.homeInterior ? this.getActiveHomeWorldHeight() - 72 : OPPOSITE_PAVEMENT_MAX_Y;
       const previousX = this.player.x;
       const previousY = this.player.y;
       const nextX = Phaser.Math.Clamp(
@@ -559,7 +571,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.pendingInteraction && !this.target) this.completePendingInteraction();
     else if (this.shopInterior && this.isWithinShopCounterRange()) this.openShopPanel();
-    else if (this.homeInterior && this.isNearHomeExit()) this.selectPendingInteraction('exit-home', new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT.y));
+    else if (this.homeInterior && this.isNearHomeExit()) this.selectPendingInteraction('exit-home', new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT_DOOR_BOTTOM - 22));
     else if (this.homeInterior && this.isNearStarterKit()) this.claimStarterKit();
     else if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
       if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
@@ -985,10 +997,11 @@ export class GameScene extends Phaser.Scene {
 
   private startOpeningSequence(): void {
     this.openingSequenceTween?.stop();
+    this.openingFallThoughtTimer?.remove(false);
+    this.openingFallThoughtTimer = undefined;
     this.openingZoomDemoTimer?.remove(false);
     this.openingZoomDemoTimer = undefined;
     this.openingZoomDemoActive = false;
-    this.openingZoomDemoStep = 0;
     this.openingSequenceActive = true;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
@@ -1035,32 +1048,78 @@ export class GameScene extends Phaser.Scene {
     this.openingKick.setPosition(OPENING_DROP_POINT.x + 20, OPENING_DROP_POINT.y + 18);
     this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 850, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12, 0, 120);
+    this.openingFallThoughtTimer = this.time.delayedCall(1800, () => {
+      this.openingFallThoughtTimer = undefined;
+      if (!this.openingSequenceActive) return;
+      this.showThought("Ahhh! I'm falling!", false, '22px');
+      this.thoughtBubbleRemainingMs = 3200;
+    });
     this.openingSequenceTween = this.tweens.add({
       targets: this.player,
-      y: START_POSITION.y - 24,
-      duration: 4700,
+      y: START_POSITION.y,
+      duration: 4000,
       ease: 'Cubic.easeIn',
       onUpdate: (tween: Phaser.Tweens.Tween) => {
         const progress = tween.progress;
-        const drift = Phaser.Math.Linear(OPENING_DROP_POINT.x, START_POSITION.x, progress);
-        const wobble = Math.sin(progress * Math.PI * 10) * (34 - progress * 12);
-        this.player.setX(drift + wobble).setRotation(Math.sin(progress * Math.PI * 8) * 0.12);
+        const straightFallFraction = 2000 / 4000;
+        if (progress <= straightFallFraction) {
+          this.player.setX(OPENING_DROP_POINT.x).setRotation(0);
+        } else {
+          const unstableProgress = (progress - straightFallFraction) / (1 - straightFallFraction);
+          const drift = Phaser.Math.Linear(OPENING_DROP_POINT.x, START_POSITION.x, unstableProgress);
+          const wobbleEnvelope = Math.sin(unstableProgress * Math.PI);
+          const wobble = Math.sin(unstableProgress * Math.PI * 6) * 14 * wobbleEnvelope;
+          this.player.setX(drift + wobble).setRotation(Math.sin(unstableProgress * Math.PI * 5) * 0.06 * wobbleEnvelope);
+        }
         this.drawPlayer();
         this.updateThoughtBubblePosition();
       },
       onComplete: () => {
         if (!this.openingSequenceActive) return;
-        this.player.setX(START_POSITION.x).setRotation(0);
+        this.player.setPosition(START_POSITION.x, START_POSITION.y).setRotation(0);
+        this.thoughtBubble?.setVisible(false);
+        this.thoughtBubbleRemainingMs = 0;
+        this.runOpeningGroundBounce(0);
+      },
+    });
+  }
+
+  private runOpeningGroundBounce(index: number): void {
+    if (!this.openingSequenceActive) return;
+    if (index >= 2) {
+      this.player.setRotation(0);
+      this.finishOpeningSequence();
+      return;
+    }
+    // The first impact throws Alex back to the starter apartment window
+    // height. The second rises twice the normal 50-unit player hop.
+    const height = index === 0 ? 260 : 100;
+    const riseDuration = index === 0 ? 450 : 240;
+    const fallDuration = index === 0 ? 500 : 280;
+    const rotation = index === 0 ? -0.16 : 0.1;
+    this.openingSequenceTween = this.tweens.add({
+      targets: this.player,
+      y: START_POSITION.y - height,
+      rotation,
+      duration: riseDuration,
+      ease: 'Sine.easeOut',
+      onUpdate: () => {
+        this.drawPlayer();
+        this.updateThoughtBubblePosition();
+      },
+      onComplete: () => {
+        if (!this.openingSequenceActive) return;
         this.openingSequenceTween = this.tweens.add({
           targets: this.player,
           y: START_POSITION.y,
-          duration: 300,
-          ease: 'Bounce.easeOut',
+          rotation: 0,
+          duration: fallDuration,
+          ease: 'Sine.easeIn',
           onUpdate: () => {
-          this.drawPlayer();
-          this.updateThoughtBubblePosition();
+            this.drawPlayer();
+            this.updateThoughtBubblePosition();
           },
-          onComplete: () => this.finishOpeningSequence(),
+          onComplete: () => this.runOpeningGroundBounce(index + 1),
         });
       },
     });
@@ -1070,49 +1129,51 @@ export class GameScene extends Phaser.Scene {
     if (!this.openingSequenceActive) return;
     this.openingSequenceTween?.stop();
     this.openingSequenceTween = undefined;
+    this.openingFallThoughtTimer?.remove(false);
+    this.openingFallThoughtTimer = undefined;
     this.openingKick?.destroy();
     this.openingKick = undefined;
     this.openingSequenceActive = false;
+    this.thoughtBubble?.setVisible(false);
+    this.thoughtBubbleRemainingMs = 0;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
-    this.player.setPosition(START_POSITION.x, START_POSITION.y).setRotation(0).setAlpha(1).setVisible(true);
-    this.cameras.main.stopFollow();
+    // Keep Alex and the camera exactly where the final bounce leaves them.
+    this.player.setRotation(0).setAlpha(1).setVisible(true);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.zoomMode = 'normal';
     this.streetZoomMode = 'normal';
-    this.applyZoom(this.zoomMode);
     this.hud.setZoomMode(this.zoomMode);
-    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
     this.progress.openingComplete = true;
     this.saveProgress();
     this.drawPlayer();
     this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
-    // Hold the zoomed-out landing view briefly, then show two zoom flashes:
-    // in, out, in. The player remains at the safe spawn while it runs.
+    // Hold the landing composition briefly, then make one smooth move into
+    // Close without resetting Alex or snapping the camera to a new centre.
     this.openingZoomDemoActive = true;
-    this.openingZoomDemoStep = 0;
-    this.openingZoomDemoTimer = this.time.delayedCall(1200, () => this.runOpeningZoomDemoStep());
+    this.openingZoomDemoTimer = this.time.delayedCall(1200, () => this.runOpeningZoomIn());
   }
 
-  private runOpeningZoomDemoStep(): void {
+  private runOpeningZoomIn(): void {
     if (!this.openingZoomDemoActive) return;
-    if (this.openingZoomDemoStep >= 3) {
+    const frame = this.getCameraFrame('close');
+    const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
+    this.zoomMode = 'close';
+    this.streetZoomMode = 'close';
+    this.portraitFollowCentered = portrait;
+    this.closeFollowCentered = false;
+    this.cameras.main.setFollowOffset(portrait ? 0 : frame.offsetX, frame.offsetY);
+    this.cameras.main.setLerp(0.2, 0.2);
+    this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
+    this.cameras.main.zoomTo(frame.zoom, 800, 'Sine.easeInOut', true);
+    this.hud.setZoomMode('close');
+    this.openingZoomDemoTimer = this.time.delayedCall(800, () => {
       this.openingZoomDemoActive = false;
       this.openingZoomDemoTimer = undefined;
-      // Resume the original zoomed-in starting view after the demonstration.
-      this.applyZoom('close');
       this.updateInteraction();
       this.startHousingThoughtReminder();
-      this.showThought('I need a place to stay', true);
-      return;
-    }
-
-    // The landing ends in Normal; show Close, Normal, Close, then leave Alex
-    // in Close for the first playable objective.
-    const mode: ZoomMode = this.openingZoomDemoStep % 2 === 0 ? 'close' : 'normal';
-    this.openingZoomDemoStep += 1;
-    this.applyZoom(mode);
-    this.openingZoomDemoTimer = this.time.delayedCall(800, () => this.runOpeningZoomDemoStep());
+      this.showThought('I need a place to live', true);
+    });
   }
 
   private saveProgress(): void {
@@ -1255,7 +1316,8 @@ export class GameScene extends Phaser.Scene {
     this.openingZoomDemoActive = false;
     this.openingZoomDemoTimer?.remove(false);
     this.openingZoomDemoTimer = undefined;
-    this.openingZoomDemoStep = 0;
+    this.openingFallThoughtTimer?.remove(false);
+    this.openingFallThoughtTimer = undefined;
     this.graphicsUpgradePresentationActive = false;
     this.graphicsUpgradePromptDelay?.remove(false);
     this.graphicsUpgradePromptDelay = undefined;
@@ -1266,6 +1328,7 @@ export class GameScene extends Phaser.Scene {
     this.shopTransactionBusy = false;
     this.shopkeeper = undefined;
     this.shopExitDoor = undefined;
+    this.homeExitDoor = undefined;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.cancelToolUse(true);
@@ -3018,8 +3081,9 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
   }
 
-  private showThought(text: string, automatic = false): void {
+  private showThought(text: string, automatic = false, fontSize = '16px'): void {
     if (!this.thoughtBubble || !this.thoughtBubbleBackdrop || !this.thoughtBubbleText) return;
+    this.thoughtBubbleText.setFontSize(fontSize);
     this.thoughtBubbleText.setText(text);
     const width = 236;
     const height = Math.max(58, this.thoughtBubbleText.height + 24);
@@ -3687,7 +3751,7 @@ export class GameScene extends Phaser.Scene {
   private handleHomeWorldPoint(pointX: number, pointY: number): void {
     const point = new Phaser.Math.Vector2(pointX, pointY);
     if (this.isNearHomeExit(point)) {
-      const approach = new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT.y);
+      const approach = new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT_DOOR_BOTTOM - 22);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
         this.selectPendingInteraction('exit-home', approach);
       } else {
@@ -3774,9 +3838,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isNearHomeExit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
-    return Math.abs(point.x - HOME_EXIT.x) <= 64
-      && point.y >= HOME_EXIT.y - 86
-      && point.y <= HOME_EXIT.y + 20;
+    return Math.abs(point.x - HOME_EXIT.x) <= HOME_EXIT_ACTIVATION_HALF_WIDTH
+      && point.y >= HOME_EXIT_ACTIVATION_TOP
+      && point.y <= HOME_EXIT_ACTIVATION_BOTTOM;
   }
 
   private isNearStarterKit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
@@ -3821,12 +3885,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.homeInterior) {
-      const exitThresholdX = HOME_EXIT.x + 52;
-      const inExitLane = Math.abs(this.player.y - HOME_EXIT.y) <= 48;
-      const movingIntoExit = direction.x < -0.45 && inExitLane
-        && previousX >= this.player.x
-        && previousX >= HOME_EXIT.x - 52
-        && this.player.x <= exitThresholdX;
+      const inExitLane = Math.abs(this.player.x - HOME_EXIT.x) <= HOME_EXIT_ACTIVATION_HALF_WIDTH;
+      const movingIntoExit = direction.y > 0.45 && inExitLane
+        && previousY <= this.player.y
+        && previousY <= HOME_EXIT_DOOR_BOTTOM + 8
+        && this.player.y >= HOME_EXIT_MOVEMENT_TRIGGER_Y;
       if (movingIntoExit) {
         this.exitHome();
         return true;
@@ -3858,6 +3921,8 @@ export class GameScene extends Phaser.Scene {
       );
     } else if (interaction === 'exit-shop') {
       this.interactionHighlight.strokeRect(point.x - SHOP_EXIT_DOOR_WIDTH / 2 - 10, SHOP_EXIT_DOOR_TOP - 10, SHOP_EXIT_DOOR_WIDTH + 20, SHOP_EXIT_DOOR_HEIGHT + 20);
+    } else if (interaction === 'exit-home') {
+      this.interactionHighlight.strokeRect(point.x - HOME_EXIT_DOOR_WIDTH / 2 - 10, HOME_EXIT_DOOR_TOP - 10, HOME_EXIT_DOOR_WIDTH + 20, HOME_EXIT_DOOR_HEIGHT + 20);
     } else if (interaction === 'window-clean') {
       this.interactionHighlight.strokeRect(HOMES_WINDOW.x - 6, HOMES_WINDOW.y + 4, HOMES_WINDOW.width - 8, HOMES_WINDOW.height - 8);
     } else if (interaction === 'place-growing-pot') {
@@ -4115,7 +4180,8 @@ export class GameScene extends Phaser.Scene {
     this.setObjectsVisible(this.streetObjects, false);
     this.homeObjects = [];
     this.drawHomeInterior();
-    this.player.setPosition(HOME_PLAYER_START.x, HOME_PLAYER_START.y).setAlpha(1).setVisible(true);
+    const homeStart = this.activeProperty === 'second-rental' ? SECOND_HOME_PLAYER_START : HOME_PLAYER_START;
+    this.player.setPosition(homeStart.x, homeStart.y).setAlpha(1).setVisible(true);
     this.basilPotSelected = false;
     this.selectedGrowingPotId = null;
     this.destinationMarker.setVisible(false);
@@ -4188,13 +4254,32 @@ export class GameScene extends Phaser.Scene {
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
     this.cancelTapWalk();
-    this.cameras.main.fadeOut(120, 7, 9, 10);
-    this.time.delayedCall(120, () => this.exitHomeNow());
+    if (this.homeExitDoor) drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, true);
+    this.tweens.add({
+      targets: this.player,
+      x: HOME_EXIT.x,
+      y: HOME_EXIT_DOOR_BOTTOM - 18,
+      duration: 280,
+      ease: 'Sine.inOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.player,
+          alpha: 0,
+          duration: 180,
+          ease: 'Quad.in',
+          onComplete: () => {
+            this.cameras.main.fadeOut(120, 7, 9, 10);
+            this.time.delayedCall(120, () => this.exitHomeNow());
+          },
+        });
+      },
+    });
   }
 
   private exitHomeNow(): void {
     this.homeObjects.forEach((object) => object.destroy());
     this.homeObjects = [];
+    this.homeExitDoor = undefined;
     this.homeStarterKitObjects = [];
     this.basilPot = undefined;
     this.basilWaterEffect = undefined;
@@ -4233,16 +4318,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setHomeCamera(): void {
+    const worldWidth = this.getActiveHomeWorldWidth();
+    const worldHeight = this.getActiveHomeWorldHeight();
+    // Keep the same scale as the square starter room. The wider second
+    // rental therefore becomes the first interior that can pan horizontally.
     const fittedZoom = Math.min(
       this.scale.width / HOME_WORLD_WIDTH,
       this.scale.height / HOME_WORLD_HEIGHT,
-    ) * 0.92;
+    );
     const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
-    const zoom = portraitPhone ? Math.max(0.58, fittedZoom) : Math.max(0.25, fittedZoom);
-    this.cameras.main.setBounds(0, 0, HOME_WORLD_WIDTH, HOME_WORLD_HEIGHT);
+    const zoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
+    this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
     this.cameras.main.setZoom(zoom);
     this.cameras.main.startFollow(this.player, true, 0.14, 0.14, 0, 0);
     this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
+  }
+
+  private getActiveHomeWorldWidth(): number {
+    return this.activeProperty === 'second-rental' ? SECOND_HOME_WORLD_WIDTH : HOME_WORLD_WIDTH;
+  }
+
+  private getActiveHomeWorldHeight(): number {
+    return this.activeProperty === 'second-rental' ? SECOND_HOME_WORLD_HEIGHT : HOME_WORLD_HEIGHT;
   }
 
   private isWithinShopCounterRange(): boolean {
@@ -4479,24 +4576,26 @@ export class GameScene extends Phaser.Scene {
   private drawHomeInterior(): void {
     const growingSpots = this.getActiveGrowingSpots();
     const secondRental = this.activeProperty === 'second-rental';
+    const worldWidth = this.getActiveHomeWorldWidth();
+    const worldHeight = this.getActiveHomeWorldHeight();
     const room = this.add.graphics().setDepth(-100);
-    room.fillStyle(secondRental ? 0x314246 : 0x252a2d, 1).fillRect(0, 0, HOME_WORLD_WIDTH, HOME_WORLD_HEIGHT);
-    room.fillStyle(0x454c4e, 1).fillRect(48, 80, HOME_WORLD_WIDTH - 96, HOME_WORLD_HEIGHT - 128);
-    room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(48, 80, HOME_WORLD_WIDTH - 96, HOME_WORLD_HEIGHT - 128);
-    room.lineStyle(3, 0x697271, 0.8).lineBetween(48, 430, HOME_WORLD_WIDTH - 48, 430);
+    room.fillStyle(secondRental ? 0x314246 : 0x252a2d, 1).fillRect(0, 0, worldWidth, worldHeight);
+    room.fillStyle(0x454c4e, 1).fillRect(48, 80, worldWidth - 96, worldHeight - 128);
+    room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(48, 80, worldWidth - 96, worldHeight - 128);
+    room.lineStyle(3, 0x697271, 0.8).lineBetween(48, 500, worldWidth - 48, 500);
     if (secondRental) {
-      room.lineStyle(6, 0x9aa5a3, 0.9).lineBetween(450, 120, 450, 420);
-      room.lineStyle(4, 0xf6f7f3, 0.9).lineBetween(450, 430, 450, 640);
-      room.fillStyle(0x1d2527, 0.9).fillRect(82, 112, 330, 34).fillRect(500, 112, 330, 34);
-      this.homeObjects.push(this.add.text(247, 129, 'LIVING ROOM', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
-      this.homeObjects.push(this.add.text(665, 129, 'GROWING ROOM · 6 POSITIONS', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
+      room.lineStyle(6, 0x9aa5a3, 0.9).lineBetween(600, 120, 600, 490);
+      room.fillStyle(0x1d2527, 0.9).fillRect(82, 112, 480, 34).fillRect(638, 112, 480, 34);
+      this.homeObjects.push(this.add.text(322, 129, 'LIVING ROOM', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
+      this.homeObjects.push(this.add.text(878, 129, 'GROWING ROOM · 6 POSITIONS', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
     }
     this.homeObjects.push(room);
 
+    const windowX = secondRental ? 930 : 610;
     const window = this.add.graphics().setDepth(3);
-    window.fillStyle(0x111416, 1).fillRect(610, 150, 190, 150);
-    window.lineStyle(5, 0xf6f7f3, 1).strokeRect(610, 150, 190, 150);
-    window.lineStyle(3, 0x858d8d, 1).lineBetween(705, 150, 705, 300).lineBetween(610, 225, 800, 225);
+    window.fillStyle(0x111416, 1).fillRect(windowX, 180, 190, 150);
+    window.lineStyle(5, 0xf6f7f3, 1).strokeRect(windowX, 180, 190, 150);
+    window.lineStyle(3, 0x858d8d, 1).lineBetween(windowX + 95, 180, windowX + 95, 330).lineBetween(windowX, 255, windowX + 190, 255);
     this.homeObjects.push(window);
 
     const growTable = this.add.graphics().setDepth(3);
@@ -4529,15 +4628,14 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.push(this.basilWaterEffect);
     this.updateBasilVisual();
 
-    const exit = this.add.graphics().setDepth(4);
-    exit.fillStyle(0x111416, 1).fillRect(HOME_EXIT.x - 48, HOME_EXIT.y - 72, 96, 78);
-    exit.lineStyle(5, 0xf6f7f3, 1).strokeRect(HOME_EXIT.x - 48, HOME_EXIT.y - 72, 96, 78);
-    this.homeObjects.push(exit);
+    this.homeExitDoor = this.add.graphics().setDepth(4);
+    drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, false);
+    this.homeObjects.push(this.homeExitDoor);
 
     const labels = [
-      { text: secondRental ? 'TWO-ROOM RENTAL' : 'YOUR RENTAL', x: HOME_WORLD_WIDTH / 2, y: 112, size: '26px' },
-      { text: 'GROW TABLE', x: HOME_WORLD_WIDTH / 2, y: firstSlot.y + 70, size: '14px' },
-      { text: 'WINDOW', x: 705, y: 326, size: '14px' },
+      { text: secondRental ? 'TWO-ROOM RENTAL' : 'YOUR RENTAL', x: worldWidth / 2, y: 112, size: '26px' },
+      { text: 'GROW TABLE', x: (firstSlot.x + lastSlot.x) / 2, y: firstSlot.y + 70, size: '14px' },
+      { text: 'WINDOW', x: windowX + 95, y: 356, size: '14px' },
       { text: 'EXIT', x: HOME_EXIT.x, y: HOME_EXIT.y + 28, size: '14px' },
     ];
     labels.forEach(({ text, x, y, size }) => {
@@ -4964,7 +5062,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isHomeWalkablePosition(x: number, y: number): boolean {
-    return x >= 72 && x <= HOME_WORLD_WIDTH - 72 && y >= 90 && y <= HOME_WORLD_HEIGHT - 72;
+    return x >= 72 && x <= this.getActiveHomeWorldWidth() - 72
+      && y >= 90 && y <= this.getActiveHomeWorldHeight() - 72;
   }
 
   private isWalkablePosition(x: number, y: number): boolean {

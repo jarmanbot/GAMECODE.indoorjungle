@@ -13,6 +13,7 @@ import {
 import {
   BASIL_GROWTH_DURATION_MS,
   HOME_PLAYER_START,
+  SECOND_HOME_PLAYER_START,
   OPENING_POTHOS_SALE_PRICE,
   REPAIRED_POT_SALE_PRICE,
   RENTAL_BOND_COST,
@@ -249,8 +250,8 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'second-rental-eligible-insufficient', label: 'Second rental eligible · insufficient coins', order: 170, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: secondRentalEligibleInsufficient },
   { id: 'second-rental-eligible-sufficient', label: 'Second rental eligible · sufficient coins', order: 171, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: secondRentalEligibleSufficient },
   { id: 'ready-to-move-mixed-pots', label: 'Ready to move · mixed empty, growing and mature pots', order: 172, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: readyToMoveMixedPots },
-  { id: 'second-rental-occupied', label: 'Second rental occupied', order: 173, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: secondRentalOccupied },
-  { id: 'six-growing-positions-mixed', label: 'Six growing positions · mixed basil and mint', order: 174, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: sixGrowingPositionsMixed },
+  { id: 'second-rental-occupied', label: 'Second rental occupied', order: 173, scene: 'home', spawn: SECOND_HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: secondRentalOccupied },
+  { id: 'six-growing-positions-mixed', label: 'Six growing positions · mixed basil and mint', order: 174, scene: 'home', spawn: SECOND_HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: sixGrowingPositionsMixed },
 ];
 
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {

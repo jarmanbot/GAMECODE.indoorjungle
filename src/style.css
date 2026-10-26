@@ -88,15 +88,17 @@ button { font: inherit; color: inherit; }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
 .graphics-upgrade-overlay { position: absolute; inset: 0; z-index: 45; display: grid; place-items: center; padding: 18px; background: rgba(7, 9, 10, .42); }
 .graphics-upgrade-card { width: min(480px, 92%); padding: clamp(18px, 4vw, 34px); background: #111416; border: 3px solid #f6f7f3; box-shadow: 8px 8px 0 #050607; text-align: center; }
-.graphics-upgrade-card.is-installing { background: #101512; border-color: #8fca75; color: #a8d88e; }
+.graphics-upgrade-card.is-installing { background: #111416; border-color: #f6f7f3; color: #f6f7f3; }
+.graphics-upgrade-card.is-complete { background: #101512; border-color: #8fca75; color: #a8d88e; }
 .graphics-upgrade-card h2 { margin: 0 0 20px; font-size: clamp(16px, 3vw, 26px); letter-spacing: .08em; }
 .graphics-upgrade-card p { margin: 10px 0 20px; color: #c4ccca; font-size: clamp(12px, 2vw, 16px); line-height: 1.4; }
-.graphics-upgrade-card.is-installing p { color: #a8d88e; }
+.graphics-upgrade-card.is-installing p { color: #c4ccca; }
+.graphics-upgrade-card.is-complete p { color: #a8d88e; }
 .graphics-upgrade-progress { min-height: 42px; margin: 16px 0; color: #f6f7f3; font-size: clamp(14px, 3vw, 22px); letter-spacing: .12em; }
 .graphics-upgrade-bar { height: 18px; border: 2px solid currentColor; background: #202729; }
 .graphics-upgrade-bar span { display: block; height: 100%; width: 0; background: currentColor; transition: width .08s linear; }
 .graphics-upgrade-ok { min-width: 110px; min-height: 44px; padding: 8px 18px; border: 2px solid #f6f7f3; background: #f6f7f3; color: #111416; cursor: pointer; font-weight: 900; }
-.graphics-upgrade-card.is-installing .graphics-upgrade-ok { border-color: #a8d88e; background: #a8d88e; }
+.graphics-upgrade-card.is-complete .graphics-upgrade-ok { border-color: #a8d88e; background: #a8d88e; }
 
 .phone-control-panel { display: none; position: relative; z-index: 20; min-height: 86px; align-items: center; justify-content: space-between; gap: 16px; padding: 7px max(12px, env(safe-area-inset-right)) 7px max(12px, env(safe-area-inset-left)); background: #0f1315; border-top: 2px solid #717978; border-bottom: 2px solid #717978; touch-action: none; user-select: none; -webkit-user-select: none; }
 .joystick { position: relative; flex: 0 0 74px; width: 74px; height: 74px; border: 2px solid #697271; border-radius: 50%; background: #202729; touch-action: none; transform: translateX(var(--joystick-align-shift, 0px)); }
