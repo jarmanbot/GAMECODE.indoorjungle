@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: './',
+  // Netlify serves this project from the root of its assigned/custom domain.
+  base: '/',
 });

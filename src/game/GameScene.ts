@@ -137,13 +137,6 @@ interface GardeningAction {
 }
 type ShopPresentationItem = ShopStockItem | PremiumPlantId | 'basil-seeds' | 'mint-seeds' | 'small-basic-plastic-pot';
 type ShopTransactionDirection = 'buy' | 'sell';
-interface PendingShopkeeperTransaction {
-  item: ShopPresentationItem;
-  quantity: number;
-  direction: ShopTransactionDirection;
-  source: Phaser.Math.Vector2;
-  feedback: string;
-}
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
 
@@ -170,7 +163,6 @@ export class GameScene extends Phaser.Scene {
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private interactKey!: Phaser.Input.Keyboard.Key;
-  private shopkeeperConfirmKey!: Phaser.Input.Keyboard.Key;
   private hopKey!: Phaser.Input.Keyboard.Key;
   private toolKey!: Phaser.Input.Keyboard.Key;
   private toolKeyHeld = false;
@@ -246,7 +238,6 @@ export class GameScene extends Phaser.Scene {
   private shopkeeperCarry?: Phaser.GameObjects.Graphics;
   private shopkeeperCarryLabel?: Phaser.GameObjects.Text;
   private shopkeeperTransactionTween?: Phaser.Tweens.Tween;
-  private pendingShopkeeperTransaction: PendingShopkeeperTransaction | null = null;
   private shopTransactionBusy = false;
   private hopActive = false;
   private hopElapsed = 0;
@@ -346,7 +337,6 @@ export class GameScene extends Phaser.Scene {
     this.cursorKeys = this.input.keyboard!.createCursorKeys();
     this.keys = this.input.keyboard!.addKeys('W,A,S,D') as Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.shopkeeperConfirmKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X);
     this.hopKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.toolKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
 
@@ -427,11 +417,6 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.shopTransitioning) {
-      this.updateInteraction();
-      return;
-    }
-    if (Phaser.Input.Keyboard.JustDown(this.shopkeeperConfirmKey)) {
-      this.confirmShopkeeperTransaction();
       this.updateInteraction();
       return;
     }
@@ -532,7 +517,8 @@ export class GameScene extends Phaser.Scene {
       }
       const didMove = Math.abs(this.player.x - previousX) > 0.01 || Math.abs(this.player.y - previousY) > 0.01;
       if (didMove) this.updateFacing(direction);
-      else if (!this.windowFacingLocked && this.playerFacing !== 'front') this.faceDirection(new Phaser.Math.Vector2(0, 1));
+      else if (!this.windowFacingLocked && this.playerFacing !== 'front'
+        && !(this.playerFacing === 'back' && this.lastFacing.y < 0)) this.faceDirection(new Phaser.Math.Vector2(0, 1));
       this.updateRepairInterruption();
       this.drawPlayer();
       if (!this.shopInterior && !this.homeInterior) this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
@@ -541,7 +527,8 @@ export class GameScene extends Phaser.Scene {
     // Alex faces the player whenever movement has ended. The window-cleaning
     // task is the one deliberate exception: Alex must keep their back to the
     // player while working on the REAL ESTATE AGENT display.
-    if (direction.lengthSq() === 0 && !this.windowFacingLocked && this.playerFacing !== 'front') {
+    const keepUpwardFacingOnRelease = this.playerFacing === 'back' && this.lastFacing.y < 0;
+    if (direction.lengthSq() === 0 && !this.windowFacingLocked && this.playerFacing !== 'front' && !keepUpwardFacingOnRelease) {
       this.faceDirection(new Phaser.Math.Vector2(0, 1));
     }
 
@@ -1372,7 +1359,6 @@ export class GameScene extends Phaser.Scene {
     this.shopkeeperTransactionTween?.stop();
     this.shopkeeperTransactionTween = undefined;
     this.clearShopkeeperCarry();
-    this.pendingShopkeeperTransaction = null;
     this.shopTransactionBusy = false;
     this.shopkeeper = undefined;
     this.shopExitDoor = undefined;
@@ -4372,7 +4358,6 @@ export class GameScene extends Phaser.Scene {
 
   private exitShop(): void {
     if (!this.shopInterior || this.shopTransitioning || this.shopTransactionBusy) return;
-    this.pendingShopkeeperTransaction = null;
     this.showToast('Thank you, come again!', 1800);
     this.clearItemPlacement();
     this.shopTransitioning = true;
@@ -4687,16 +4672,11 @@ export class GameScene extends Phaser.Scene {
     source: Phaser.Math.Vector2,
     feedback: string,
   ): void {
-    if (!this.shopInterior || this.shopTransactionBusy || this.pendingShopkeeperTransaction) return;
-    this.pendingShopkeeperTransaction = { item, quantity, direction, source, feedback };
-    this.showToast('Press X when you are ready for the clerk to handle it.', 2600);
-  }
-
-  private confirmShopkeeperTransaction(): void {
-    const pending = this.pendingShopkeeperTransaction;
-    if (!pending || !this.shopInterior || this.shopTransactionBusy) return;
-    this.pendingShopkeeperTransaction = null;
-    this.beginShopkeeperTransaction(pending.item, pending.quantity, pending.direction, pending.source, pending.feedback);
+    if (!this.shopInterior || this.shopTransactionBusy) return;
+    // Closing the shop panel is the player's confirmation. Start the clerk's
+    // collect/carry/return animation immediately after the panel disappears.
+    this.hud.closePanel();
+    this.beginShopkeeperTransaction(item, quantity, direction, source, feedback);
   }
 
   private getShopkeeperAnimationScale(): number {
@@ -4720,7 +4700,6 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.shopTransactionBusy = true;
-    this.hud.closePanel();
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
     this.cancelToolUse(true);

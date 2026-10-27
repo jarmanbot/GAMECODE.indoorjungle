@@ -13,6 +13,50 @@ npm run dev
 
 Open the local address printed by Vite, normally `http://127.0.0.1:5173/`.
 
+## Netlify deployment
+
+The production build is a static Vite site served from the root of its Netlify
+domain. The repository-level `netlify.toml` supplies the required settings:
+
+- Base directory: leave blank (repository root).
+- Build command: `npm run build`.
+- Publish directory: `dist`.
+- Functions directory: none.
+- Required environment variables: none.
+
+To review the exact production output locally before connecting Netlify:
+
+```bash
+npm install
+npm run build
+npm run preview
+```
+
+Open the preview address printed by Vite, normally
+`http://127.0.0.1:4173/`. The preview command serves the generated `dist`
+directory; it is not the development server.
+
+To connect the existing GitHub repository without publishing manually:
+
+1. Push the reviewed commit to the branch you intend Netlify to deploy.
+2. In Netlify, choose **Add new project → Import an existing project** and
+   select GitHub and this repository.
+3. Select the intended production branch. Keep the base directory blank.
+4. Confirm the detected build command is `npm run build` and the publish
+   directory is `dist`. These values are also enforced by `netlify.toml`.
+5. Review the configuration, then start the first deploy when ready.
+
+No SPA redirect is currently required because the game has one document at
+the site root and does not use URL-based client routing. Keep ordinary releases
+on the same Netlify site/domain: browser progress is stored under the unchanged
+`indoor-jungle-progress-v1` localStorage key and therefore survives asset/code
+updates on that origin. Browser saves do not automatically transfer between
+`localhost`, a Netlify preview URL, and the production domain because each is a
+different browser origin.
+
+Production builds do not expose Developer tools or activate the separate test
+save. Their source remains available for local `npm run dev` testing.
+
 ## Controls
 
 - WASD or arrow keys: walk Alex on the front pavement and through the marked crossing.
