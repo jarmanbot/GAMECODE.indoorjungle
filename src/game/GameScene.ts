@@ -38,6 +38,8 @@ import {
   BUY_SELL_DOOR_TOP,
   BUY_SELL_DOOR_WIDTH,
   BUY_SELL_ENTRANCE,
+  BUY_SELL_NAME,
+  BUY_SELL_SIGN_NAME,
   BUY_SELL_WINDOW,
   BROKEN_POT_PIECES_SCALE,
   CROSSING_END_X,
@@ -137,6 +139,14 @@ interface GardeningAction {
 }
 type ShopPresentationItem = ShopStockItem | PremiumPlantId | 'basil-seeds' | 'mint-seeds' | 'small-basic-plastic-pot';
 type ShopTransactionDirection = 'buy' | 'sell';
+const SHOP_LABEL_FONT = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+interface PendingShopkeeperTransaction {
+  item: ShopPresentationItem;
+  quantity: number;
+  direction: ShopTransactionDirection;
+  source: Phaser.Math.Vector2;
+  feedback: string;
+}
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
 
@@ -239,6 +249,7 @@ export class GameScene extends Phaser.Scene {
   private shopkeeperCarryLabel?: Phaser.GameObjects.Text;
   private shopkeeperTransactionTween?: Phaser.Tweens.Tween;
   private shopTransactionBusy = false;
+  private pendingShopkeeperTransactions: PendingShopkeeperTransaction[] = [];
   private hopActive = false;
   private hopElapsed = 0;
   private readonly hopDuration = 520;
@@ -545,6 +556,11 @@ export class GameScene extends Phaser.Scene {
     this.cancelToolUse(true);
     if (isOpen) this.clearItemPlacement();
     if (isOpen && !preserveDestination) this.cancelTapWalk();
+    if (!isOpen && this.pendingShopkeeperTransactions.length > 0) {
+      // The HUD uses a short close transition. Do not let Birch start moving
+      // behind a panel that is still visibly fading away.
+      this.time.delayedCall(170, () => this.beginNextPendingShopkeeperTransaction());
+    }
   }
 
   cancelActiveToolAction(): void {
@@ -565,14 +581,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   zoomBy(direction: 1 | -1): void {
-    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning) return;
     const index = this.zoomOrder.indexOf(this.zoomMode);
     const nextIndex = Phaser.Math.Clamp(index + direction, 0, this.zoomOrder.length - 1);
     this.applyZoom(this.zoomOrder[nextIndex]);
   }
 
   setZoom(mode: ZoomMode): void {
-    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.phoneLandscapeBlocked || this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive || this.phoneLandscapeBlocked || this.shopTransitioning) return;
     this.applyZoom(mode);
   }
 
@@ -1038,6 +1054,7 @@ export class GameScene extends Phaser.Scene {
     this.zoomMode = 'normal';
     this.streetZoomMode = 'normal';
     this.player.setPosition(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y).setAlpha(1).setVisible(true);
+    this.drawPlayer();
     this.cameras.main.stopFollow();
     this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
     this.applyZoom(this.zoomMode);
@@ -1062,6 +1079,7 @@ export class GameScene extends Phaser.Scene {
     // Begin from the exact tower drop point and keep Alex below the camera
     // centre so the roof and upper doorway remain visible as the fall starts.
     this.player.setPosition(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y).setRotation(0);
+    this.drawPlayer();
     this.cameras.main.stopFollow();
     this.cameras.main.setBounds(0, OPENING_TOWER.y - 160, WORLD_WIDTH, WORLD_HEIGHT - OPENING_TOWER.y + 160);
     this.cameras.main.centerOn(OPENING_DROP_POINT.x, OPENING_DROP_POINT.y - 120);
@@ -1071,7 +1089,11 @@ export class GameScene extends Phaser.Scene {
     this.openingKick.lineStyle(3, 0x111416, 1).strokeRect(-8, -7, 60, 18);
     this.openingKick.setPosition(OPENING_DROP_POINT.x + 20, OPENING_DROP_POINT.y + 18);
     this.tweens.add({ targets: this.openingKick, x: OPENING_DROP_POINT.x + 82, duration: 850, ease: 'Power2', onComplete: () => this.openingKick?.setVisible(false) });
-    this.cameras.main.startFollow(this.player, true, 0.12, 0.12, 0, 120);
+    // The opening is a world-space cinematic. Follow Alex tightly so the
+    // long descent cannot sit inside the normal movement deadzone and then
+    // snap from the tower to the pavement.
+    this.cameras.main.startFollow(this.player, false, 1, 1, 0, 120);
+    this.cameras.main.setDeadzone(0, 0);
     this.openingFallThoughtTimer = this.time.delayedCall(1800, () => {
       this.openingFallThoughtTimer = undefined;
       if (!this.openingSequenceActive) return;
@@ -1092,7 +1114,7 @@ export class GameScene extends Phaser.Scene {
           const unstableProgress = (progress - straightFallFraction) / (1 - straightFallFraction);
           const drift = Phaser.Math.Linear(OPENING_DROP_POINT.x, START_POSITION.x, unstableProgress);
           const wobbleEnvelope = Math.sin(unstableProgress * Math.PI);
-          const wobble = Math.sin(unstableProgress * Math.PI * 6) * 14 * wobbleEnvelope;
+          const wobble = Math.sin(unstableProgress * Math.PI * 6) * 10 * wobbleEnvelope;
           this.player.setX(drift + wobble).setRotation(Math.sin(unstableProgress * Math.PI * 5) * 0.06 * wobbleEnvelope);
         }
         this.drawPlayer();
@@ -1360,6 +1382,7 @@ export class GameScene extends Phaser.Scene {
     this.shopkeeperTransactionTween = undefined;
     this.clearShopkeeperCarry();
     this.shopTransactionBusy = false;
+    this.pendingShopkeeperTransactions = [];
     this.shopkeeper = undefined;
     this.shopExitDoor = undefined;
     this.homeExitDoor = undefined;
@@ -2030,7 +2053,8 @@ export class GameScene extends Phaser.Scene {
     g.lineBetween(nursery.x + nursery.width - 48, nursery.y + 286, nursery.x + nursery.width - 48, nursery.y + 214);
     g.lineBetween(nursery.x + 48, nursery.y + 214, nursery.x + nursery.width - 48, nursery.y + 214);
     const label = this.add.text(nursery.x + nursery.width / 2, nursery.y + 300, 'NURSERY UNDER CONSTRUCTION', {
-      color: '#f6f7f3', fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', backgroundColor: '#111416', padding: { left: 4, right: 4, top: 3, bottom: 3 },
+      color: '#f6f7f3', fontFamily: 'monospace', fontSize: '18px', fontStyle: 'bold',
+      stroke: '#07090a', strokeThickness: 5, backgroundColor: '#111416', padding: { left: 7, right: 7, top: 5, bottom: 5 },
     }).setOrigin(0.5).setDepth(27);
     this.graphicsUpgradeWorldObjects.push(g, label);
   }
@@ -2246,15 +2270,12 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.refreshShopPanel(delivery
-      ? `Small Golden Pothos delivered. +${reward} coins.`
+      ? `Small Golden Pothos delivered. +${reward} coins. Close the menu when ready for Birch to shelve it.`
       : `Small Golden Pothos sold for ${reward} coins. The Wanted delivery remains open.`);
-    this.startShopkeeperTransaction(
-      'small-golden-pothos',
-      1,
-      'sell',
-      this.getShopShelfPosition(instanceId),
-      `Small Golden Pothos ${delivery ? 'delivered' : 'sold'} for ${reward} coins.`,
-    );
+    const source = this.getShopShelfPosition(instanceId);
+    const feedback = `Small Golden Pothos ${delivery ? 'delivered' : 'sold'} for ${reward} coins.`;
+    if (delivery) this.queueShopkeeperTransaction('small-golden-pothos', 1, 'sell', source, feedback);
+    else this.startShopkeeperTransaction('small-golden-pothos', 1, 'sell', source, feedback);
   }
 
   sellRepairedPot(): void {
@@ -2516,7 +2537,7 @@ export class GameScene extends Phaser.Scene {
     this.rebuildBuySellArtwork();
     const view = this.cameras.main.worldView;
     this.buySellUpgradeNotification?.destroy();
-    this.buySellUpgradeNotification = this.add.text(view.centerX, view.top + 48 / this.cameras.main.zoom, 'BUY/SELL GRAPHICS UPGRADED', {
+    this.buySellUpgradeNotification = this.add.text(view.centerX, view.top + 48 / this.cameras.main.zoom, `${BUY_SELL_SIGN_NAME} UPGRADED`, {
       color: '#f6f7f3',
       fontFamily: 'monospace',
       fontSize: '14px',
@@ -2582,7 +2603,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.progress.seedQuantities[species] < 1) {
-      this.hud.refreshBasilPanel(`No ${definition.label.toLowerCase()} seeds available. Buy some at BUY / SELL.`);
+      this.hud.refreshBasilPanel(`No ${definition.label.toLowerCase()} seeds available. Buy some at ${BUY_SELL_NAME}.`);
       return;
     }
     this.requestGardeningAction({ potId: pot.id, type: 'plant', species });
@@ -2781,7 +2802,7 @@ export class GameScene extends Phaser.Scene {
       this.progress.task = species === 'basil' ? 'sell-basil' : 'sell-mint';
       this.basilPotSelected = false;
       this.hud.highlightBag();
-      this.showToast(`${definition.label} harvested. Sell it at BUY / SELL for ${definition.harvestPrice} coins.`, 2400);
+      this.showToast(`${definition.label} harvested. Sell it at ${BUY_SELL_NAME} for ${definition.harvestPrice} coins.`, 2400);
     }
     this.gardeningActionApplied = true;
     this.saveProgress();
@@ -2884,8 +2905,8 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.refreshWantedSign();
-    this.hud.refreshShopPanel(`Fresh basil leaves delivered. +${BASIL_DELIVERY_REWARD} coins.`);
-    this.startShopkeeperTransaction(
+    this.hud.refreshShopPanel(`Fresh basil leaves delivered. +${BASIL_DELIVERY_REWARD} coins. Close the menu when ready for Birch to shelve it.`);
+    this.queueShopkeeperTransaction(
       definition.harvestItem,
       1,
       'sell',
@@ -3141,7 +3162,7 @@ export class GameScene extends Phaser.Scene {
     this.selectedGrowingPotId = id; this.basilPotSelected = true;
     this.hud.openPanel('basil');
     if (!pot.crop && PLANT_SPECIES.every((species) => (this.progress.seedQuantities[species] ?? 0) < 1)) {
-      const message = 'Buy seeds at BUY / SELL.';
+      const message = `Buy seeds at ${BUY_SELL_NAME}.`;
       this.hud.refreshBasilPanel(message);
       this.showToast(message, 1900);
     }
@@ -3879,6 +3900,12 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
+    const clerkPosition = new Phaser.Math.Vector2(SHOP_COUNTER.x, SHOP_COUNTER.y - 66);
+    if (this.isNearPoint(point, clerkPosition, 76)) {
+      this.cancelTapWalk();
+      this.openShopPanel();
+      return;
+    }
     if (this.isNearPoint(point, SHOP_COUNTER, 130)) {
       const approach = new Phaser.Math.Vector2(SHOP_COUNTER_APPROACH.x, SHOP_COUNTER_APPROACH.y);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, approach.x, approach.y) <= 110) {
@@ -4240,7 +4267,7 @@ export class GameScene extends Phaser.Scene {
     this.syncHudState();
     this.hud.highlightBag();
     this.scheduleGraphicsUpgradeAfterRepairedPickup();
-    this.showToast(`Repaired pot added to the Bag. Sell it at BUY / SELL for ${REPAIRED_POT_SALE_PRICE} coins.`);
+    this.showToast(`Repaired pot added to the Bag. Sell it at ${BUY_SELL_NAME} for ${REPAIRED_POT_SALE_PRICE} coins.`);
   }
 
   private openShopPanel(): void {
@@ -4292,12 +4319,13 @@ export class GameScene extends Phaser.Scene {
     this.shopPremiumPlantDisplay = [];
     this.drawShopInterior();
     this.player.setPosition(SHOP_PLAYER_START.x, SHOP_PLAYER_START.y).setAlpha(1).setVisible(true);
+    this.zoomMode = 'normal';
     this.destinationMarker.setVisible(false);
     this.clearInteractionHighlight();
     this.setShopCamera();
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
-    this.showToast('Welcome to Buy/Sell, how can I help?', 1800);
+    this.showToast(`Welcome to ${BUY_SELL_NAME}. I'm Birch. How can I help?`, 2200);
     this.persistDevSession();
   }
 
@@ -4346,6 +4374,7 @@ export class GameScene extends Phaser.Scene {
     this.drawHomeInterior();
     const homeStart = this.activeProperty === 'second-rental' ? SECOND_HOME_PLAYER_START : HOME_PLAYER_START;
     this.player.setPosition(homeStart.x, homeStart.y).setAlpha(1).setVisible(true);
+    this.zoomMode = 'normal';
     this.basilPotSelected = false;
     this.selectedGrowingPotId = null;
     this.destinationMarker.setVisible(false);
@@ -4476,11 +4505,14 @@ export class GameScene extends Phaser.Scene {
     // The square room fits the square portrait gameplay viewport while
     // retaining a small minimum scale on very short phones.
     const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
-    const zoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
+    const normalZoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
+    const zoom = this.zoomMode === 'close' ? normalZoom * 1.9 : normalZoom;
     this.cameras.main.setBounds(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
     this.cameras.main.setZoom(zoom);
-    this.cameras.main.startFollow(this.player, true, 0.14, 0.14, 0, 0);
+    const followLerp = this.zoomMode === 'close' ? 0.2 : 0.14;
+    this.cameras.main.startFollow(this.player, true, followLerp, followLerp, 0, 0);
     this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
+    this.hud.setZoomMode(this.zoomMode);
   }
 
   private setHomeCamera(): void {
@@ -4493,11 +4525,14 @@ export class GameScene extends Phaser.Scene {
       this.scale.height / HOME_WORLD_HEIGHT,
     );
     const portraitPhone = this.isPortraitPhoneViewport() && this.scale.width <= 680;
-    const zoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
+    const normalZoom = portraitPhone ? Math.max(0.34, fittedZoom) : Math.max(0.25, fittedZoom);
+    const zoom = this.zoomMode === 'close' ? normalZoom * 1.9 : normalZoom;
     this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
     this.cameras.main.setZoom(zoom);
-    this.cameras.main.startFollow(this.player, true, 0.14, 0.14, 0, 0);
+    const followLerp = this.zoomMode === 'close' ? 0.2 : 0.14;
+    this.cameras.main.startFollow(this.player, true, followLerp, followLerp, 0, 0);
     this.cameras.main.setDeadzone(this.getHorizontalDeadzone(), this.getVerticalDeadzone());
+    this.hud.setZoomMode(this.zoomMode);
   }
 
   private getActiveHomeWorldWidth(): number {
@@ -4566,15 +4601,28 @@ export class GameScene extends Phaser.Scene {
     this.shopObjects.push(this.shopExitDoor);
 
     const labels = [
-      { text: 'BUY / SELL', x: SHOP_COUNTER.x, y: 125, size: '26px' },
-      { text: 'COUNTER', x: SHOP_COUNTER.x, y: SHOP_COUNTER.y + 66, size: '15px' },
+      { text: BUY_SELL_SIGN_NAME, x: SHOP_COUNTER.x, y: 125, size: '34px' },
     ];
     labels.forEach(({ text, x, y, size }) => {
       const label = this.add.text(x, y, text, {
-        color: upgraded ? '#f2e5c7' : '#f6f7f3', fontFamily: 'monospace', fontSize: size, fontStyle: 'bold',
-      }).setOrigin(0.5).setDepth(7);
+        color: upgraded ? '#f2e5c7' : '#f6f7f3', fontFamily: SHOP_LABEL_FONT, fontSize: size, fontStyle: 'bold',
+        backgroundColor: upgraded ? '#0c2b42' : '#111416', padding: { left: 7, right: 7, top: 4, bottom: 4 },
+      }).setOrigin(0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
       this.shopObjects.push(label);
     });
+    const counterInstruction = this.add.text(
+      SHOP_COUNTER.x,
+      SHOP_COUNTER.y + 24,
+      'CLICK CLERK',
+      {
+        color: upgraded ? '#f2e5c7' : '#f6f7f3',
+        fontFamily: SHOP_LABEL_FONT,
+        fontSize: '24px',
+        fontStyle: 'bold',
+        align: 'center',
+      },
+    ).setOrigin(0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
+    this.shopObjects.push(counterInstruction);
   }
 
   private drawShopkeeper(seated: boolean): void {
@@ -4630,8 +4678,9 @@ export class GameScene extends Phaser.Scene {
       this.shopkeeperCarry.fillStyle(0x697173, 1).fillRect(-15, -5, 30, 4);
     }
     this.shopkeeperCarryLabel = this.add.text(0, 30, '×1', {
-      color: '#f6f7f3', fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', backgroundColor: '#111416', padding: { left: 3, right: 3, top: 2, bottom: 2 },
-    }).setOrigin(0.5).setDepth(9);
+      color: '#f6f7f3', fontFamily: SHOP_LABEL_FONT, fontSize: '17px', fontStyle: 'bold',
+      backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
+    }).setOrigin(0.5).setDepth(9).setResolution(Math.max(2, window.devicePixelRatio || 1));
     this.updateShopkeeperCarryPosition();
   }
 
@@ -4673,17 +4722,51 @@ export class GameScene extends Phaser.Scene {
     feedback: string,
   ): void {
     if (!this.shopInterior || this.shopTransactionBusy) return;
+    if (this.pendingShopkeeperTransactions.length > 0) {
+      this.queueShopkeeperTransaction(item, quantity, direction, source, feedback);
+      this.hud.closePanel();
+      return;
+    }
     // Closing the shop panel is the player's confirmation. Start the clerk's
     // collect/carry/return animation immediately after the panel disappears.
     this.hud.closePanel();
     this.beginShopkeeperTransaction(item, quantity, direction, source, feedback);
   }
 
+  private queueShopkeeperTransaction(
+    item: ShopPresentationItem,
+    quantity: number,
+    direction: ShopTransactionDirection,
+    source: Phaser.Math.Vector2,
+    feedback: string,
+  ): void {
+    if (!this.shopInterior || this.shopTransactionBusy) return;
+    this.pendingShopkeeperTransactions.push({
+      item,
+      quantity,
+      direction,
+      source: source.clone(),
+      feedback,
+    });
+  }
+
+  private beginNextPendingShopkeeperTransaction(): void {
+    if (this.modalOpen || !this.shopInterior || this.shopTransactionBusy) return;
+    const transaction = this.pendingShopkeeperTransactions.shift();
+    if (!transaction) return;
+    this.beginShopkeeperTransaction(
+      transaction.item,
+      transaction.quantity,
+      transaction.direction,
+      transaction.source,
+      transaction.feedback,
+    );
+  }
+
   private getShopkeeperAnimationScale(): number {
     const era = this.progress.buildings['buy-sell'].graphicsEra;
-    if (era === 'atari-bw') return 1.2;
-    if (era === 'atari-colour') return 0.8;
-    return 1;
+    const presentationScale = era === 'atari-bw' ? 1.2 : era === 'atari-colour' ? 0.8 : 1;
+    return presentationScale * 1.35;
   }
 
   private beginShopkeeperTransaction(
@@ -4697,6 +4780,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.shopkeeper) {
       this.refreshShopStockDisplay();
       this.showToast(feedback, 1800);
+      this.beginNextPendingShopkeeperTransaction();
       return;
     }
     this.shopTransactionBusy = true;
@@ -4728,6 +4812,7 @@ export class GameScene extends Phaser.Scene {
           this.refreshShopStockDisplay();
           this.showToast(feedback, 1800);
           this.updateInteraction();
+          this.beginNextPendingShopkeeperTransaction();
         },
       });
     };
@@ -4779,8 +4864,14 @@ export class GameScene extends Phaser.Scene {
     if (secondRental) {
       room.lineStyle(6, 0x9aa5a3, 0.9).lineBetween(600, 120, 600, 490);
       room.fillStyle(0x1d2527, 0.9).fillRect(82, 112, 480, 34).fillRect(638, 112, 480, 34);
-      this.homeObjects.push(this.add.text(322, 129, 'LIVING ROOM', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
-      this.homeObjects.push(this.add.text(878, 129, 'GROWING ROOM · 6 POSITIONS', { color: '#f6f7f3', fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7));
+      this.homeObjects.push(this.add.text(322, 129, 'LIVING ROOM', {
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '22px', fontStyle: 'bold',
+        stroke: '#07090a', strokeThickness: 5, backgroundColor: '#111416', padding: { left: 7, right: 7, top: 4, bottom: 4 },
+      }).setOrigin(0.5).setDepth(7));
+      this.homeObjects.push(this.add.text(878, 129, 'GROWING ROOM · 6 POSITIONS', {
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '20px', fontStyle: 'bold',
+        stroke: '#07090a', strokeThickness: 5, backgroundColor: '#111416', padding: { left: 7, right: 7, top: 4, bottom: 4 },
+      }).setOrigin(0.5).setDepth(7));
     }
     this.homeObjects.push(room);
 
@@ -4805,7 +4896,8 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.push(growTable);
     growingSpots.forEach((spot, index) => {
       const slotLabel = this.add.text(spot.x, spot.y + 31, `SLOT ${index + 1}`, {
-        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold',
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold',
+        stroke: '#07090a', strokeThickness: 4, backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
       }).setOrigin(0.5).setDepth(7);
       this.homeObjects.push(slotLabel);
     });
@@ -4826,14 +4918,15 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.push(this.homeExitDoor);
 
     const labels = [
-      { text: secondRental ? 'TWO-ROOM RENTAL' : 'YOUR RENTAL', x: worldWidth / 2, y: 112, size: '26px' },
-      { text: 'GROW TABLE', x: (firstSlot.x + lastSlot.x) / 2, y: firstSlot.y + 70, size: '14px' },
-      { text: 'WINDOW', x: windowX + 95, y: 356, size: '14px' },
-      { text: 'EXIT', x: HOME_EXIT.x, y: HOME_EXIT.y + 28, size: '14px' },
+      { text: secondRental ? 'TWO-ROOM RENTAL' : 'YOUR RENTAL', x: worldWidth / 2, y: 112, size: '32px' },
+      { text: 'GROW TABLE', x: (firstSlot.x + lastSlot.x) / 2, y: firstSlot.y + 70, size: '22px' },
+      { text: 'WINDOW', x: windowX + 95, y: 356, size: '22px' },
+      { text: 'EXIT', x: HOME_EXIT.x, y: HOME_EXIT.y + 28, size: '22px' },
     ];
     labels.forEach(({ text, x, y, size }) => {
       const label = this.add.text(x, y, text, {
         color: '#f6f7f3', fontFamily: 'monospace', fontSize: size, fontStyle: 'bold',
+        stroke: '#07090a', strokeThickness: 5, backgroundColor: '#111416', padding: { left: 7, right: 7, top: 4, bottom: 4 },
       }).setOrigin(0.5).setDepth(7);
       this.homeObjects.push(label);
     });
@@ -4854,15 +4947,15 @@ export class GameScene extends Phaser.Scene {
     this.homeStarterKitObjects.push(kit);
     const label = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y + 42,
       this.starterKitClaimed ? 'STARTER KIT CLAIMED' : 'STARTER KIT · TAP TO CLAIM', {
-        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold',
-        backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold',
+        stroke: '#07090a', strokeThickness: 5, backgroundColor: '#111416', padding: { left: 7, right: 7, top: 5, bottom: 5 },
       }).setOrigin(0.5).setDepth(7);
     this.homeStarterKitObjects.push(label);
     const contents = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y - 62,
       'POT · USED MEDIUM\nSEEDS · WATERING CAN\n1 BASIC FERTILISER', {
-        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold',
-        align: 'center', lineSpacing: 2,
-        backgroundColor: '#111416', padding: { left: 5, right: 5, top: 3, bottom: 3 },
+        color: '#f6f7f3', fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold',
+        align: 'center', lineSpacing: 4, stroke: '#07090a', strokeThickness: 4,
+        backgroundColor: '#111416', padding: { left: 7, right: 7, top: 5, bottom: 5 },
       }).setOrigin(0.5).setDepth(7);
     this.homeStarterKitObjects.push(contents);
     this.homeObjects.push(...this.homeStarterKitObjects);
@@ -4877,10 +4970,10 @@ export class GameScene extends Phaser.Scene {
     this.wantedSignText = this.add.text(BUY_SELL_WINDOW.x + BUY_SELL_WINDOW.width / 2, signY + signHeight / 2, '', {
       color: '#f6f7f3',
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-      fontSize: '20px',
+      fontSize: '26px',
       fontStyle: 'bold',
       align: 'center',
-      lineSpacing: 4,
+      lineSpacing: 6,
     }).setOrigin(0.5).setDepth(21);
     this.refreshWantedSign();
   }
@@ -4933,12 +5026,12 @@ export class GameScene extends Phaser.Scene {
       this.drawPremiumPlant(item, definition.id, 0, 0, 0.55);
       const tag = this.add.text(slot.x + 36, slot.y - 42, `${definition.shortLabel}\n${definition.price}C`, {
         color: '#f6f7f3',
-        fontFamily: 'monospace',
-        fontSize: '7px',
+        fontFamily: SHOP_LABEL_FONT,
+        fontSize: '14px',
         fontStyle: 'bold',
         backgroundColor: '#111416',
-        padding: { left: 2, right: 2, top: 1, bottom: 1 },
-      }).setOrigin(0, 0.5).setDepth(7);
+        padding: { left: 5, right: 5, top: 4, bottom: 4 },
+      }).setOrigin(0, 0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
       this.shopPremiumPlantDisplay.push(item, tag);
       this.shopObjects.push(item, tag);
     });
@@ -4991,12 +5084,12 @@ export class GameScene extends Phaser.Scene {
       const label = entry.item === 'small-golden-pothos' ? 'GOLDEN POTHOS' : entry.item === 'special-repair-pot' ? 'REPAIRED POT' : entry.item === 'fresh-mint-leaves' ? 'FRESH MINT' : 'FRESH BASIL';
       const stockLabel = this.add.text(slot.x + 36, slot.y - 43, `${label}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}\n${this.getShopBuyPrice(entry.item)}C`, {
         color: '#f6f7f3',
-        fontFamily: 'monospace',
-        fontSize: '7px',
+        fontFamily: SHOP_LABEL_FONT,
+        fontSize: '14px',
         fontStyle: 'bold',
         backgroundColor: '#111416',
-        padding: { left: 2, right: 2, top: 1, bottom: 1 },
-      }).setOrigin(0, 0.5).setDepth(7);
+        padding: { left: 5, right: 5, top: 4, bottom: 4 },
+      }).setOrigin(0, 0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
       this.shopGoldenPothosDisplay.push(item, stockLabel);
     });
     this.shopObjects.push(...this.shopGoldenPothosDisplay);
@@ -5025,6 +5118,14 @@ export class GameScene extends Phaser.Scene {
 
   private applyZoom(mode: ZoomMode): void {
     this.zoomMode = mode;
+    if (this.shopInterior) {
+      this.setShopCamera();
+      return;
+    }
+    if (this.homeInterior) {
+      this.setHomeCamera();
+      return;
+    }
     const frame = this.getCameraFrame(mode);
     const portrait = this.isPortraitPhoneViewport() || this.scale.height > this.scale.width;
     this.portraitFollowCentered = portrait;

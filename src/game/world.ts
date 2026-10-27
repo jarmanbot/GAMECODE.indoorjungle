@@ -14,6 +14,9 @@ export interface Building {
 
 export type ZoomMode = 'close' | 'normal';
 
+export const BUY_SELL_NAME = "Birch's Buy'n Sell";
+export const BUY_SELL_SIGN_NAME = "BIRCH'S BUY'N SELL";
+
 export const WORLD_WIDTH = 4200;
 export const WORLD_HEIGHT = 1800;
 export const PAVEMENT_Y = 830;
@@ -29,7 +32,7 @@ export const STARTING_WALKABLE_MAX_X = 3000;
 
 export const BUILDINGS: Building[] = [
   { key: 'starter-apartment', label: 'POVO APPARTMENTS', kind: 'apartment', x: 780, y: 555, width: 300, height: 275 },
-  { key: 'buy-sell', label: 'BUY / SELL', kind: 'shop', x: 1120, y: 505, width: 350, height: 325 },
+  { key: 'buy-sell', label: BUY_SELL_SIGN_NAME, kind: 'shop', x: 1120, y: 505, width: 350, height: 325 },
   { key: 'homes', label: 'REAL ESTATE AGENT', kind: 'homes', x: 1510, y: 490, width: 380, height: 340 },
   { key: 'plants', label: 'NURSERY COMING SOON', kind: 'plants', x: 1940, y: 510, width: 360, height: 320 },
   { key: 'second-rental', label: 'TWO-ROOM RENTAL', kind: 'apartment', x: 2460, y: 465, width: 430, height: 365 },
@@ -180,8 +183,8 @@ export const BUY_SELL_DOOR_TOP = 726;
 export const BUY_SELL_DOOR_BOTTOM = 830;
 export const BUY_SELL_ENTRANCE = { x: 1405, y: 864 };
 export const BUY_SELL_WINDOW = { x: 1135, y: 590, width: 222, height: 190 };
-export const HOMES_WINDOW = { x: 1530, y: 592, width: 340, height: 184 };
-export const HOMES_WINDOW_CLEAN_ZONE = { x: 1530, y: 592, width: 340, height: 36 };
+export const HOMES_WINDOW = { x: 1530, y: 592, width: 246, height: 184 };
+export const HOMES_WINDOW_CLEAN_ZONE = { x: 1530, y: 592, width: 246, height: 36 };
 export interface WindowCleanSection {
   id: string;
   x: number;
@@ -194,9 +197,8 @@ export interface WindowCleanSection {
 // Keep section effort in the world definition so larger future windows can
 // use more sprays per section without changing the cleaning system.
 export const HOMES_WINDOW_CLEAN_SECTIONS: WindowCleanSection[] = [
-  { id: 'homes-left', x: 1530, y: 592, width: 104, height: 184, spraysRequired: 3 },
-  { id: 'homes-centre', x: 1648, y: 592, width: 104, height: 184, spraysRequired: 3 },
-  { id: 'homes-right', x: 1766, y: 592, width: 104, height: 184, spraysRequired: 3 },
+  { id: 'homes-left', x: 1530, y: 592, width: 116, height: 184, spraysRequired: 3 },
+  { id: 'homes-right', x: 1660, y: 592, width: 116, height: 184, spraysRequired: 3 },
 ];
 export const HOMES_LISTINGS: Array<{ key: PropertyListingKey; x: number; y: number; width: number; height: number }> = [
   { key: 'cheap-rental', x: 1550, y: 637, width: 112, height: 90 },
@@ -208,6 +210,9 @@ export const APARTMENT_DOOR_HEIGHT = BUY_SELL_DOOR_HEIGHT;
 export const APARTMENT_DOOR_TOP = BUY_SELL_DOOR_TOP;
 export const APARTMENT_DOOR_BOTTOM = BUY_SELL_DOOR_BOTTOM;
 export const APARTMENT_ENTRANCE = { x: 1030, y: 864 };
+export const REAL_ESTATE_ENTRANCE = { x: 1830, y: 864 };
+export const REAL_ESTATE_DOOR_TOP = 726;
+export const REAL_ESTATE_DOOR_BOTTOM = 830;
 export const SECOND_RENTAL_ENTRANCE = { x: 2675, y: 864 };
 export const SECOND_RENTAL_DOOR_TOP = 683;
 export const SECOND_RENTAL_DOOR_BOTTOM = 769;
@@ -221,14 +226,18 @@ export const BROKEN_POT_PIECES_SCALE = 2.268;
 
 export const SHOP_WORLD_WIDTH = 900;
 export const SHOP_WORLD_HEIGHT = 900;
-export const SHOP_PLAYER_START = { x: 220, y: 555 };
-export const SHOP_COUNTER = { x: 450, y: 400 };
-export const SHOP_COUNTER_APPROACH = { x: 450, y: 525 };
+// Spawn just inside the bottom doorway, in the clear gap beside the counter.
+// Held movement is reset during entry so this does not immediately retrigger
+// the exit threshold.
+export const SHOP_PLAYER_START = { x: 620, y: 700 };
+export const SHOP_COUNTER = { x: 450, y: 620 };
+export const SHOP_COUNTER_APPROACH = { x: 450, y: 745 };
 export const SHOP_COUNTER_WIDTH = 260;
 export const SHOP_COUNTER_HEIGHT = 104;
 export const SHOP_SHELVES = [
   { x: 120, y: 180, width: 170, height: 250 },
   { x: 610, y: 180, width: 170, height: 250 },
+  { x: 365, y: 180, width: 170, height: 250 },
 ] as const;
 // Every shop-owned or player-sold item uses these shared positions. The first
 // three are reserved for the opening premium catalogue; later slots are used
@@ -238,6 +247,8 @@ export const SHOP_SHELF_SLOTS = [
   { x: 205, y: 306 }, { x: 695, y: 306 },
   { x: 205, y: 374 }, { x: 695, y: 374 },
   { x: 205, y: 430 }, { x: 695, y: 430 },
+  { x: 450, y: 238 }, { x: 450, y: 306 },
+  { x: 450, y: 374 }, { x: 450, y: 430 },
 ] as const;
 // The interior exit sits in the bottom wall, farther right and close to the
 // room's lower edge so it reads as a real way out rather than a floating door.
@@ -254,7 +265,7 @@ export const SHOP_EXIT_ACTIVATION_HALF_WIDTH = 112;
 export const SHOP_EXIT_ACTIVATION_TOP = SHOP_EXIT_DOOR_BOTTOM - 270;
 export const SHOP_EXIT_ACTIVATION_BOTTOM = SHOP_EXIT_DOOR_BOTTOM + 28;
 export const SHOP_EXIT_MOVEMENT_TRIGGER_Y = SHOP_EXIT_DOOR_BOTTOM - 58;
-export const SHOP_HANDOVER_POINT = { x: 570, y: 515 };
+export const SHOP_HANDOVER_POINT = { x: 570, y: 735 };
 export const HOME_WORLD_WIDTH = 900;
 export const HOME_WORLD_HEIGHT = 900;
 export const SECOND_HOME_WORLD_WIDTH = 1200;
@@ -300,7 +311,7 @@ export const SMALL_BASIC_PLASTIC_POT_PRICE = 10;
 export const OPENING_POTHOS_SALE_PRICE = 5;
 export const OPENING_POTHOS_DELIVERY_REWARD = 15;
 export const BASIL_DELIVERY_REWARD = 9;
-export const WINDOW_JOB_REWARD = 9;
+export const WINDOW_JOB_REWARD = 4;
 export const REPAIRED_POT_SALE_PRICE = 75;
 export const RENTAL_BOND_COST = 60;
 // Pass 5 prototype values. These are intentionally provisional and are not

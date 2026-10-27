@@ -13,10 +13,14 @@ import {
   BUY_SELL_DOOR_TOP,
   BUY_SELL_ENTRANCE,
   BUY_SELL_DOOR_WIDTH,
+  BUY_SELL_SIGN_NAME,
   BUY_SELL_WINDOW,
   CROSSING_END_X,
   CROSSING_START_X,
   HOMES_WINDOW_CLEAN_SECTIONS,
+  REAL_ESTATE_DOOR_BOTTOM,
+  REAL_ESTATE_DOOR_TOP,
+  REAL_ESTATE_ENTRANCE,
   PAVEMENT_HEIGHT,
   PAVEMENT_Y,
   FUTURE_ZONES,
@@ -296,7 +300,7 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   addWorldLabel(scene, x + width / 2, y + 29, building.label, WHITE,
     building.key === 'starter-apartment' ? 22 : building.kind === 'apartment' ? 17 : 23, true);
 
-  if (building.kind === 'homes') drawHomes(scene, g, building);
+  if (building.kind === 'homes') drawHomes(scene, g, building, graphicsUpgradeInstalled);
   if (building.kind === 'plants') drawPlants(scene, g, building, graphicsUpgradeInstalled);
   if (building.kind === 'apartment') {
     const secondRental = building.key === 'second-rental';
@@ -356,7 +360,8 @@ export function drawBuySellBuilding(scene: Phaser.Scene, building: Building, sty
   const fixedSign = scene.add.graphics().setDepth(8);
   fixedSign.fillStyle(signColour, 1).fillRect(x + 90, y + 32, 170, 38);
   fixedSign.lineStyle(3, brightTrim, 0.95).strokeRect(x + 90, y + 32, 170, 38);
-  const fixedSignText = addWorldLabel(scene, x + building.width / 2, y + 51, 'BUY / SELL', brightTrim, 17, true);
+  // Match the exterior sign to the REAL ESTATE AGENT building-label size.
+  const fixedSignText = addWorldLabel(scene, x + building.width / 2, y + 51, BUY_SELL_SIGN_NAME, brightTrim, 23, true);
   objects.push(fixedSign, fixedSignText);
 
   const windowX = BUY_SELL_WINDOW.x;
@@ -464,26 +469,35 @@ export function setStarterApartmentDoorOpen(door: Phaser.GameObjects.Graphics, o
   drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, open);
 }
 
-function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building): void {
+function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, upgraded: boolean): void {
   const x = building.x;
   const y = building.y;
-  g.fillStyle(0x15191b, 1).fillRect(x + 20, y + 102, building.width - 40, 184);
-  g.lineStyle(5, WHITE, 0.9).strokeRect(x + 20, y + 102, building.width - 40, 184);
-  // Three matching silhouettes sit inside three distinct display panes. The
-  // first remains the nearby starter apartment listing through its lighter
-  // treatment, but its silhouette and scale match the future homes.
+  const lineColour = upgraded ? 0x39ff5a : WHITE;
+  if (upgraded) {
+    g.fillStyle(0x070b08, 1).fillRect(x, y, building.width, building.height);
+    g.lineStyle(4, lineColour, 0.95).strokeRect(x, y, building.width, building.height);
+  }
   HOMES_WINDOW_CLEAN_SECTIONS.forEach((section, index) => {
-    const paneCentre = section.x + section.width / 2;
-    g.lineStyle(3, 0x6e7677, 0.75).strokeRect(section.x, section.y, section.width, section.height);
-    drawMiniHome(g, paneCentre - 39, y + 147, 78, 90, index === 0);
+    g.fillStyle(0x15191b, 1).fillRect(section.x, section.y, section.width, section.height);
+    g.lineStyle(5, lineColour, 0.9).strokeRect(section.x, section.y, section.width, section.height);
+    for (let listing = 0; listing < 4; listing += 1) {
+      const column = listing % 2;
+      const row = Math.floor(listing / 2);
+      drawMiniHome(g, section.x + 10 + column * 52, section.y + 31 + row * 74, 44, 52, index === 0 && listing === 0);
+    }
   });
-  g.lineStyle(3, 0x6e7677, 0.8);
-  g.lineBetween(HOMES_WINDOW_CLEAN_SECTIONS[0].x + HOMES_WINDOW_CLEAN_SECTIONS[0].width + 7, y + 106, HOMES_WINDOW_CLEAN_SECTIONS[0].x + HOMES_WINDOW_CLEAN_SECTIONS[0].width + 7, y + 282);
-  g.lineBetween(HOMES_WINDOW_CLEAN_SECTIONS[1].x + HOMES_WINDOW_CLEAN_SECTIONS[1].width + 7, y + 106, HOMES_WINDOW_CLEAN_SECTIONS[1].x + HOMES_WINDOW_CLEAN_SECTIONS[1].width + 7, y + 282);
-  addWorldLabel(scene, x + 96, y + 115, 'TO RENT', WHITE, 10, true);
-  addWorldLabel(scene, x + 209, y + 115, 'TO RENT', WHITE, 9, true);
-  addWorldLabel(scene, x + 302, y + 115, 'FOR SALE', WHITE, 9, true);
-  addWorldLabel(scene, x + building.width / 2, y + 294, 'CLEAN WINDOW', WHITE, 10, true);
+  addWorldLabel(scene, x + 78, y + 115, 'TO RENT', lineColour, 10, true);
+  addWorldLabel(scene, x + 208, y + 115, 'PROPERTIES', lineColour, 9, true);
+}
+
+export function drawRealEstateDoor(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
+  const door = scene.add.graphics().setDepth(29);
+  drawMatchingDoor(door, REAL_ESTATE_ENTRANCE.x, REAL_ESTATE_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, false);
+  return door;
+}
+
+export function setRealEstateDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
+  drawMatchingDoor(door, REAL_ESTATE_ENTRANCE.x, REAL_ESTATE_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, open);
 }
 
 function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, graphicsUpgradeInstalled = false): void {
@@ -808,13 +822,16 @@ export function addWorldLabel(
   size: number,
   centered = false,
 ): Phaser.GameObjects.Text {
+  const readableSize = Math.max(16, Math.round(size * 1.5));
   return scene.add.text(x, y, text, {
     color: `#${color.toString(16).padStart(6, '0')}`,
     fontFamily: 'monospace',
-    fontSize: `${size}px`,
+    fontSize: `${readableSize}px`,
     fontStyle: 'bold',
     align: centered ? 'center' : 'left',
     stroke: `#${BLACK.toString(16).padStart(6, '0')}`,
-    strokeThickness: centered ? 2 : 1,
+    strokeThickness: centered ? 5 : 4,
+    backgroundColor: '#111416',
+    padding: { left: 6, right: 6, top: 3, bottom: 3 },
   }).setOrigin(centered ? 0.5 : 0, 0.5).setDepth(10);
 }
