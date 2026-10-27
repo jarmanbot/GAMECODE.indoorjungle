@@ -15,7 +15,10 @@ import {
   BASIL_GROWTH_DURATION_MS,
   BASIL_DELIVERY_REWARD,
   BASIC_FERTILIZER_BOX_PRICE,
+  BROKEN_POT_PIECE_COUNT,
+  BROKEN_POT_PIECE_IDS,
   HOME_PLAYER_START,
+  HOMES_WINDOW_CLEAN_SECTIONS,
   SECOND_HOME_PLAYER_START,
   OPENING_POTHOS_SALE_PRICE,
   OPENING_POTHOS_DELIVERY_REWARD,
@@ -111,11 +114,27 @@ const firstPlantSold = (): ProgressState => withState(goldenPothosCollected(), {
 
 const buybackStockReady = (): ProgressState => withState(firstPlantSold(), { coins: getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE) });
 
-const windowJobAccepted = (): ProgressState => withState(firstPlantSold(), { windowJobAccepted: true, cleanerOwned: true, equippedTool: 'cleaner', toolSlots: ['cleaner', null, null], task: 'clean' });
+const emptyWindowCleaningSections = (): Record<string, number> => Object.fromEntries(
+  HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0]),
+);
+const completeWindowCleaningSections = (): Record<string, number> => Object.fromEntries(
+  HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, section.spraysRequired]),
+);
+const windowJobAccepted = (): ProgressState => withState(firstPlantSold(), {
+  windowJobAccepted: true, windowCleaningProgress: 0, windowCleaningSections: emptyWindowCleaningSections(),
+  cleanerOwned: true, equippedTool: 'cleaner', toolSlots: ['cleaner', null, null], task: 'clean',
+});
 
 const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
-  coins: OPENING_POTHOS_DELIVERY_REWARD + WINDOW_JOB_REWARD, windowJobAccepted: false, windowCleaningProgress: 6, windowJobComplete: true,
-  cleanerOwned: false, repairToolOwned: true, glueCharges: 1, equippedTool: 'repair', toolSlots: ['repair', null, null], brokenPotAvailable: true, brokenPotOwned: false, brokenPotPiecesRemaining: 3, task: 'repair',
+  coins: OPENING_POTHOS_DELIVERY_REWARD + WINDOW_JOB_REWARD, windowJobAccepted: false,
+  windowCleaningProgress: HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0),
+  windowCleaningSections: completeWindowCleaningSections(), windowJobComplete: true,
+  cleanerOwned: false, repairToolOwned: true, glueCharges: 1, equippedTool: 'repair', toolSlots: ['repair', null, null], brokenPotAvailable: true, brokenPotOwned: false, brokenPotPiecesRemaining: BROKEN_POT_PIECE_COUNT, brokenPotPiecesOwned: 0, brokenPotPiecesCollected: [], task: 'repair',
+});
+const brokenPiecesAnyOrder = (): ProgressState => withState(windowJobComplete(), {
+  brokenPotPiecesRemaining: 2,
+  brokenPotPiecesOwned: 2,
+  brokenPotPiecesCollected: [BROKEN_POT_PIECE_IDS[1], BROKEN_POT_PIECE_IDS[3]],
 });
 
 const brokenSpecialPotCollected = (): ProgressState => withState(windowJobComplete(), {
@@ -350,6 +369,7 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'buyback-stock-ready', label: 'Buyback stock ready', order: 35, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buybackStockReady },
   { id: 'window-job-accepted', label: 'Window-cleaning job accepted', order: 40, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobAccepted },
   { id: 'window-job-complete', label: 'Window-cleaning job complete', order: 50, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobComplete },
+  { id: 'broken-pieces-any-order', label: 'Broken pot pieces · arbitrary-order pickup', order: 55, scene: 'street', spawn: { x: 2400, y: 910 }, zoom: 'normal', crop: 'none', build: brokenPiecesAnyOrder },
   { id: 'broken-special-pot-collected', label: 'Broken special pot collected', order: 60, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: brokenSpecialPotCollected },
   { id: 'repair-partly-complete', label: 'Repair partly complete', order: 70, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: repairPartlyComplete },
   { id: 'repair-one-action-before-completion', label: 'Repair one action before completion', order: 75, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: repairOneActionBeforeCompletion },
@@ -399,6 +419,16 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
     || (nursery.operationalState === 'under-construction' && nursery.graphicsEra === 'green-crt')
     || (nursery.operationalState === 'operational' && nursery.graphicsEra === 'atari-colour');
   if (!validNurseryState) throw new Error(`Developer checkpoint ${id} has an inconsistent Nursery state.`);
+  if (id === 'window-job-accepted' && HOMES_WINDOW_CLEAN_SECTIONS.some((section) => result.windowCleaningSections[section.id] !== 0)) throw new Error(`Developer checkpoint ${id} must begin with both windows dirty.`);
+  if (id === 'window-job-complete' && (result.brokenPotPiecesRemaining !== BROKEN_POT_PIECE_COUNT
+    || HOMES_WINDOW_CLEAN_SECTIONS.some((section) => result.windowCleaningSections[section.id] !== section.spraysRequired))) {
+    throw new Error(`Developer checkpoint ${id} must expose four pieces after independently completing both windows.`);
+  }
+  if (id === 'broken-pieces-any-order' && (result.brokenPotPiecesRemaining !== 2
+    || !result.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[1])
+    || !result.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[3]))) {
+    throw new Error(`Developer checkpoint ${id} cannot verify arbitrary-order piece collection.`);
+  }
   if (result.basilDeliveryComplete && !result.basilHarvestSaleRecorded) throw new Error(`Developer checkpoint ${id} completed the basil delivery without recording the sale.`);
   if (result.coins < 0) throw new Error(`Developer checkpoint ${id} has negative coins.`);
   if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);

@@ -226,6 +226,15 @@ export const POT_POSITION = { x: 1080, y: 930 };
 export const RARE_BEGONIA_POSITION = { x: 2940, y: 930 };
 export const START_POSITION = { x: 560, y: 890 };
 export const BROKEN_POT_PIECES_SCALE = 2.268;
+export const BROKEN_POT_PIECE_COUNT = 4;
+export const BROKEN_POT_PIECE_IDS = ['broken-pot-piece-1', 'broken-pot-piece-2', 'broken-pot-piece-3', 'broken-pot-piece-4'] as const;
+// Four large fragments form one horizontal trail across the Nursery frontage.
+// Collection advances left-to-right, so the next piece sits just beyond the
+// previous one without changing the established street geometry.
+// At the current 2.268 drawing scale these centres land near x1951, 2250,
+// 2550 and 2849: from the Nursery's left edge to the second rental's far side.
+export const BROKEN_POT_PIECE_OFFSETS = [-198, -66, 66, 198] as const;
+export const BROKEN_POT_PIECES_CENTRE = { x: 2400, y: 910 };
 
 export const SHOP_WORLD_WIDTH = 900;
 export const SHOP_WORLD_HEIGHT = 900;

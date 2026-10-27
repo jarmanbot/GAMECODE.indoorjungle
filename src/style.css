@@ -167,6 +167,8 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .toast.is-starter-kit #toast-message { display: grid; gap: 7px; }
 .toast.is-starter-kit #toast-message strong { white-space: nowrap; font-size: 1.1em; }
 .toast.is-starter-kit .toast-action { width: min(220px, 100%); min-height: 42px; height: auto; justify-self: center; }
+.toast.is-completion { width: min(620px, calc(100vw - 24px)); max-width: none; display: grid; grid-template-columns: 1fr; justify-items: stretch; gap: 14px; padding: 18px 20px; font-size: clamp(13px, 2vw, 17px); line-height: 1.4; }
+.toast.is-completion .toast-action { width: min(220px, 100%); min-height: 42px; height: auto; justify-self: center; }
 .toast-action { flex: 0 0 auto; min-width: 52px; height: 30px; padding: 0 10px; border: 2px solid #111416; background: #111416; color: #f6f7f3; font: inherit; font-weight: 900; cursor: pointer; }
 .toast-action:hover { background: #4a5253; }
 .toast-close { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border: 2px solid #111416; background: #f6f7f3; color: #111416; font: inherit; font-size: 22px; line-height: 24px; cursor: pointer; }

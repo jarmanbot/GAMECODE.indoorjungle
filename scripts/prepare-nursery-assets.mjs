@@ -138,6 +138,33 @@ function clearRect(image, rect) {
   }
 }
 
+function removeBakedNurserySign(image, postBottom) {
+  // The separately mapped signboard is deliberately omitted. Remove the
+  // source artwork's off-centre post from the lower facade mapping and restore
+  // the covered roof/window/transparent pixels from the adjacent clean strip.
+  // This keeps the production PNG sign-free while preserving its footprint.
+  clearRect(image, { x: 0, y: 0, width: WIDTH, height: 112 });
+  // The bottom pixels of the source board overlap the mapped roof by a few
+  // rows. Replace that band from an intact section of the same roof (or from
+  // transparent space in the vacant lot) rather than leaving a clipped tab.
+  for (let y = 112; y < 132; y += 1) {
+    for (let x = 70; x < 190; x += 1) {
+      const sourceX = 198 + (x - 70);
+      const sourceOffset = (y * image.width + sourceX) * 4;
+      const destinationOffset = (y * image.width + x) * 4;
+      image.pixels.copy(image.pixels, destinationOffset, sourceOffset, sourceOffset + 4);
+    }
+  }
+  for (let y = 112; y < postBottom; y += 1) {
+    for (let x = 116; x < 143; x += 1) {
+      const sourceX = 150 + (x - 116);
+      const sourceOffset = (y * image.width + sourceX) * 4;
+      const destinationOffset = (y * image.width + x) * 4;
+      image.pixels.copy(image.pixels, destinationOffset, sourceOffset, sourceOffset + 4);
+    }
+  }
+}
+
 function validate(image, palette, name) {
   if (image.width !== WIDTH || image.height !== HEIGHT) throw new Error(`${name} has invalid dimensions`);
   let transparent = 0;
@@ -165,15 +192,18 @@ const region = (x, y, width, height, toX, toY, toWidth, toHeight) => ({ from: { 
 const jobs = [
   {
     source: vacantSource, output: 'nursery-vacant-atari-bw.png', palette: 'grayscale',
-    regions: [region(320, 555, 275, 166, 54, 44, 240, 72), region(42, 710, 1230, 315, 8, 116, 372, 218)],
+    postBottom: 272,
+    regions: [region(42, 710, 1230, 315, 8, 116, 372, 218)],
   },
   {
     source: constructionSource, output: 'nursery-construction-green-crt.png', palette: 'green-crt',
-    regions: [region(316, 548, 286, 160, 54, 44, 240, 72), region(28, 694, 1290, 350, 0, 112, 388, 222)],
+    postBottom: 316,
+    regions: [region(28, 694, 1290, 350, 0, 112, 388, 222)],
   },
   {
     source: openSource, output: 'nursery-open-atari-colour.png', palette: 'colour',
-    regions: [region(310, 548, 306, 165, 54, 44, 240, 72), region(14, 694, 1318, 366, 0, 112, 388, 222)],
+    postBottom: 316,
+    regions: [region(14, 694, 1318, 366, 0, 112, 388, 222)],
   },
 ];
 
@@ -181,6 +211,7 @@ for (const job of jobs) {
   const source = readPNG(job.source);
   const output = { width: WIDTH, height: HEIGHT, pixels: Buffer.alloc(WIDTH * HEIGHT * 4) };
   for (const mapping of job.regions) blitNearest(source, output, mapping, job.palette);
+  removeBakedNurserySign(output, job.postBottom);
   clearRect(output, DOOR);
   validate(output, job.palette, job.output);
   const outputPath = join(outputDirectory, job.output);

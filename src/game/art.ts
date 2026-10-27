@@ -46,7 +46,9 @@ const NURSERY_TEXTURES = {
 } as const;
 const NURSERY_ASSET_X = 1926;
 const NURSERY_ASSET_Y = 496;
-const NURSERY_SIGN = { x: NURSERY_ASSET_X + 54, y: NURSERY_ASSET_Y + 44, width: 240, height: 72 };
+// The shared container's supports end at local y111, placing their feet on
+// the Nursery ground line at world y830.
+const NURSERY_SIGN = { x: 1980, y: 719, width: 240, height: 72 };
 const NURSERY_DOOR = { x: NURSERY_ASSET_X + 292, y: NURSERY_ASSET_Y + 230, width: 64, height: 104 };
 
 export interface BuySellArtwork {
@@ -537,24 +539,40 @@ function drawNurseryBuilding(scene: Phaser.Scene, progress: BuildingProgress): v
     scene.add.image(NURSERY_ASSET_X, NURSERY_ASSET_Y, texture).setOrigin(0, 0).setDepth(5);
   }
 
-  const signPanel = scene.add.graphics().setDepth(8);
   const greenCRT = state === 'under-construction';
   const colour = state === 'operational';
   const signFill = greenCRT ? 0x050906 : colour ? 0xeadbb8 : 0xd8dddc;
   const signInk = greenCRT ? 0x39ff5a : colour ? 0x102f48 : 0x111416;
-  signPanel.fillStyle(signFill, 0.96).fillRect(NURSERY_SIGN.x + 5, NURSERY_SIGN.y + 5, NURSERY_SIGN.width - 10, NURSERY_SIGN.height - 10);
-  signPanel.lineStyle(3, signInk, 1).strokeRect(NURSERY_SIGN.x + 5, NURSERY_SIGN.y + 5, NURSERY_SIGN.width - 10, NURSERY_SIGN.height - 10);
+  const signContainer = scene.add.container(NURSERY_SIGN.x, NURSERY_SIGN.y).setDepth(8);
+  const signArtwork = scene.add.graphics();
+  const postFill = greenCRT ? 0x050906 : colour ? 0x337d78 : 0x858d8d;
+  const postOutline = greenCRT ? 0x39ff5a : colour ? 0x102f48 : 0x111416;
+  // Board and supports share this one local coordinate system so lowering the
+  // sign again requires changing only NURSERY_SIGN.y above.
+  signArtwork.fillStyle(postFill, 1)
+    .fillRect(54, NURSERY_SIGN.height - 3, 14, 42)
+    .fillRect(172, NURSERY_SIGN.height - 3, 14, 42);
+  signArtwork.lineStyle(greenCRT ? 2 : 3, postOutline, 1)
+    .strokeRect(54, NURSERY_SIGN.height - 3, 14, 42)
+    .strokeRect(172, NURSERY_SIGN.height - 3, 14, 42);
+  signArtwork.fillStyle(signFill, 1).fillRect(0, 0, NURSERY_SIGN.width, NURSERY_SIGN.height);
+  signArtwork.lineStyle(greenCRT ? 3 : 4, signInk, 1).strokeRect(1, 1, NURSERY_SIGN.width - 2, NURSERY_SIGN.height - 2);
+  if (colour) {
+    signArtwork.fillStyle(0xd96a3a, 1).fillRect(8, NURSERY_SIGN.height - 13, NURSERY_SIGN.width - 16, 6);
+    signArtwork.fillStyle(0x337d78, 1).fillRect(8, 7, NURSERY_SIGN.width - 16, 5);
+  }
   const status = state === 'vacant' ? 'OPENING SOON' : state === 'under-construction' ? 'UNDER CONSTRUCTION' : 'OPEN';
-  const nurseryLabel = scene.add.text(NURSERY_SIGN.x + NURSERY_SIGN.width / 2, NURSERY_SIGN.y + 21, 'NURSERY', {
+  const nurseryLabel = scene.add.text(NURSERY_SIGN.width / 2, 21, 'NURSERY', {
     color: `#${signInk.toString(16).padStart(6, '0')}`,
     fontFamily: 'monospace', fontSize: '20px', fontStyle: 'bold', align: 'center',
-  }).setOrigin(0.5).setDepth(10);
-  const statusLabel = scene.add.text(NURSERY_SIGN.x + NURSERY_SIGN.width / 2, NURSERY_SIGN.y + 49, status, {
+  }).setOrigin(0.5);
+  const statusLabel = scene.add.text(NURSERY_SIGN.width / 2, 48, status, {
     color: `#${signInk.toString(16).padStart(6, '0')}`,
     fontFamily: 'monospace', fontSize: state === 'under-construction' ? '14px' : '16px', fontStyle: 'bold', align: 'center',
-  }).setOrigin(0.5).setDepth(10);
+  }).setOrigin(0.5);
   nurseryLabel.setResolution(Math.max(2, window.devicePixelRatio || 1));
   statusLabel.setResolution(Math.max(2, window.devicePixelRatio || 1));
+  signContainer.add([signArtwork, nurseryLabel, statusLabel]);
 
   if (state === 'operational') {
     const stock = scene.add.graphics().setDepth(7);
@@ -872,31 +890,32 @@ export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: numb
   if (repairStage >= 8) g.lineStyle(2, 0xbfc5c3, 1).lineBetween(x - 12 * scale, y + 8 * scale, x + 12 * scale, y + 8 * scale);
 }
 
-export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, piecesRemaining = 3): void {
-  g.fillStyle(0x111416, 0.28).fillEllipse(x, y + 22 * scale, 88 * scale, 14 * scale);
-
-  // Three distinct chunky pieces remain on the ground until each is picked
-  // up. They sit close enough to read as one broken pot, but separate enough
-  // that collection progress is visible.
-  if (piecesRemaining >= 1) {
-    g.fillStyle(0xdfe3df, 1)
-      .fillTriangle(x - 62 * scale, y - 20 * scale, x - 25 * scale, y - 20 * scale, x - 39 * scale, y + 16 * scale);
-    g.lineStyle(5, 0x111416, 1).strokeTriangle(x - 62 * scale, y - 20 * scale, x - 25 * scale, y - 20 * scale, x - 39 * scale, y + 16 * scale);
-    g.lineStyle(3, 0x697173, 1).lineBetween(x - 29 * scale, y - 18 * scale, x - 41 * scale, y + 9 * scale);
-  }
-  if (piecesRemaining >= 2) {
-    g.fillStyle(0xdfe3df, 1)
-      .fillTriangle(x + 25 * scale, y - 20 * scale, x + 62 * scale, y - 20 * scale, x + 39 * scale, y + 16 * scale);
-    g.lineStyle(5, 0x111416, 1).strokeTriangle(x + 25 * scale, y - 20 * scale, x + 62 * scale, y - 20 * scale, x + 39 * scale, y + 16 * scale);
-    g.lineStyle(3, 0x697173, 1).lineBetween(x + 29 * scale, y - 18 * scale, x + 41 * scale, y + 9 * scale);
-  }
-  if (piecesRemaining >= 3) {
-    g.fillStyle(0x222729, 1).fillRect(x - 17 * scale, y - 42 * scale, 34 * scale, 7 * scale);
-    g.lineStyle(4, 0xf6f7f3, 1).strokeRect(x - 17 * scale, y - 42 * scale, 34 * scale, 7 * scale);
-    g.fillStyle(0x3b4244, 1).fillRect(x - 4 * scale, y - 69 * scale, 8 * scale, 27 * scale);
-    g.lineStyle(4, 0x111416, 1).strokeRect(x - 4 * scale, y - 69 * scale, 8 * scale, 27 * scale);
-    g.fillStyle(0x697173, 1).fillRect(x - 13 * scale, y - 75 * scale, 26 * scale, 7 * scale);
-    g.lineStyle(3, 0xf6f7f3, 1).strokeRect(x - 13 * scale, y - 75 * scale, 26 * scale, 7 * scale);
+export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, piecesRemaining = 4, offsets: readonly number[] = [-75, -25, 25, 75], collectedIndices?: readonly number[]): void {
+  const collected = collectedIndices
+    ? new Set(collectedIndices)
+    : new Set(Array.from({ length: Math.max(0, 4 - piecesRemaining) }, (_, index) => index));
+  for (let index = 0; index < 4; index += 1) {
+    if (collected.has(index)) continue;
+    const pieceX = x + offsets[index] * scale;
+    g.fillStyle(0x111416, 0.28).fillEllipse(pieceX, y + 18 * scale, 38 * scale, 10 * scale);
+    if (index === 0) {
+      g.fillStyle(0xdfe3df, 1).fillTriangle(pieceX - 19 * scale, y - 20 * scale, pieceX + 18 * scale, y - 17 * scale, pieceX - 6 * scale, y + 15 * scale);
+      g.lineStyle(5, 0x111416, 1).strokeTriangle(pieceX - 19 * scale, y - 20 * scale, pieceX + 18 * scale, y - 17 * scale, pieceX - 6 * scale, y + 15 * scale);
+    } else if (index === 1) {
+      g.fillStyle(0xdfe3df, 1).fillTriangle(pieceX - 18 * scale, y - 15 * scale, pieceX + 17 * scale, y - 22 * scale, pieceX + 8 * scale, y + 15 * scale);
+      g.lineStyle(5, 0x111416, 1).strokeTriangle(pieceX - 18 * scale, y - 15 * scale, pieceX + 17 * scale, y - 22 * scale, pieceX + 8 * scale, y + 15 * scale);
+      g.lineStyle(3, 0x697173, 1).lineBetween(pieceX - 8 * scale, y - 13 * scale, pieceX + 7 * scale, y + 8 * scale);
+    } else if (index === 2) {
+      g.fillStyle(0x222729, 1).fillRect(pieceX - 19 * scale, y - 14 * scale, 38 * scale, 9 * scale);
+      g.lineStyle(4, 0xf6f7f3, 1).strokeRect(pieceX - 19 * scale, y - 14 * scale, 38 * scale, 9 * scale);
+      g.fillStyle(0xdfe3df, 1).fillTriangle(pieceX - 13 * scale, y - 5 * scale, pieceX + 13 * scale, y - 5 * scale, pieceX + 5 * scale, y + 15 * scale);
+    } else {
+      g.fillStyle(0xdfe3df, 1).fillTriangle(pieceX - 16 * scale, y - 18 * scale, pieceX + 17 * scale, y - 11 * scale, pieceX - 2 * scale, y + 15 * scale);
+      g.lineStyle(5, 0x111416, 1).strokeTriangle(pieceX - 16 * scale, y - 18 * scale, pieceX + 17 * scale, y - 11 * scale, pieceX - 2 * scale, y + 15 * scale);
+      g.lineStyle(3, 0x697173, 1)
+        .lineBetween(pieceX - 2 * scale, y - 10 * scale, pieceX + 6 * scale, y - 1 * scale)
+        .lineBetween(pieceX + 6 * scale, y - 1 * scale, pieceX - 2 * scale, y + 8 * scale);
+    }
   }
 }
 

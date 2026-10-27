@@ -48,6 +48,10 @@ import {
   BUY_SELL_NAME,
   BUY_SELL_SIGN_NAME,
   BUY_SELL_WINDOW,
+  BROKEN_POT_PIECE_COUNT,
+  BROKEN_POT_PIECE_IDS,
+  BROKEN_POT_PIECE_OFFSETS,
+  BROKEN_POT_PIECES_CENTRE,
   BROKEN_POT_PIECES_SCALE,
   CROSSING_END_X,
   CROSSING_START_X,
@@ -296,6 +300,8 @@ export class GameScene extends Phaser.Scene {
   private repairPickupReady = false;
   private repairAnimating = false;
   private brokenPotPieceSelected = false;
+  private selectedBrokenPotPieceIndex: number | null = null;
+  private pendingBrokenPotPieceIndex: number | null = null;
   private rentalBondPaid = false;
   private rentalKeyOwned = false;
   private activeProperty: PropertyId = 'none';
@@ -1028,12 +1034,12 @@ export class GameScene extends Phaser.Scene {
       // also repairs saves created before brokenPotAvailable was persisted.
       this.progress.brokenPotOwned = false;
       this.progress.brokenPotAvailable = true;
-      if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
+      if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT;
     }
     // Recover an interrupted/older prototype save that exposed the ground
     // item with no remaining piece count.
     if (this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && this.progress.brokenPotPiecesRemaining <= 0) {
-      this.progress.brokenPotPiecesRemaining = 3;
+      this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT;
     }
     if (this.inventoryPot === 'ordinary' && (this.progress.task === 'find' || this.progress.task === 'sell')) this.progress.task = 'clean';
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
@@ -1591,10 +1597,10 @@ export class GameScene extends Phaser.Scene {
     if (this.brokenPot) {
       const shouldShowBrokenPot = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned;
       if (shouldShowBrokenPot) {
-        if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = 3;
+        if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT;
         const piecesRemaining = this.progress.brokenPotPiecesRemaining;
         this.brokenPot.clear();
-        drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining);
+        drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices());
       }
       this.brokenPot.setVisible(shouldShowBrokenPot);
     }
@@ -1650,27 +1656,25 @@ export class GameScene extends Phaser.Scene {
   private getWindowSectionProgress(sectionIndex: number): number {
     const section = HOMES_WINDOW_CLEAN_SECTIONS[sectionIndex];
     if (!section) return 0;
-    const completedBefore = HOMES_WINDOW_CLEAN_SECTIONS
-      .slice(0, sectionIndex)
-      .reduce((total, candidate) => total + candidate.spraysRequired, 0);
-    return Phaser.Math.Clamp(this.progress.windowCleaningProgress - completedBefore, 0, section.spraysRequired);
+    return Phaser.Math.Clamp(this.progress.windowCleaningSections[section.id] ?? 0, 0, section.spraysRequired);
   }
 
   private getTotalWindowSprays(): number {
     return HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0);
   }
 
-  private getActiveWindowSectionIndex(): number {
-    let remaining = this.progress.windowCleaningProgress;
-    for (let index = 0; index < HOMES_WINDOW_CLEAN_SECTIONS.length; index += 1) {
-      if (remaining < HOMES_WINDOW_CLEAN_SECTIONS[index].spraysRequired) return index;
-      remaining -= HOMES_WINDOW_CLEAN_SECTIONS[index].spraysRequired;
-    }
-    return Math.max(0, HOMES_WINDOW_CLEAN_SECTIONS.length - 1);
-  }
-
   private getSelectedWindowSectionIndex(): number {
-    return this.selectedWindowSectionIndex ?? this.getActiveWindowSectionIndex();
+    const selected = this.selectedWindowSectionIndex;
+    if (selected !== null && this.getWindowSectionProgress(selected) < HOMES_WINDOW_CLEAN_SECTIONS[selected].spraysRequired) return selected;
+    const dirtySections = HOMES_WINDOW_CLEAN_SECTIONS
+      .map((section, index) => ({ section, index }))
+      .filter(({ section, index }) => this.getWindowSectionProgress(index) < section.spraysRequired);
+    if (dirtySections.length === 0) return 0;
+    return dirtySections.reduce((nearest, candidate) => {
+      const nearestX = nearest.section.x + nearest.section.width / 2;
+      const candidateX = candidate.section.x + candidate.section.width / 2;
+      return Math.abs(this.player.x - candidateX) < Math.abs(this.player.x - nearestX) ? candidate : nearest;
+    }).index;
   }
 
   private getWindowInteractionPoint(sectionIndex = this.getSelectedWindowSectionIndex()): Phaser.Math.Vector2 {
@@ -1686,7 +1690,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isNearWindowApproach(): boolean {
-    if (this.getSelectedWindowSectionIndex() !== this.getActiveWindowSectionIndex()) return false;
     const point = this.getWindowInteractionPoint();
     // The contextual action belongs to the facade, not the whole approach
     // route. Alex's head is about 43 world units above the player origin, so
@@ -1747,9 +1750,9 @@ export class GameScene extends Phaser.Scene {
 
   private advanceWindowCleaningTap(): void {
     if (this.hopActive || this.sprayAnimating || !this.progress.windowJobAccepted || this.progress.windowJobComplete || this.progress.equippedTool !== 'cleaner') return;
-    const activeSection = this.getActiveWindowSectionIndex();
-    if (this.getSelectedWindowSectionIndex() !== activeSection) {
-      this.showToast('Move to the next dirty window section.', 1400);
+    const selectedSection = this.getSelectedWindowSectionIndex();
+    if (this.getWindowSectionProgress(selectedSection) >= HOMES_WINDOW_CLEAN_SECTIONS[selectedSection].spraysRequired) {
+      this.showToast('Already clean. Move to another dirty window.', 1400);
       return;
     }
     const inRange = this.isNearWindowApproach();
@@ -1757,7 +1760,7 @@ export class GameScene extends Phaser.Scene {
       const now = performance.now();
       if (now - this.toolFeedbackAt > 700) {
         this.toolFeedbackAt = now;
-        this.showToast(!inRange ? 'Move closer to the REAL ESTATE AGENT window.' : 'Face the REAL ESTATE AGENT window, then press B once per spray.', 1300);
+        this.showToast(!inRange ? 'Clean the next window.' : 'Face the REAL ESTATE AGENT window, then press B once per spray.', 1300);
       }
       return;
     }
@@ -1801,9 +1804,15 @@ export class GameScene extends Phaser.Scene {
     if (progress < 1) return;
 
     this.sprayAnimating = false;
-    const sprayedSectionIndex = this.getActiveWindowSectionIndex();
+    const sprayedSectionIndex = this.getSelectedWindowSectionIndex();
     const sprayedSection = HOMES_WINDOW_CLEAN_SECTIONS[sprayedSectionIndex];
-    this.progress.windowCleaningProgress = Math.min(this.getTotalWindowSprays(), this.progress.windowCleaningProgress + 1);
+    this.progress.windowCleaningSections[sprayedSection.id] = Math.min(
+      sprayedSection.spraysRequired,
+      this.getWindowSectionProgress(sprayedSectionIndex) + 1,
+    );
+    this.progress.windowCleaningProgress = HOMES_WINDOW_CLEAN_SECTIONS.reduce(
+      (total, section) => total + (this.progress.windowCleaningSections[section.id] ?? 0), 0,
+    );
     this.lastSavedCleaningStage = this.progress.windowCleaningProgress;
     this.selectedWindowSectionIndex = null;
     this.refreshWindowDirtOverlay();
@@ -1819,7 +1828,7 @@ export class GameScene extends Phaser.Scene {
       this.windowFacePromptRequired = true;
       this.windowFacingLocked = false;
       this.faceDirection(new Phaser.Math.Vector2(0, 1));
-      this.showToast('Already clean. Move to the next window.', 1800);
+      this.showToast('Already clean. Move to the other window.', 1800);
     }
     this.sprayTimer?.remove(false);
     this.sprayTimer = this.time.delayedCall(180, () => this.stopSprayEffect());
@@ -1872,8 +1881,9 @@ export class GameScene extends Phaser.Scene {
     this.assignToolToSlot('repair');
     this.progress.equippedTool = 'repair';
     this.progress.brokenPotAvailable = true;
-    this.progress.brokenPotPiecesRemaining = 3;
+    this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT;
     this.progress.brokenPotPiecesOwned = 0;
+    this.progress.brokenPotPiecesCollected = [];
     this.progress.task = 'repair';
     this.selectedWindowSectionIndex = null;
     this.windowFacePromptRequired = false;
@@ -1890,7 +1900,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.highlightBag();
     this.toastTimer?.remove(false);
     this.toastTimer = undefined;
-    this.hud.showDismissibleToast(`WINDOW JOB COMPLETE. +${WINDOW_JOB_REWARD} COINS. REPAIR TOOL EQUIPPED IN TOOLS BESIDE ZOOM. GLUE ×1 IS IN BAG. COLLECT THE BROKEN POT PIECES OUTSIDE.`);
+    this.hud.showConfirmationToast('Window cleaning complete. You found some glue and a repair tool.');
   }
 
   beginPortableRepair(): void {
@@ -2150,7 +2160,9 @@ export class GameScene extends Phaser.Scene {
     );
     const existingPositions = [
       POT_POSITION,
-      this.getBrokenPotPosition(),
+      ...(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned
+        ? BROKEN_POT_PIECE_IDS.map((id, index) => this.progress.brokenPotPiecesCollected.includes(id) ? null : this.getBrokenPotPiecePosition(index))
+        : []),
       this.progress.placedWorldItem,
     ].filter((position): position is { x: number; y: number } => Boolean(position));
     const clear = existingPositions.every((position) => Phaser.Math.Distance.Between(candidate.x, candidate.y, position.x, position.y) > 112);
@@ -2465,6 +2477,10 @@ export class GameScene extends Phaser.Scene {
   acceptWindowJob(): void {
     if (!this.shopInterior || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
+    this.progress.windowCleaningProgress = 0;
+    this.progress.windowCleaningSections = Object.fromEntries(
+      HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0]),
+    );
     this.progress.cleanerOwned = true;
     this.assignToolToSlot('cleaner');
     this.progress.equippedTool = 'cleaner';
@@ -3270,6 +3286,7 @@ export class GameScene extends Phaser.Scene {
     const spot = this.getActiveGrowingSpots()[index];
     if (!pot || Phaser.Math.Distance.Between(this.player.x, this.player.y, spot.x, spot.y) > 120) return;
     this.pendingInteraction = null;
+    this.pendingBrokenPotPieceIndex = null;
     this.growingSlotReadyToPlace = true;
     this.showInteractionHighlight('place-growing-pot', new Phaser.Math.Vector2(spot.x, spot.y));
     this.hud.setAction('ADD POT TO THIS SQUARE');
@@ -3570,12 +3587,11 @@ export class GameScene extends Phaser.Scene {
 
   private createBrokenPot(): void {
     this.brokenPot = this.add.graphics().setDepth(22);
-    const position = this.getBrokenPotPosition();
-    this.brokenPot.setPosition(position.x, position.y);
+    this.brokenPot.setPosition(BROKEN_POT_PIECES_CENTRE.x, BROKEN_POT_PIECES_CENTRE.y);
     const piecesRemaining = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned
       ? Math.max(1, this.progress.brokenPotPiecesRemaining)
       : this.progress.brokenPotPiecesRemaining;
-    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining);
+    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices());
     this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
   }
 
@@ -3597,11 +3613,11 @@ export class GameScene extends Phaser.Scene {
     } else if (placed.item === 'rare-spotted-begonia') {
       drawRareSpottedBegonia(this.placedItemDisplay, 0, 0, 0.82, this.progress.graphicsUpgradeInstalled);
     } else if (placed.condition === 'broken') {
-      // A broken pot is represented as three loose pieces on the ground.
+      // A broken pot is represented as four loose pieces on the ground.
       // The global piece counter is for the separate street pickup and is 0
       // after the pot has been assembled into the Bag, so it must not control
       // the appearance of a deliberately placed broken pot.
-      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, BROKEN_POT_PIECES_SCALE, 3);
+      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, BROKEN_POT_PIECES_SCALE, BROKEN_POT_PIECE_COUNT);
     } else {
       // A repaired pot keeps its empty, seamed silhouette when placed back
       // on the street; it never regresses to loose pieces or gains foliage.
@@ -3650,8 +3666,17 @@ export class GameScene extends Phaser.Scene {
     this.sprayEffect = this.add.graphics().setDepth(25).setVisible(false);
   }
 
-  private getBrokenPotPosition(): { x: number; y: number } {
-    return { x: 1880, y: 910 };
+  private getBrokenPotPiecePosition(index: number): { x: number; y: number } {
+    return {
+      x: BROKEN_POT_PIECES_CENTRE.x + BROKEN_POT_PIECE_OFFSETS[index] * BROKEN_POT_PIECES_SCALE,
+      y: BROKEN_POT_PIECES_CENTRE.y,
+    };
+  }
+
+  private getCollectedBrokenPotPieceIndices(): number[] {
+    return this.progress.brokenPotPiecesCollected
+      .map((id) => BROKEN_POT_PIECE_IDS.indexOf(id as typeof BROKEN_POT_PIECE_IDS[number]))
+      .filter((index) => index >= 0);
   }
 
   private createDestinationMarker(): void {
@@ -3840,12 +3865,11 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.progress.windowJobAccepted && this.isWindowDisplayPoint(point)) {
       const sectionIndex = this.getWindowSectionIndexAtPoint(point);
-      const activeSection = this.getActiveWindowSectionIndex();
       if (sectionIndex === null) return;
-      if (sectionIndex !== activeSection) {
+      if (this.getWindowSectionProgress(sectionIndex) >= HOMES_WINDOW_CLEAN_SECTIONS[sectionIndex].spraysRequired) {
         this.selectedWindowSectionIndex = null;
         this.cancelTapWalk();
-        this.showToast(sectionIndex < activeSection ? 'Already clean. Move to the next window.' : 'Clean the previous window section first.', 1600);
+        this.showToast('Already clean. Move to the other window.', 1600);
         return;
       }
       this.selectedWindowSectionIndex = sectionIndex;
@@ -3866,16 +3890,18 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
-    const brokenPosition = this.getBrokenPotPosition();
-    if (this.isBrokenPotPiecePoint(point) && this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && this.brokenPot.visible) {
+    const brokenPieceIndex = this.getBrokenPotPieceIndexAtPoint(point);
+    if (brokenPieceIndex !== null && this.progress.brokenPotAvailable && !this.progress.brokenPotOwned && this.brokenPot.visible) {
       if (this.inventoryHasPot) {
         this.cancelTapWalk();
         this.showToast('The Bag is full. Sell the current pot before picking up these pieces.', 1900);
         return;
       }
+      const brokenPosition = this.getBrokenPotPiecePosition(brokenPieceIndex);
       const approach = new Phaser.Math.Vector2(brokenPosition.x - 72, brokenPosition.y);
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, brokenPosition.x, brokenPosition.y) <= 105) {
         this.selectPendingInteraction('select-broken-piece', approach);
+        this.pendingBrokenPotPieceIndex = brokenPieceIndex;
       } else {
         const tapPath = this.getTapPath(approach.x, approach.y);
         if (!tapPath) {
@@ -3884,6 +3910,7 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         this.selectPendingInteraction('select-broken-piece', approach, tapPath);
+        this.pendingBrokenPotPieceIndex = brokenPieceIndex;
       }
       return;
     }
@@ -4004,17 +4031,14 @@ export class GameScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(point.x, point.y, target.x, target.y) <= radius;
   }
 
-  private isBrokenPotPiecePoint(point: Phaser.Math.Vector2): boolean {
-    const position = this.getBrokenPotPosition();
-    const dx = point.x - position.x;
-    const dy = point.y - position.y;
-    const hit = (x: number, y: number, width: number, height: number): boolean =>
-      Math.abs(dx - x * BROKEN_POT_PIECES_SCALE) <= width * BROKEN_POT_PIECES_SCALE / 2
-      && Math.abs(dy - y * BROKEN_POT_PIECES_SCALE) <= height * BROKEN_POT_PIECES_SCALE / 2;
-    const remaining = this.progress.brokenPotPiecesRemaining;
-    return (remaining >= 1 && hit(-39, -2, 58, 58))
-      || (remaining >= 2 && hit(39, -2, 58, 58))
-      || (remaining >= 3 && hit(0, -57, 46, 42));
+  private getBrokenPotPieceIndexAtPoint(point: Phaser.Math.Vector2): number | null {
+    for (let index = 0; index < BROKEN_POT_PIECE_COUNT; index += 1) {
+      if (this.progress.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[index])) continue;
+      const position = this.getBrokenPotPiecePosition(index);
+      if (Math.abs(point.x - position.x) <= 34 * BROKEN_POT_PIECES_SCALE
+        && Math.abs(point.y - position.y) <= 32 * BROKEN_POT_PIECES_SCALE) return index;
+    }
+    return null;
   }
 
   private isNearBuySellDoor(point: Phaser.Math.Vector2): boolean {
@@ -4459,16 +4483,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private selectBrokenPotPiece(): void {
-    const position = this.getBrokenPotPosition();
+    const pieceIndex = this.pendingBrokenPotPieceIndex;
+    this.pendingBrokenPotPieceIndex = null;
+    if (pieceIndex === null || this.progress.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[pieceIndex])) return;
+    const position = this.getBrokenPotPiecePosition(pieceIndex);
     if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !this.brokenPot.visible || this.progress.brokenPotPiecesRemaining <= 0) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) return;
+    this.selectedBrokenPotPieceIndex = pieceIndex;
     this.brokenPotPieceSelected = true;
     this.syncHudState();
     this.showToast(`Broken piece selected. Press B to pick it up (${this.progress.brokenPotPiecesRemaining} left).`, 1700);
   }
 
   private collectBrokenPotPiece(): void {
-    const position = this.getBrokenPotPosition();
+    const pieceIndex = this.selectedBrokenPotPieceIndex;
+    if (pieceIndex === null || this.progress.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[pieceIndex])) return;
+    const position = this.getBrokenPotPiecePosition(pieceIndex);
     if (this.shopInterior || this.homeInterior || !this.brokenPotPieceSelected || this.inventoryHasPot || !this.brokenPot.visible) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) {
       this.showToast('Move closer to the broken piece first.', 1400);
@@ -4477,15 +4507,17 @@ export class GameScene extends Phaser.Scene {
 
     this.audio.playToolUse();
     this.brokenPotPieceSelected = false;
-    this.progress.brokenPotPiecesRemaining = Math.max(0, this.progress.brokenPotPiecesRemaining - 1);
-    this.progress.brokenPotPiecesOwned = Math.min(3, this.progress.brokenPotPiecesOwned + 1);
+    this.selectedBrokenPotPieceIndex = null;
+    this.progress.brokenPotPiecesCollected.push(BROKEN_POT_PIECE_IDS[pieceIndex]);
+    this.progress.brokenPotPiecesOwned = this.progress.brokenPotPiecesCollected.length;
+    this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT - this.progress.brokenPotPiecesOwned;
     this.brokenPot.clear();
-    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, this.progress.brokenPotPiecesRemaining);
+    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, this.progress.brokenPotPiecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices());
 
     if (this.progress.brokenPotPiecesRemaining > 0) {
       this.saveProgress();
       this.syncHudState();
-      this.showToast(`Piece added to the Bag (${this.progress.brokenPotPiecesOwned}/3). Click another piece, then press B.`, 1700);
+      this.showToast(`Piece added to the Bag (${this.progress.brokenPotPiecesOwned}/${BROKEN_POT_PIECE_COUNT}). Click the next piece, then press B.`, 1700);
       return;
     }
 
@@ -4493,6 +4525,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryPot = 'broken';
     this.inventoryInstanceId = SPECIAL_REPAIR_POT_INSTANCE_ID;
     this.progress.brokenPotPiecesOwned = 0;
+    this.progress.brokenPotPiecesCollected = [];
     this.progress.inventoryPot = 'broken';
     this.progress.inventoryItem = 'special-repair-pot';
     this.progress.brokenPotOwned = true;
@@ -5693,6 +5726,7 @@ export class GameScene extends Phaser.Scene {
     this.targetQueue = [];
     if (this.destinationMarker) this.destinationMarker.setVisible(false);
     this.pendingInteraction = null;
+    this.pendingBrokenPotPieceIndex = null;
     if (!preserveGardeningAction) this.pendingGardeningAction = null;
     this.growingSlotReadyToPlace = false;
     this.basilPotSelected = false;
@@ -5701,6 +5735,7 @@ export class GameScene extends Phaser.Scene {
     this.clearInteractionHighlight();
     if (this.brokenPotPieceSelected) {
       this.brokenPotPieceSelected = false;
+      this.selectedBrokenPotPieceIndex = null;
       this.syncHudState();
     }
   }

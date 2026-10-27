@@ -9,7 +9,7 @@ import {
   type PlantSpecies,
   type PlantStage,
 } from './plants';
-import { RENTAL_BOND_COST, SECOND_RENTAL_TOTAL_BOND } from './world';
+import { BROKEN_POT_PIECE_COUNT, BROKEN_POT_PIECE_IDS, HOMES_WINDOW_CLEAN_SECTIONS, RENTAL_BOND_COST, SECOND_RENTAL_TOTAL_BOND } from './world';
 import type { PropertyId } from './world';
 import { isPremiumPlantId, type PremiumPlantId } from './shopCatalog';
 import {
@@ -84,6 +84,7 @@ export interface ProgressState {
   ownedPremiumPlants: PremiumPlantId[];
   windowJobAccepted: boolean;
   windowCleaningProgress: number;
+  windowCleaningSections: Record<string, number>;
   windowJobComplete: boolean;
   cleanerOwned: boolean;
   repairToolOwned: boolean;
@@ -92,6 +93,7 @@ export interface ProgressState {
   brokenPotOwned: boolean;
   brokenPotPiecesRemaining: number;
   brokenPotPiecesOwned: number;
+  brokenPotPiecesCollected: string[];
   repairStep: number;
   equippedTool: EquippedTool;
   task: TaskState;
@@ -155,14 +157,16 @@ export const DEFAULT_PROGRESS: ProgressState = {
   ownedPremiumPlants: [],
   windowJobAccepted: false,
   windowCleaningProgress: 0,
+  windowCleaningSections: Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0])),
   windowJobComplete: false,
   cleanerOwned: false,
   repairToolOwned: false,
   glueCharges: 0,
   brokenPotAvailable: false,
   brokenPotOwned: false,
-  brokenPotPiecesRemaining: 3,
+  brokenPotPiecesRemaining: BROKEN_POT_PIECE_COUNT,
   brokenPotPiecesOwned: 0,
+  brokenPotPiecesCollected: [],
   repairStep: 0,
   equippedTool: null,
   task: 'find',
@@ -402,12 +406,40 @@ export function sanitizeProgress(value: unknown): ProgressState {
     harvests[species] = quantity(sourceHarvests ?? (species === 'basil' ? input.basilHarvests : 0));
     events[species] = quantity(sourceEvents ?? (species === 'basil' ? input.basilCycleCount : 0));
   }
-  const piecesRemaining = Number.isFinite(Number(input.brokenPotPiecesRemaining))
-    ? Math.max(0, Math.min(3, Math.floor(Number(input.brokenPotPiecesRemaining))))
-    : 3;
-  const piecesOwned = Number.isFinite(Number(input.brokenPotPiecesOwned))
-    ? Math.max(0, Math.min(3, Math.floor(Number(input.brokenPotPiecesOwned))))
-    : (Boolean(input.brokenPotOwned) || condition === 'broken' ? 0 : Math.max(0, 3 - piecesRemaining));
+  let piecesRemaining = Number.isFinite(Number(input.brokenPotPiecesRemaining))
+    ? Math.max(0, Math.min(BROKEN_POT_PIECE_COUNT, Math.floor(Number(input.brokenPotPiecesRemaining))))
+    : BROKEN_POT_PIECE_COUNT;
+  let piecesOwned = Number.isFinite(Number(input.brokenPotPiecesOwned))
+    ? Math.max(0, Math.min(BROKEN_POT_PIECE_COUNT, Math.floor(Number(input.brokenPotPiecesOwned))))
+    : (Boolean(input.brokenPotOwned) || condition === 'broken' ? 0 : Math.max(0, BROKEN_POT_PIECE_COUNT - piecesRemaining));
+  const savedCollectedPieces = Array.isArray(input.brokenPotPiecesCollected)
+    ? [...new Set(input.brokenPotPiecesCollected.filter((id): id is string => typeof id === 'string' && BROKEN_POT_PIECE_IDS.includes(id as typeof BROKEN_POT_PIECE_IDS[number])))]
+    : null;
+  const activeBrokenPieces = Boolean(input.brokenPotAvailable) && !Boolean(input.brokenPotOwned);
+  // Count-only saves collected pieces left-to-right. Convert that count into
+  // stable IDs once; new saves can then collect the remaining IDs in any order.
+  const brokenPotPiecesCollected = activeBrokenPieces
+    ? savedCollectedPieces ?? BROKEN_POT_PIECE_IDS.slice(0, piecesOwned)
+    : [];
+  if (activeBrokenPieces) {
+    piecesOwned = brokenPotPiecesCollected.length;
+    piecesRemaining = BROKEN_POT_PIECE_COUNT - piecesOwned;
+  }
+  const legacyWindowProgress = Math.max(0, Math.floor(Number(input.windowCleaningProgress) || 0));
+  const savedWindowSections = input.windowCleaningSections && typeof input.windowCleaningSections === 'object'
+    ? input.windowCleaningSections : null;
+  let unassignedLegacySprays = legacyWindowProgress;
+  const windowCleaningSections = Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => {
+    const saved = savedWindowSections ? Number(savedWindowSections[section.id]) : Number.NaN;
+    const progress = Number.isFinite(saved)
+      ? Math.max(0, Math.min(section.spraysRequired, Math.floor(saved)))
+      : Math.max(0, Math.min(section.spraysRequired, unassignedLegacySprays));
+    if (!Number.isFinite(saved)) unassignedLegacySprays -= progress;
+    return [section.id, progress];
+  }));
+  const windowCleaningProgress = HOMES_WINDOW_CLEAN_SECTIONS.reduce(
+    (total, section) => total + (windowCleaningSections[section.id] ?? 0), 0,
+  );
   const legacyProgressExists = Boolean(input.coins)
     || condition !== null
     || Boolean(input.saleComplete)
@@ -448,9 +480,9 @@ export function sanitizeProgress(value: unknown): ProgressState {
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock, ownedPremiumPlants,
-    windowJobAccepted: Boolean(input.windowJobAccepted), windowCleaningProgress: Math.max(0, Math.min(999, quantity(input.windowCleaningProgress))), windowJobComplete: Boolean(input.windowJobComplete),
+    windowJobAccepted: Boolean(input.windowJobAccepted), windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
-    brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned,
+    brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned, brokenPotPiecesCollected,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,
     rentalBondPaid, rentalKeyOwned: Boolean(input.rentalKeyOwned) || rentalBondPaid, activeProperty, rentalBondTotal,
     basilHarvestSaleRecorded,

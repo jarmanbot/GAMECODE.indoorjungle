@@ -374,7 +374,9 @@ export class HudController {
       find: 'Find a Small Golden Pothos',
       sell: `Sell the Small Golden Pothos at ${BUY_SELL_NAME}`,
       clean: 'Clean both windows of the Real Estate Agent and they might open',
-      repair: 'Find broken pot pieces; repair with tool + glue',
+      repair: this.potCondition === 'broken'
+        ? 'Head to Bag and put down the broken pieces to repair the pot'
+        : 'Find the broken pot pieces',
       'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`,
       complete: 'Prototype task complete',
       'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit',
@@ -564,7 +566,7 @@ export class HudController {
   showToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-dismissible', 'is-opening-intro', 'is-starter-kit');
+    this.toast.classList.remove('is-dismissible', 'is-opening-intro', 'is-starter-kit', 'is-completion');
     this.toastOk.hidden = true;
     this.toastClose.hidden = true;
     this.toast.classList.toggle('is-visible', Boolean(message));
@@ -573,7 +575,7 @@ export class HudController {
   showDismissibleToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-opening-intro', 'is-starter-kit');
+    this.toast.classList.remove('is-opening-intro', 'is-starter-kit', 'is-completion');
     this.toast.classList.add('is-dismissible');
     this.toastOk.hidden = true;
     this.toastClose.hidden = false;
@@ -590,10 +592,20 @@ export class HudController {
     this.toast.classList.add('is-visible');
   }
 
+  showConfirmationToast(message: string): void {
+    this.toastDismissAction = null;
+    this.toastMessage.textContent = message;
+    this.toast.classList.remove('is-opening-intro', 'is-starter-kit');
+    this.toast.classList.add('is-dismissible', 'is-completion');
+    this.toastOk.hidden = false;
+    this.toastClose.hidden = true;
+    this.toast.classList.add('is-visible');
+  }
+
   showStarterKitClaimed(): void {
     this.toastDismissAction = null;
     this.toastMessage.innerHTML = '<strong>STARTER KIT CLAIMED</strong><span>Small basic pot ×1</span><span>Watering can ×1</span><span>Basil seeds ×1</span><span>Mint seeds ×1</span><span>Basic fertiliser pellet ×1</span>';
-    this.toast.classList.remove('is-opening-intro');
+    this.toast.classList.remove('is-opening-intro', 'is-completion');
     this.toast.classList.add('is-dismissible', 'is-starter-kit');
     this.toastOk.hidden = false;
     this.toastClose.hidden = true;
@@ -1196,7 +1208,9 @@ export class HudController {
       const complete = this.activeTask === 'complete';
       const taskLabel: Record<TaskState, string> = {
         find: 'Find a Small Golden Pothos', sell: `Sell the Small Golden Pothos at ${BUY_SELL_NAME}`, clean: 'Clean both windows of the Real Estate Agent and they might open',
-        repair: 'Find broken pot pieces; repair with tool + glue', 'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`, complete: 'Prototype jobs complete',
+        repair: this.potCondition === 'broken'
+          ? 'Head to Bag and put down the broken pieces to repair the pot'
+          : 'Find the broken pot pieces', 'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`, complete: 'Prototype jobs complete',
         'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
