@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BUY_SELL_GRAPHICS_DEBUG } from './config';
-import type { BuildingGraphicsEra } from './buildingProgress';
+import type { BuildingGraphicsEra, BuildingProgress } from './buildingProgress';
 import {
   BUILDINGS,
   APARTMENT_DOOR_BOTTOM,
@@ -39,6 +39,15 @@ const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
 const BUY_SELL_GREEN_CRT_TEXTURE = 'buy-sell-facade-green-crt';
+const NURSERY_TEXTURES = {
+  vacant: 'nursery-vacant-atari-bw',
+  'under-construction': 'nursery-construction-green-crt',
+  operational: 'nursery-open-atari-colour',
+} as const;
+const NURSERY_ASSET_X = 1926;
+const NURSERY_ASSET_Y = 496;
+const NURSERY_SIGN = { x: NURSERY_ASSET_X + 54, y: NURSERY_ASSET_Y + 44, width: 240, height: 72 };
+const NURSERY_DOOR = { x: NURSERY_ASSET_X + 292, y: NURSERY_ASSET_Y + 230, width: 64, height: 104 };
 
 export interface BuySellArtwork {
   door: Phaser.GameObjects.Graphics;
@@ -46,7 +55,7 @@ export interface BuySellArtwork {
   pulseLayers: Phaser.GameObjects.GameObject[];
 }
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw'): BuySellArtwork | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }): BuySellArtwork | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -67,7 +76,7 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
 
   let buySellArtwork: BuySellArtwork | undefined;
   BUILDINGS.forEach((building) => {
-    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics);
+    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics, nurseryProgress);
     if (artwork) buySellArtwork = artwork;
   });
   drawStreetDetails(scene);
@@ -280,9 +289,13 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw'): BuySellArtwork | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }): BuySellArtwork | undefined {
   if (building.kind === 'shop') {
-    return drawBuySellBuilding(scene, building, buySellGraphics, graphicsUpgradeInstalled);
+    return drawBuySellBuilding(scene, building, buySellGraphics === 'atari-colour' ? 'green-crt' : buySellGraphics, graphicsUpgradeInstalled);
+  }
+  if (building.kind === 'plants') {
+    drawNurseryBuilding(scene, nurseryProgress);
+    return undefined;
   }
   const g = scene.add.graphics().setDepth(5);
   const { x, y, width, height } = building;
@@ -297,11 +310,11 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
     }
   }
   g.fillStyle(INK, 1).fillRect(x + 18, y + 16, width - 36, 64);
-  addWorldLabel(scene, x + width / 2, y + 29, building.label, WHITE,
+  addWorldLabel(scene, x + width / 2, y + 29, building.label,
+    building.kind === 'homes' && graphicsUpgradeInstalled ? 0x39ff5a : WHITE,
     building.key === 'starter-apartment' ? 22 : building.kind === 'apartment' ? 17 : 23, true);
 
   if (building.kind === 'homes') drawHomes(scene, g, building, graphicsUpgradeInstalled);
-  if (building.kind === 'plants') drawPlants(scene, g, building, graphicsUpgradeInstalled);
   if (building.kind === 'apartment') {
     const secondRental = building.key === 'second-rental';
     const occupied = secondRental ? activeProperty === 'second-rental' : activeProperty === 'starter-apartment' || (activeProperty === 'none' && apartmentRented);
@@ -390,7 +403,7 @@ export function drawBuySellBuilding(scene: Phaser.Scene, building: Building, sty
   objects.push(stockLayer);
 
   const door = scene.add.graphics().setDepth(29);
-  drawBuySellDoor(door, false);
+  drawBuySellDoor(door, false, style);
   objects.push(door);
 
   // Threshold and shallow steps are ground details. Keep them below Alex so
@@ -426,7 +439,7 @@ export function drawBuySellBuilding(scene: Phaser.Scene, building: Building, sty
   return { door, objects, pulseLayers: greenCrt ? [facade, fixedSign, fixedSignText] : [facade, windowLayer, fixedSign, fixedSignText] };
 }
 
-export function drawMatchingDoor(g: Phaser.GameObjects.Graphics, centerX: number, doorTop: number, width: number, height: number, open: boolean): void {
+export function drawMatchingDoor(g: Phaser.GameObjects.Graphics, centerX: number, doorTop: number, width: number, height: number, open: boolean, style: BuildingGraphicsEra = 'atari-bw'): void {
   const doorX = centerX - width / 2;
   const frameInset = Math.max(4, Math.round(width * 0.1875));
   const openInset = Math.max(4, Math.round(width * 0.125));
@@ -437,26 +450,32 @@ export function drawMatchingDoor(g: Phaser.GameObjects.Graphics, centerX: number
   const knobY = Math.round(height * 0.692);
   const lowerPanelHeight = Math.max(12, Math.round(height * 0.269));
   const borderWidth = Math.max(2, Math.round(width * 0.0625));
+  const greenCrt = style === 'green-crt';
+  const colour = style === 'atari-colour';
+  const frameColour = greenCrt ? 0x39ff5a : colour ? 0xf2e5c7 : WHITE;
+  const closedDoorColour = greenCrt ? 0x070b08 : colour ? 0x337d78 : WHITE;
+  const windowColour = greenCrt ? 0x070b08 : colour ? 0x173a55 : 0x9ea5a5;
+  const detailColour = greenCrt ? 0x39ff5a : colour ? 0x111416 : INK;
   g.clear();
   if (open) {
     g.fillStyle(0x07090a, 1).fillRect(doorX, doorTop, width, height);
-    g.fillStyle(0x252a2d, 1).fillRect(doorX + openInset, doorTop + openInset, width - openInset * 2, height - openInset);
-    g.fillStyle(0x111416, 1).fillRect(doorX + frameInset, doorTop + height - lowerPanelHeight - openInset, width - frameInset * 2, lowerPanelHeight);
+    g.fillStyle(greenCrt ? 0x070b08 : colour ? 0x08283d : 0x252a2d, 1).fillRect(doorX + openInset, doorTop + openInset, width - openInset * 2, height - openInset);
+    g.fillStyle(detailColour, greenCrt ? 0.28 : 1).fillRect(doorX + frameInset, doorTop + height - lowerPanelHeight - openInset, width - frameInset * 2, lowerPanelHeight);
   } else {
-    g.fillStyle(WHITE, 1).fillRect(doorX, doorTop, width, height);
-    g.fillStyle(0x9ea5a5, 1).fillRect(doorX + frameInset, doorTop + windowTop, width - frameInset * 2, windowHeight);
-    g.lineStyle(Math.max(2, borderWidth - 1), INK, 1).strokeRect(doorX + frameInset, doorTop + windowTop, width - frameInset * 2, windowHeight);
-    g.fillStyle(INK, 1).fillRect(doorX + width - knobRightInset, doorTop + knobY, knobSize, knobSize);
+    g.fillStyle(closedDoorColour, 1).fillRect(doorX, doorTop, width, height);
+    g.fillStyle(windowColour, 1).fillRect(doorX + frameInset, doorTop + windowTop, width - frameInset * 2, windowHeight);
+    g.lineStyle(Math.max(2, borderWidth - 1), detailColour, 1).strokeRect(doorX + frameInset, doorTop + windowTop, width - frameInset * 2, windowHeight);
+    g.fillStyle(detailColour, 1).fillRect(doorX + width - knobRightInset, doorTop + knobY, knobSize, knobSize);
   }
-  g.lineStyle(borderWidth, open ? WHITE : INK, 1).strokeRect(doorX, doorTop, width, height);
+  g.lineStyle(borderWidth, greenCrt || open ? frameColour : detailColour, 1).strokeRect(doorX, doorTop, width, height);
 }
 
-function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean): void {
-  drawMatchingDoor(g, BUY_SELL_ENTRANCE.x, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, open);
+function drawBuySellDoor(g: Phaser.GameObjects.Graphics, open: boolean, style: BuildingGraphicsEra): void {
+  drawMatchingDoor(g, BUY_SELL_ENTRANCE.x, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, open, style);
 }
 
-export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
-  drawBuySellDoor(door, open);
+export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean, style: BuildingGraphicsEra = 'atari-bw'): void {
+  drawBuySellDoor(door, open, style);
 }
 
 export function drawStarterApartmentDoor(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
@@ -483,43 +502,74 @@ function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building
     for (let listing = 0; listing < 4; listing += 1) {
       const column = listing % 2;
       const row = Math.floor(listing / 2);
-      drawMiniHome(g, section.x + 10 + column * 52, section.y + 31 + row * 74, 44, 52, index === 0 && listing === 0);
+      const listingX = section.x + 10 + column * 52;
+      const listingY = section.y + 31 + row * 74;
+      if (upgraded) {
+        g.lineStyle(2, lineColour, 0.9).strokeRect(listingX, listingY + 16, 44, 36);
+        g.lineBetween(listingX, listingY + 16, listingX + 22, listingY);
+        g.lineBetween(listingX + 22, listingY, listingX + 44, listingY + 16);
+        g.strokeRect(listingX + 17, listingY + 32, 10, 20);
+      } else {
+        drawMiniHome(g, listingX, listingY, 44, 52, index === 0 && listing === 0);
+      }
     }
   });
   addWorldLabel(scene, x + 78, y + 115, 'TO RENT', lineColour, 10, true);
   addWorldLabel(scene, x + 208, y + 115, 'PROPERTIES', lineColour, 9, true);
 }
 
-export function drawRealEstateDoor(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
+export function drawRealEstateDoor(scene: Phaser.Scene, style: BuildingGraphicsEra = 'atari-bw'): Phaser.GameObjects.Graphics {
   const door = scene.add.graphics().setDepth(29);
-  drawMatchingDoor(door, REAL_ESTATE_ENTRANCE.x, REAL_ESTATE_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, false);
+  drawMatchingDoor(door, REAL_ESTATE_ENTRANCE.x, REAL_ESTATE_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, false, style);
   return door;
 }
 
-export function setRealEstateDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
-  drawMatchingDoor(door, REAL_ESTATE_ENTRANCE.x, REAL_ESTATE_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, open);
+export function setRealEstateDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean, style: BuildingGraphicsEra = 'atari-bw'): void {
+  drawMatchingDoor(door, REAL_ESTATE_ENTRANCE.x, REAL_ESTATE_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT, open, style);
 }
 
-function drawPlants(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, graphicsUpgradeInstalled = false): void {
-  const x = building.x;
-  const y = building.y;
-  g.fillStyle(0x242a2c, 1).fillRect(x + 18, y + 112, building.width - 36, 174);
-  g.lineStyle(5, 0x858d8d, 0.95).strokeRect(x + 18, y + 112, building.width - 36, 174);
-  g.lineStyle(3, 0x697173, 0.8);
-  for (let plotX = x + 42; plotX < x + building.width - 38; plotX += 74) {
-    g.strokeRect(plotX, y + 190, 52, 42);
-    g.lineBetween(plotX + 8, y + 226, plotX + 16, y + 205);
-    g.lineBetween(plotX + 28, y + 226, plotX + 38, y + 198);
+function drawNurseryBuilding(scene: Phaser.Scene, progress: BuildingProgress): void {
+  const state = progress.operationalState === 'under-construction'
+    ? 'under-construction'
+    : progress.operationalState === 'operational' ? 'operational' : 'vacant';
+  const texture = NURSERY_TEXTURES[state];
+  if (scene.textures.exists(texture)) {
+    scene.add.image(NURSERY_ASSET_X, NURSERY_ASSET_Y, texture).setOrigin(0, 0).setDepth(5);
   }
-  addWorldLabel(scene, x + building.width / 2, y + 138, 'NURSERY', WHITE, 18, true);
-  addWorldLabel(scene, x + building.width / 2, y + 166, graphicsUpgradeInstalled ? 'UNDER CONSTRUCTION' : 'COMING SOON', 0xc4ccca, 12, true);
-  addWorldLabel(scene, x + building.width / 2, y + 260, graphicsUpgradeInstalled ? 'CONSTRUCTION SITE' : 'VACANT LOT', 0xabb3b1, 11, true);
-  if (graphicsUpgradeInstalled) {
-    g.lineStyle(5, 0x969e9d, 0.95);
-    g.lineBetween(x + 30, y + 286, x + building.width - 30, y + 286);
-    g.lineBetween(x + 48, y + 286, x + 48, y + 214);
-    g.lineBetween(x + building.width - 48, y + 286, x + building.width - 48, y + 214);
-    g.lineBetween(x + 48, y + 214, x + building.width - 48, y + 214);
+
+  const signPanel = scene.add.graphics().setDepth(8);
+  const greenCRT = state === 'under-construction';
+  const colour = state === 'operational';
+  const signFill = greenCRT ? 0x050906 : colour ? 0xeadbb8 : 0xd8dddc;
+  const signInk = greenCRT ? 0x39ff5a : colour ? 0x102f48 : 0x111416;
+  signPanel.fillStyle(signFill, 0.96).fillRect(NURSERY_SIGN.x + 5, NURSERY_SIGN.y + 5, NURSERY_SIGN.width - 10, NURSERY_SIGN.height - 10);
+  signPanel.lineStyle(3, signInk, 1).strokeRect(NURSERY_SIGN.x + 5, NURSERY_SIGN.y + 5, NURSERY_SIGN.width - 10, NURSERY_SIGN.height - 10);
+  const status = state === 'vacant' ? 'OPENING SOON' : state === 'under-construction' ? 'UNDER CONSTRUCTION' : 'OPEN';
+  const nurseryLabel = scene.add.text(NURSERY_SIGN.x + NURSERY_SIGN.width / 2, NURSERY_SIGN.y + 21, 'NURSERY', {
+    color: `#${signInk.toString(16).padStart(6, '0')}`,
+    fontFamily: 'monospace', fontSize: '20px', fontStyle: 'bold', align: 'center',
+  }).setOrigin(0.5).setDepth(10);
+  const statusLabel = scene.add.text(NURSERY_SIGN.x + NURSERY_SIGN.width / 2, NURSERY_SIGN.y + 49, status, {
+    color: `#${signInk.toString(16).padStart(6, '0')}`,
+    fontFamily: 'monospace', fontSize: state === 'under-construction' ? '14px' : '16px', fontStyle: 'bold', align: 'center',
+  }).setOrigin(0.5).setDepth(10);
+  nurseryLabel.setResolution(Math.max(2, window.devicePixelRatio || 1));
+  statusLabel.setResolution(Math.max(2, window.devicePixelRatio || 1));
+
+  if (state === 'operational') {
+    const stock = scene.add.graphics().setDepth(7);
+    stock.fillStyle(0x337d78, 1).fillRect(NURSERY_ASSET_X + 54, NURSERY_ASSET_Y + 280, 206, 7);
+    drawPot(stock, NURSERY_ASSET_X + 88, NURSERY_ASSET_Y + 276, 0.48, true);
+    drawGoldenPothos(stock, NURSERY_ASSET_X + 153, NURSERY_ASSET_Y + 276, 0.46, true);
+    drawPot(stock, NURSERY_ASSET_X + 222, NURSERY_ASSET_Y + 276, 0.52, true);
+
+    const steps = scene.add.graphics().setDepth(28);
+    steps.fillStyle(0x858d8d, 1).fillRect(NURSERY_DOOR.x - 8, NURSERY_DOOR.y + NURSERY_DOOR.height, NURSERY_DOOR.width + 16, 4);
+    const door = scene.add.graphics().setDepth(29);
+    drawMatchingDoor(door, NURSERY_DOOR.x + NURSERY_DOOR.width / 2, NURSERY_DOOR.y, NURSERY_DOOR.width, NURSERY_DOOR.height, false, 'atari-colour');
+  } else if (state === 'under-construction') {
+    const futureDoor = scene.add.graphics().setDepth(29);
+    drawMatchingDoor(futureDoor, NURSERY_DOOR.x + NURSERY_DOOR.width / 2, NURSERY_DOOR.y, NURSERY_DOOR.width, NURSERY_DOOR.height, false, 'green-crt');
   }
 }
 
@@ -690,9 +740,30 @@ export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: n
     .lineBetween(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale);
 }
 
+export function drawRareSpottedBegonia(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour = false): void {
+  drawPot(g, x, y, scale, colour);
+  const leaf = colour ? 0x6fae73 : 0xbfc5c3;
+  const spot = colour ? 0xe8dca8 : 0x4f5759;
+  g.lineStyle(3 * scale, 0x111416, 1)
+    .lineBetween(x, y - 29 * scale, x - 12 * scale, y - 69 * scale)
+    .lineBetween(x, y - 32 * scale, x + 15 * scale, y - 76 * scale)
+    .lineBetween(x, y - 40 * scale, x + 1 * scale, y - 91 * scale);
+  g.fillStyle(leaf, 1)
+    .fillEllipse(x - 19 * scale, y - 72 * scale, 32 * scale, 18 * scale)
+    .fillEllipse(x + 21 * scale, y - 79 * scale, 34 * scale, 19 * scale)
+    .fillEllipse(x + 1 * scale, y - 96 * scale, 30 * scale, 18 * scale);
+  g.fillStyle(spot, 1)
+    .fillCircle(x - 22 * scale, y - 71 * scale, 3 * scale)
+    .fillCircle(x - 12 * scale, y - 75 * scale, 3 * scale)
+    .fillCircle(x + 17 * scale, y - 77 * scale, 3 * scale)
+    .fillCircle(x + 27 * scale, y - 82 * scale, 3 * scale)
+    .fillCircle(x - 3 * scale, y - 96 * scale, 3 * scale)
+    .fillCircle(x + 7 * scale, y - 99 * scale, 3 * scale);
+}
+
 export type BasilVisualStage = 'empty' | 'planted' | 'seedling' | 'mature';
 
-export type GrowingCropVisualSpecies = 'basil' | 'mint';
+export type GrowingCropVisualSpecies = 'basil' | 'mint' | 'dwarf-marigold' | 'peace-lily';
 
 export function drawBasilCrop(
   g: Phaser.GameObjects.Graphics,
@@ -719,9 +790,18 @@ export function drawGrowingCrop(
   g.fillStyle(colour ? 0x6dbb52 : 0x697173, 1).fillCircle(x, y - 31 * scale, 4 * scale);
   if (stage === 'planted') return;
 
-  const height = stage === 'mature' ? (species === 'mint' ? 60 : 66) : 38;
+  const height = stage === 'mature'
+    ? species === 'peace-lily' ? 78 : species === 'dwarf-marigold' ? 62 : species === 'mint' ? 60 : 66
+    : 38;
   g.lineStyle(3, INK, 1).lineBetween(x, y - 31 * scale, x, y - height * scale);
-  if (species === 'mint') {
+  if (species === 'peace-lily') {
+    g.lineBetween(x, y - 39 * scale, x - 16 * scale, y - 59 * scale);
+    g.lineBetween(x, y - 44 * scale, x + 18 * scale, y - 64 * scale);
+    g.lineBetween(x, y - 50 * scale, x + 5 * scale, y - 75 * scale);
+  } else if (species === 'dwarf-marigold') {
+    g.lineBetween(x, y - 39 * scale, x - 15 * scale, y - 52 * scale);
+    g.lineBetween(x, y - 42 * scale, x + 15 * scale, y - 54 * scale);
+  } else if (species === 'mint') {
     g.lineBetween(x, y - (height - 9) * scale, x - 11 * scale, y - (height - 25) * scale);
     g.lineBetween(x, y - (height - 18) * scale, x + 12 * scale, y - (height - 35) * scale);
     g.lineBetween(x, y - (height - 28) * scale, x - 13 * scale, y - (height - 42) * scale);
@@ -730,7 +810,27 @@ export function drawGrowingCrop(
     g.lineBetween(x, y - (height - 19) * scale, x + 16 * scale, y - (height - 35) * scale);
   }
   g.fillStyle(colour ? (stage === 'mature' ? 0x69b85a : 0x4f9a54) : stage === 'mature' ? 0xbfc5c3 : 0x929b99, 1);
-  if (species === 'mint') {
+  if (species === 'peace-lily') {
+    g.fillEllipse(x - 17 * scale, y - 55 * scale, 25 * scale, 10 * scale);
+    g.fillEllipse(x + 18 * scale, y - 61 * scale, 27 * scale, 11 * scale);
+    if (stage === 'mature') {
+      g.fillEllipse(x + 5 * scale, y - 74 * scale, 24 * scale, 10 * scale);
+      g.fillStyle(colour ? 0xf6f7f3 : 0xd8dddc, 1).fillEllipse(x - 5 * scale, y - 82 * scale, 12 * scale, 19 * scale);
+      g.fillStyle(colour ? 0xd2c66d : 0x929b99, 1).fillRect(x - 5 * scale, y - 86 * scale, 3 * scale, 12 * scale);
+    }
+  } else if (species === 'dwarf-marigold') {
+    g.fillEllipse(x - 15 * scale, y - 50 * scale, 20 * scale, 10 * scale);
+    g.fillEllipse(x + 15 * scale, y - 52 * scale, 20 * scale, 10 * scale);
+    if (stage === 'mature') {
+      const flower = colour ? 0xd9a63c : 0xd8dddc;
+      g.fillStyle(flower, 1)
+        .fillCircle(x, y - 66 * scale, 9 * scale)
+        .fillCircle(x - 9 * scale, y - 63 * scale, 6 * scale)
+        .fillCircle(x + 9 * scale, y - 63 * scale, 6 * scale)
+        .fillCircle(x, y - 57 * scale, 6 * scale);
+      g.fillStyle(INK, 1).fillCircle(x, y - 64 * scale, 3 * scale);
+    }
+  } else if (species === 'mint') {
     g.fillEllipse(x - 14 * scale, y - (height - 16) * scale, 17 * scale, 9 * scale);
     g.fillEllipse(x + 14 * scale, y - (height - 30) * scale, 17 * scale, 9 * scale);
     if (stage === 'mature') g.fillEllipse(x - 14 * scale, y - (height - 38) * scale, 17 * scale, 9 * scale);
@@ -742,7 +842,7 @@ export function drawGrowingCrop(
     if (species === 'mint') {
       g.lineBetween(x, y - 43 * scale, x + 12 * scale, y - 58 * scale);
       g.fillEllipse(x + 14 * scale, y - 61 * scale, 18 * scale, 9 * scale);
-    } else {
+    } else if (species === 'basil') {
       g.lineBetween(x, y - 48 * scale, x - 18 * scale, y - 66 * scale);
       g.fillTriangle(x - 2 * scale, y - 49 * scale, x - 29 * scale, y - 61 * scale, x - 12 * scale, y - 72 * scale);
     }

@@ -175,6 +175,22 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .panel-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(4, 6, 7, .76); opacity: 0; transition: opacity .16s ease; }
 .panel-backdrop.is-open { opacity: 1; }
 .panel { width: min(560px, 100%); max-height: min(680px, 90dvh); overflow: auto; background: #171c1e; border: 3px solid #f6f7f3; box-shadow: 9px 9px 0 #060708; transform: translateY(10px); transition: transform .16s ease; }
+.panel-backdrop.is-green-crt-property .panel { background: #050906; border-color: #39ff5a; color: #39ff5a; box-shadow: 9px 9px 0 #020503; }
+.panel-backdrop.is-green-crt-property .panel-heading { border-color: #238f38; }
+.panel-backdrop.is-green-crt-property .close-button,
+.panel-backdrop.is-green-crt-property .property-action,
+.panel-backdrop.is-green-crt-property .property-secondary-action { border-color: #39ff5a; background: #071008; color: #39ff5a; }
+.panel-backdrop.is-green-crt-property .property-details,
+.panel-backdrop.is-green-crt-property .property-heading,
+.panel-backdrop.is-green-crt-property .property-note,
+.panel-backdrop.is-green-crt-property .property-warning,
+.panel-backdrop.is-green-crt-property .property-details-list,
+.panel-backdrop.is-green-crt-property .property-details-list b,
+.panel-backdrop.is-green-crt-property .property-preview span { color: #39ff5a; border-color: #238f38; }
+.panel-backdrop.is-green-crt-property .property-details-list,
+.panel-backdrop.is-green-crt-property .property-preview,
+.panel-backdrop.is-green-crt-property .property-preview span,
+.panel-backdrop.is-green-crt-property .property-balance { background: #071008; }
 .is-open .panel { transform: translateY(0); }
 .panel-heading { padding: 20px 20px 16px; display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; border-bottom: 2px solid #656e6d; }
 .panel-heading h2 { margin: 6px 0 0; font-size: clamp(20px, 4vw, 30px); }

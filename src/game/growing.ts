@@ -1,6 +1,6 @@
 import type { PlantSpecies, PlantStage } from './plants';
 
-export type GrowingPotType = 'small-basic-plastic-pot';
+export type GrowingPotType = 'small-basic-plastic-pot' | 'special-repair-pot';
 export type GrowingPotMedium = 'usable';
 
 export interface GrowingCropState {
@@ -23,6 +23,10 @@ export const ADDITIONAL_GROWING_POT_IDS = ['growing-pot-2', 'growing-pot-3', 'gr
 export const MAX_ADDITIONAL_GROWING_POTS = ADDITIONAL_GROWING_POT_IDS.length;
 export const GROWING_TABLE_SLOT_COUNT = 6;
 
-export function createEmptyGrowingPot(id: string, slot: number | null = null): GrowingPotState {
-  return { id, type: 'small-basic-plastic-pot', medium: 'usable', slot, crop: null };
+export function createEmptyGrowingPot(
+  id: string,
+  slot: number | null = null,
+  type: GrowingPotType = 'small-basic-plastic-pot',
+): GrowingPotState {
+  return { id, type, medium: 'usable', slot, crop: null };
 }

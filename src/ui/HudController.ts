@@ -13,12 +13,16 @@ import {
   BASIL_HARVEST_PRICE,
   BASIL_DELIVERY_REWARD,
   BASIL_SEED_PRICE,
+  BASIC_FERTILIZER_BOX_PRICE,
+  BASIC_FERTILIZER_PELLETS_PER_BOX,
+  BASIC_FERTILIZER_GROWTH_REDUCTION_MS,
   BUY_SELL_NAME,
   getShopBuybackPrice,
   HOMES_WINDOW_CLEAN_SECTIONS,
   OPENING_POTHOS_SALE_PRICE,
   OPENING_POTHOS_DELIVERY_REWARD,
   REPAIRED_POT_SALE_PRICE,
+  RARE_BEGONIA_SALE_PRICE,
   WINDOW_JOB_REWARD,
   RENTAL_BOND_COST,
   SECOND_RENTAL_MOVE_COST,
@@ -32,7 +36,7 @@ import { DEFAULT_SHOP_STOCK_QUALITY } from '../game/progress';
 import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool } from '../game/progress';
 import type { AlexGraphics } from '../game/progress';
 import type { PropertyId } from '../game/world';
-import { getPlantDefinition, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
+import { emptyPlantQuantities, getPlantDefinition, getPlantDefinitionByProduct, isPlantProductItem, isPlantSpecies, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
 import { PREMIUM_PLANT_CATALOG, isPremiumPlantId, type PremiumPlantId } from '../game/shopCatalog';
 import type { GrowingPotState } from '../game/growing';
 
@@ -109,14 +113,17 @@ export class HudController {
   private mintHarvestSaleRecorded = false;
   private hasCollectedSaleableItem = false;
   private saleComplete = false;
+  private windowJobAccepted = false;
   private paidWorkComplete = false;
+  private repairComplete = false;
+  private foundPotCount = 0;
   private starterPotPlaced = false;
   private basilSeeds = 0;
   private basilHarvests = 0;
   private basilCycleCount = 0;
   private basicFertilizerCharges = 0;
-  private seedQuantities: Record<PlantSpecies, number> = { basil: 0, mint: 0 };
-  private harvestQuantities: Record<PlantSpecies, number> = { basil: 0, mint: 0 };
+  private seedQuantities: Record<PlantSpecies, number> = emptyPlantQuantities();
+  private harvestQuantities: Record<PlantSpecies, number> = emptyPlantQuantities();
   private growingPots: GrowingPotState[] = [];
   private ownedPremiumPlants: PremiumPlantId[] = [];
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
@@ -321,7 +328,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; paidWorkComplete?: boolean; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; ownedPremiumPlants?: PremiumPlantId[] }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; windowJobAccepted?: boolean; paidWorkComplete?: boolean; repairComplete?: boolean; foundPotCount?: number; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; ownedPremiumPlants?: PremiumPlantId[] }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -346,7 +353,10 @@ export class HudController {
     this.mintHarvestSaleRecorded = state.mintHarvestSaleRecorded ?? this.mintHarvestSaleRecorded;
     this.hasCollectedSaleableItem = state.hasCollectedSaleableItem ?? this.hasCollectedSaleableItem;
     this.saleComplete = state.saleComplete ?? this.saleComplete;
+    this.windowJobAccepted = state.windowJobAccepted ?? this.windowJobAccepted;
     this.paidWorkComplete = state.paidWorkComplete ?? this.paidWorkComplete;
+    this.repairComplete = state.repairComplete ?? this.repairComplete;
+    this.foundPotCount = state.foundPotCount ?? this.foundPotCount;
     this.starterPotPlaced = state.starterPotPlaced ?? this.starterPotPlaced;
     this.basilSeeds = state.basilSeeds ?? this.basilSeeds;
     this.basilHarvests = state.basilHarvests ?? this.basilHarvests;
@@ -363,7 +373,7 @@ export class HudController {
     const labels: Record<TaskState, string> = {
       find: 'Find a Small Golden Pothos',
       sell: `Sell the Small Golden Pothos at ${BUY_SELL_NAME}`,
-      clean: 'Clean the REAL ESTATE AGENT window',
+      clean: 'Clean both windows of the Real Estate Agent and they might open',
       repair: 'Find broken pot pieces; repair with tool + glue',
       'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`,
       complete: 'Prototype task complete',
@@ -379,6 +389,16 @@ export class HudController {
       'grow-mint': 'Wait for the mint to grow',
       'harvest-mint': 'Harvest the mature mint',
       'sell-mint': `Sell the mint harvest at ${BUY_SELL_NAME}`,
+      'plant-dwarf-marigold': 'Plant Dwarf Marigold in a basic pot',
+      'water-dwarf-marigold': 'Water the planted Dwarf Marigold',
+      'grow-dwarf-marigold': 'Wait for the Dwarf Marigold to grow',
+      'lift-dwarf-marigold': 'Lift the mature Dwarf Marigold into the Bag',
+      'sell-dwarf-marigold': `Sell the potted Dwarf Marigold at ${BUY_SELL_NAME}`,
+      'plant-peace-lily': 'Plant Peace Lily in a basic pot',
+      'water-peace-lily': 'Water the planted Peace Lily',
+      'grow-peace-lily': 'Wait for the Peace Lily to grow',
+      'lift-peace-lily': 'Lift the mature Peace Lily into the Bag',
+      'sell-peace-lily': `Sell the potted Peace Lily at ${BUY_SELL_NAME}`,
       'move-rental': 'Move into a bigger rental',
     };
     this.objectiveText.textContent = this.rentalBondPaid ? (this.starterKitClaimed ? labels[state.task] : 'Enter the apartment and claim the starter kit') : 'Find a place to live';
@@ -423,6 +443,8 @@ export class HudController {
       ['Collect a saleable item', this.hasCollectedSaleableItem],
       ['Sell an item', this.saleComplete],
       ['Complete paid work', this.paidWorkComplete],
+      [`Find 3 pots (${Math.min(3, this.foundPotCount)} / 3)`, this.foundPotCount >= 3],
+      ['Repair one item', this.repairComplete],
       [`Have ${RENTAL_BOND_COST} coins for the bond`, this.coins >= RENTAL_BOND_COST || this.rentalBondPaid],
       ['Rent the apartment', this.rentalBondPaid],
       ['Receive the rental key', this.rentalKeyOwned],
@@ -491,6 +513,10 @@ export class HudController {
 
   openPropertyDetails(listing: PropertyListingKey): void {
     this.openPanel(`property-${listing}`);
+  }
+
+  openRealEstatePanel(): void {
+    this.openPanel('real-estate');
   }
 
   refreshBasilPanel(feedback = ''): void {
@@ -566,7 +592,7 @@ export class HudController {
 
   showStarterKitClaimed(): void {
     this.toastDismissAction = null;
-    this.toastMessage.innerHTML = '<strong>STARTER KIT CLAIMED</strong><span>Small basic pot ×1</span><span>Watering can ×1</span><span>Basil seeds ×1</span><span>Mint seeds ×1</span><span>Basic fertiliser ×1</span>';
+    this.toastMessage.innerHTML = '<strong>STARTER KIT CLAIMED</strong><span>Small basic pot ×1</span><span>Watering can ×1</span><span>Basil seeds ×1</span><span>Mint seeds ×1</span><span>Basic fertiliser pellet ×1</span>';
     this.toast.classList.remove('is-opening-intro');
     this.toast.classList.add('is-dismissible', 'is-starter-kit');
     this.toastOk.hidden = false;
@@ -848,6 +874,14 @@ export class HudController {
       this.setMapPosition(this.mapPositionRatio);
     }
     if (kind === 'shop') this.bindShopPanel();
+    if (kind === 'real-estate') {
+      this.panelBody.querySelectorAll<HTMLButtonElement>('[data-property-listing]').forEach((button) => {
+        this.bindButtonActivation(button, () => {
+          const listing = button.dataset.propertyListing;
+          if (listing === 'cheap-rental' || listing === 'mid-rental' || listing === 'high-property') this.openPropertyDetails(listing);
+        });
+      });
+    }
     if (kind.startsWith('property-')) this.bindPropertyPanel();
     if (kind === 'basil') this.bindBasilPanel();
     if (kind === 'settings') this.bindSettingsPanel();
@@ -871,6 +905,8 @@ export class HudController {
     }
     this.panelBackdrop.classList.toggle('is-city-map', kind === 'map');
     this.panelBackdrop.classList.toggle('is-shop', kind === 'shop');
+    this.panelBackdrop.classList.toggle('is-green-crt-property',
+      (kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'green-crt');
     this.mapCentreButton.hidden = kind !== 'map';
     this.panelBackdrop.hidden = false;
     requestAnimationFrame(() => this.panelBackdrop.classList.add('is-open'));
@@ -886,6 +922,7 @@ export class HudController {
     this.cityMapPanCleanup = null;
     this.panelBackdrop.classList.remove('is-city-map');
     this.panelBackdrop.classList.remove('is-shop');
+    this.panelBackdrop.classList.remove('is-green-crt-property');
     this.mapCentreButton.hidden = true;
     this.activePanelKind = null;
     this.panelBackdrop.classList.remove('is-open');
@@ -1094,12 +1131,17 @@ export class HudController {
 
   private panelContent(kind: string): { title: string; body: string } {
     if (kind === 'bag') {
-      const potLabel = this.potCondition === 'broken' ? 'Broken special collectible pot' : this.potCondition === 'repaired' ? 'Repaired special collectible pot' : 'Small Golden Pothos';
+      const potLabel = this.potCondition === 'broken'
+        ? 'Broken special collectible pot'
+        : this.potCondition === 'repaired' ? 'Repaired special collectible pot'
+          : this.inventoryItem === 'rare-spotted-begonia' ? 'Rare Spotted Begonia' : 'Small Golden Pothos';
       const potNote = this.potCondition === 'broken'
         ? 'Collect the pieces, then repair this special empty pot.'
         : this.potCondition === 'repaired'
           ? `Empty and ready to sell at ${BUY_SELL_NAME} for ${REPAIRED_POT_SALE_PRICE} coins.`
-          : `Opening delivery. Sell it at ${BUY_SELL_NAME} for ${OPENING_POTHOS_SALE_PRICE} coins.`;
+          : this.inventoryItem === 'rare-spotted-begonia'
+            ? `${BUY_SELL_NAME} is currently buying it for ${RARE_BEGONIA_SALE_PRICE} coins.`
+            : `Opening delivery. Sell it at ${BUY_SELL_NAME} for ${OPENING_POTHOS_SALE_PRICE} coins.`;
       const repairButton = this.potCondition === 'broken'
         ? '<div class="inventory-actions"><button class="inventory-action" type="button" data-repair-pot>REPAIR</button></div>'
         : '';
@@ -1117,8 +1159,11 @@ export class HudController {
         this.starterKitClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.seedQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>${getPlantDefinition(species).seedLabel} ×${this.seedQuantities[species]}</strong><small>Plant one in any empty placed pot.</small></div></div>` : ''),
         this.rentalKeyOwned ? `<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>${this.activeProperty === 'second-rental' ? 'Two-room rental key' : 'Starter apartment key'}</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>` : '',
-        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser ×${this.basicFertilizerCharges}</strong><small>Use while any crop is growing to skip its growth timer.</small></div></div>` : '',
-        ...PLANT_SPECIES.map((species) => this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">✦</span><div><strong>${getPlantDefinition(species).harvestLabel} ×${this.harvestQuantities[species]}</strong><small>Sell each harvest at ${BUY_SELL_NAME} for ${getPlantDefinition(species).harvestPrice} coins.</small></div></div>` : ''),
+        this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser pellets ×${this.basicFertilizerCharges}</strong><small>Each pellet removes ${BASIC_FERTILIZER_GROWTH_REDUCTION_MS / 1000} seconds from a growing crop.</small></div></div>` : '',
+        ...PLANT_SPECIES.map((species) => {
+          const definition = getPlantDefinition(species);
+          return this.harvestQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">${definition.yieldMode === 'whole-plant' ? '♣' : '✦'}</span><div><strong>${definition.harvestLabel} ×${this.harvestQuantities[species]}</strong><small>${definition.yieldMode === 'whole-plant' ? 'Includes one small basic plastic pot. ' : ''}Sell each at ${BUY_SELL_NAME} for ${definition.harvestPrice} coins.</small></div></div>` : '';
+        }),
         ...this.ownedPremiumPlants.map((id) => {
           const plant = PREMIUM_PLANT_CATALOG.find((candidate) => candidate.id === id)!;
           return `<div class="inventory-item"><span class="inventory-art">♣</span><div><strong>${plant.label}</strong><small>Premium shop plant · purchased for ${plant.price} coins.</small></div></div>`;
@@ -1141,23 +1186,41 @@ export class HudController {
         body: this.shopPanelMarkup(),
       };
     }
+    if (kind === 'real-estate') {
+      return {
+        title: 'ROSE · REAL ESTATE',
+        body: `<div class="property-details"><div class="property-heading">PROPERTY MENU <span>SELECT A LISTING</span></div><div class="settings-list"><button class="property-action" type="button" data-property-listing="cheap-rental">STARTER APARTMENT · ${RENTAL_BOND_COST} COINS</button><button class="property-action" type="button" data-property-listing="mid-rental">TWO-ROOM RENTAL</button><button class="property-secondary-action" type="button" data-property-listing="high-property">FUTURE PROPERTY · UNAVAILABLE</button></div></div>`,
+      };
+    }
     if (kind === 'tasks') {
       const complete = this.activeTask === 'complete';
       const taskLabel: Record<TaskState, string> = {
-        find: 'Find a Small Golden Pothos', sell: `Sell the Small Golden Pothos at ${BUY_SELL_NAME}`, clean: 'Clean the REAL ESTATE AGENT window',
+        find: 'Find a Small Golden Pothos', sell: `Sell the Small Golden Pothos at ${BUY_SELL_NAME}`, clean: 'Clean both windows of the Real Estate Agent and they might open',
         repair: 'Find broken pot pieces; repair with tool + glue', 'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`, complete: 'Prototype jobs complete',
         'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit', 'plant-basil': 'Plant basil in a grow-table pot',
         'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
         'sell-basil': `Sell the basil harvest at ${BUY_SELL_NAME}`, 'buy-seeds': 'Buy seeds for another grow-table crop',
         'plant-mint': 'Plant mint in an empty grow-table pot', 'water-mint': 'Water the planted mint',
-        'grow-mint': 'Wait for the mint to grow', 'harvest-mint': 'Harvest the mature mint', 'sell-mint': `Sell the mint harvest at ${BUY_SELL_NAME}`, 'move-rental': 'Move into a bigger rental',
+        'grow-mint': 'Wait for the mint to grow', 'harvest-mint': 'Harvest the mature mint', 'sell-mint': `Sell the mint harvest at ${BUY_SELL_NAME}`,
+        'plant-dwarf-marigold': 'Plant Dwarf Marigold in a basic pot', 'water-dwarf-marigold': 'Water the planted Dwarf Marigold',
+        'grow-dwarf-marigold': 'Wait for the Dwarf Marigold to grow', 'lift-dwarf-marigold': 'Lift the mature Dwarf Marigold into the Bag', 'sell-dwarf-marigold': `Sell the potted Dwarf Marigold at ${BUY_SELL_NAME}`,
+        'plant-peace-lily': 'Plant Peace Lily in a basic pot', 'water-peace-lily': 'Water the planted Peace Lily',
+        'grow-peace-lily': 'Wait for the Peace Lily to grow', 'lift-peace-lily': 'Lift the mature Peace Lily into the Bag', 'sell-peace-lily': `Sell the potted Peace Lily at ${BUY_SELL_NAME}`,
+        'move-rental': 'Move into a bigger rental',
       };
       const rental = this.scene?.getPropertyPanelState();
       const moveChecklist = this.activeTask === 'move-rental' && rental ? `<div class="housing-checklist"><div class="housing-check ${rental.basilHarvestSaleRecorded ? 'is-complete' : ''}"><span>${rental.basilHarvestSaleRecorded ? '✓' : '○'}</span>Sell a basil harvest</div><div class="housing-check ${rental.mintHarvestSaleRecorded ? 'is-complete' : ''}"><span>${rental.mintHarvestSaleRecorded ? '✓' : '○'}</span>Sell a mint harvest</div><div class="housing-check ${rental.coins >= SECOND_RENTAL_MOVE_COST || rental.activeProperty === 'second-rental' ? 'is-complete' : ''}"><span>${rental.coins >= SECOND_RENTAL_MOVE_COST || rental.activeProperty === 'second-rental' ? '✓' : '○'}</span>Save the additional ${SECOND_RENTAL_MOVE_COST} coins</div><div class="housing-check ${rental.activeProperty === 'second-rental' ? 'is-complete' : ''}"><span>${rental.activeProperty === 'second-rental' ? '✓' : '○'}</span>Arrange the move at the Real Estate Agent</div><div class="housing-check ${rental.activeProperty === 'second-rental' ? 'is-complete' : ''}"><span>${rental.activeProperty === 'second-rental' ? '✓' : '○'}</span>Enter the new rental</div></div>` : '';
+      const taskInstruction = this.activeTask === 'clean'
+        ? this.windowJobAccepted
+          ? `Face the building and press B to spray window cleaner. Clean the ${HOMES_WINDOW_CLEAN_SECTIONS.length} windows.`
+          : `Accept the Casual Window Washer job from the Wanted menu at ${BUY_SELL_NAME}.`
+        : this.activeTask === 'move-rental'
+          ? 'A larger rental keeps the starter bond and adds growing space.'
+          : complete ? 'The opening jobs are complete.' : 'The next objective updates as Alex works.';
       return {
         title: 'Tasks',
-        body: `<div class="task-card ${complete ? 'is-complete' : ''}"><span class="task-check">${complete ? '✓' : '○'}</span><div><strong>${taskLabel[this.activeTask]}</strong><small>${this.activeTask === 'move-rental' ? 'A larger rental keeps the starter bond and adds growing space.' : complete ? 'The opening jobs are complete.' : 'The next objective updates as Alex works.'}</small></div></div>${moveChecklist}`,
+        body: `<div class="task-card ${complete ? 'is-complete' : ''}"><span class="task-check">${complete ? '✓' : '○'}</span><div><strong>${taskLabel[this.activeTask]}</strong><small>${taskInstruction}</small></div></div>${moveChecklist}`,
       };
     }
     if (kind === 'home') {
@@ -1165,7 +1228,7 @@ export class HudController {
       return {
         title: 'Home',
         body: rental.rentalBondPaid
-          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>${rental.activeProperty === 'second-rental' ? 'YOUR TWO-ROOM RENTAL' : 'YOUR STARTER RENTAL'}</strong><small>Key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Bond recorded: ${rental.rentalBondTotal} coins.</small><small>Access: use the ${rental.activeProperty === 'second-rental' ? 'TWO-ROOM RENTAL' : 'STARTER APARTMENT'} door on the street.</small><small>${rental.activeProperty === 'second-rental' ? 'Two rooms · six growing positions. Rental space does not include six free pots.' : rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and basic fertiliser.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and basic fertiliser.'}</small></div>`
+          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>${rental.activeProperty === 'second-rental' ? 'YOUR TWO-ROOM RENTAL' : 'YOUR STARTER RENTAL'}</strong><small>Key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Bond recorded: ${rental.rentalBondTotal} coins.</small><small>Access: use the ${rental.activeProperty === 'second-rental' ? 'TWO-ROOM RENTAL' : 'STARTER APARTMENT'} door on the street.</small><small>${rental.activeProperty === 'second-rental' ? 'Two rooms · six growing positions. Rental space does not include six free pots.' : rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and one basic fertiliser pellet.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and one basic fertiliser pellet.'}</small></div>`
           : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at the REAL ESTATE AGENT to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
       };
     }
@@ -1207,7 +1270,8 @@ export class HudController {
       this.bindButtonActivation(sellButton, () => {
         const quantity = Number(sellButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
         if (sellButton.dataset.shopSell === 'repaired') this.scene?.sellRepairedPot();
-        else if (sellButton.dataset.shopSell === 'basil' || sellButton.dataset.shopSell === 'mint') this.scene?.sellPlantHarvest(sellButton.dataset.shopSell, quantity);
+        else if (sellButton.dataset.shopSell === 'rare-spotted-begonia') this.scene?.sellRareSpottedBegonia();
+        else if (isPlantSpecies(sellButton.dataset.shopSell)) this.scene?.sellPlantHarvest(sellButton.dataset.shopSell, quantity);
         else this.scene?.sellOpeningPot();
       });
     });
@@ -1234,7 +1298,7 @@ export class HudController {
       this.bindButtonActivation(buyButton, () => {
         const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
         const seedSpecies = buyButton.dataset.shopBuy?.replace('seed-', '');
-        if (seedSpecies === 'basil' || seedSpecies === 'mint') this.scene?.buyPlantSeed(seedSpecies, quantity);
+        if (isPlantSpecies(seedSpecies)) this.scene?.buyPlantSeed(seedSpecies, quantity);
       });
     });
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-growing-pot]').forEach((buyButton) => {
@@ -1242,6 +1306,9 @@ export class HudController {
         const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
         this.scene?.buyAdditionalGrowingPot(quantity);
       });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-fertilizer]').forEach((buyButton) => {
+      this.bindButtonActivation(buyButton, () => this.scene?.buyBasicFertilizerBox());
     });
     this.panelBody.querySelectorAll<HTMLInputElement>('[data-shop-quantity]').forEach((quantityInput) => {
       const updateTotal = (): void => {
@@ -1279,7 +1346,7 @@ export class HudController {
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-plant-species]').forEach((button) => {
       this.bindButtonActivation(button, () => {
         const species = button.dataset.plantSpecies;
-        if (species === 'basil' || species === 'mint') this.scene?.plantSelectedCrop(species);
+        if (isPlantSpecies(species)) this.scene?.plantSelectedCrop(species);
       });
     });
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-select-growing-pot]').forEach((button) => {
@@ -1366,6 +1433,7 @@ export class HudController {
       seedQuantities: { ...this.seedQuantities },
       harvestQuantities: { ...this.harvestQuantities },
       additionalGrowingPotsAvailable: 0,
+      basicFertilizerCharges: this.basicFertilizerCharges,
       starterKitClaimed: this.starterKitClaimed,
       shopStock: [] as ShopStockEntry[],
       ownedPremiumPlants: [...this.ownedPremiumPlants],
@@ -1380,26 +1448,34 @@ export class HudController {
       : `<div class="shop-quantity-row is-single"><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`;
     const stockName = (entry: ShopStockEntry): string => entry.item === 'small-golden-pothos'
       ? 'Small Golden Pothos'
+      : entry.item === 'rare-spotted-begonia' ? 'Rare Spotted Begonia'
       : entry.item === 'special-repair-pot' ? 'Empty repaired pot'
-        : entry.item === 'fresh-mint-leaves' ? 'Fresh mint leaves' : 'Fresh basil leaves';
-    const stockCondition = (entry: ShopStockEntry): string => entry.item === 'fresh-basil-leaves' || entry.item === 'fresh-mint-leaves'
-      ? 'Fresh harvest stack'
+        : getPlantDefinitionByProduct(entry.item).harvestLabel;
+    const stockCondition = (entry: ShopStockEntry): string => isPlantProductItem(entry.item)
+      ? getPlantDefinitionByProduct(entry.item).yieldMode === 'whole-plant' ? 'Living potted plant stack' : 'Fresh harvest stack'
       : entry.condition === 'repaired' ? 'Repaired · empty' : 'Ordinary condition';
     const stockQuality = (entry: ShopStockEntry): string => entry.quality === DEFAULT_SHOP_STOCK_QUALITY ? '' : ` · ${this.escapeHtml(entry.quality)}`;
     const sellOffers = [
-      shop.inventoryPot === 'ordinary' ? `<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Sell for ${OPENING_POTHOS_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE)} coins</small></div>${quantityControl(1, OPENING_POTHOS_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR ${OPENING_POTHOS_SALE_PRICE} COINS</button></div>` : '',
+      shop.inventoryPot === 'ordinary' && shop.inventoryItem === 'small-golden-pothos' ? `<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Sell for ${OPENING_POTHOS_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE)} coins</small></div>${quantityControl(1, OPENING_POTHOS_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR ${OPENING_POTHOS_SALE_PRICE} COINS</button></div>` : '',
+      shop.inventoryPot === 'ordinary' && shop.inventoryItem === 'rare-spotted-begonia' ? `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>Rare Spotted Begonia</strong><small>Ordinary wanted purchase · Sell for ${RARE_BEGONIA_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(RARE_BEGONIA_SALE_PRICE)} coins</small></div>${quantityControl(1, RARE_BEGONIA_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="rare-spotted-begonia">SELL FOR ${RARE_BEGONIA_SALE_PRICE} COINS</button></div>` : '',
       shop.inventoryPot === 'repaired' ? `<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Sell for ${REPAIRED_POT_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(REPAIRED_POT_SALE_PRICE)} coins</small></div>${quantityControl(1, REPAIRED_POT_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR ${REPAIRED_POT_SALE_PRICE} COINS</button></div>` : '',
       ...PLANT_SPECIES.map((species) => {
         const definition = getPlantDefinition(species);
         const amount = shop.harvestQuantities[species] ?? (species === 'basil' ? shop.basilHarvests : 0);
-        return amount > 0 ? `<div class="shop-offer"><div class="inventory-art">✦</div><div class="shop-offer-copy"><strong>${definition.harvestLabel} ×${amount}</strong><small>Fresh stack · Sell for ${definition.harvestPrice} coins each · Buy back for ${getShopBuybackPrice(definition.harvestPrice)} coins each</small></div>${quantityControl(amount, definition.harvestPrice, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="${species}">SELL SELECTED</button></div>` : '';
+        return amount > 0 ? `<div class="shop-offer"><div class="inventory-art">${definition.yieldMode === 'whole-plant' ? '♣' : '✦'}</div><div class="shop-offer-copy"><strong>${definition.harvestLabel} ×${amount}</strong><small>${definition.yieldMode === 'whole-plant' ? 'Whole plant with basic pot' : 'Fresh stack'} · Sell for ${definition.harvestPrice} coins each · Buy back for ${getShopBuybackPrice(definition.harvestPrice)} coins each</small></div>${quantityControl(amount, definition.harvestPrice, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="${species}">SELL SELECTED</button></div>` : '';
       }),
     ].filter(Boolean).join('');
     const sellContent = `<div class="shop-content-heading">SELL</div>${sellOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items</strong><small>Collect or grow an item before selling.</small></div>'}`;
     const stockOffers = shop.shopStock.map((entry) => {
-      const unitPrice = getShopBuybackPrice(entry.item === 'small-golden-pothos' ? OPENING_POTHOS_SALE_PRICE : entry.item === 'special-repair-pot' ? REPAIRED_POT_SALE_PRICE : entry.item === 'fresh-mint-leaves' ? getPlantDefinition('mint').harvestPrice : getPlantDefinition('basil').harvestPrice);
+      const unitPrice = getShopBuybackPrice(entry.item === 'small-golden-pothos'
+        ? OPENING_POTHOS_SALE_PRICE
+        : entry.item === 'rare-spotted-begonia'
+          ? RARE_BEGONIA_SALE_PRICE
+        : entry.item === 'special-repair-pot'
+          ? REPAIRED_POT_SALE_PRICE
+          : getPlantDefinitionByProduct(entry.item).harvestPrice);
       const quantity = entry.quantity > 1 ? ` ×${entry.quantity}` : '';
-      return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'special-repair-pot' ? '◈' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
+      return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'rare-spotted-begonia' ? '♣' : entry.item === 'special-repair-pot' ? '◈' : isPlantProductItem(entry.item) && getPlantDefinitionByProduct(entry.item).yieldMode === 'whole-plant' ? '♣' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
     }).join('');
     const premiumOffers = PREMIUM_PLANT_CATALOG.filter((plant) => !shop.ownedPremiumPlants.includes(plant.id)).map((plant) =>
       `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>${plant.label}</strong><small>Premium potted plant · one available · ${plant.price} coins</small></div>${quantityControl(1, plant.price, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-premium="${plant.id}">BUY FOR ${plant.price} COINS</button></div>`,
@@ -1409,10 +1485,13 @@ export class HudController {
       ? `<div class="shop-section-label">SEEDS</div>${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); return `<div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>${definition.seedLabel}</strong><small>Independent stock · ${definition.seedPrice} coins each</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, definition.seedPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="seed-${species}">BUY SELECTED</button></div>`; }).join('')}`
       : '<div class="shop-section-label">SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying seeds.</small></div>';
     const potContent = shop.starterKitClaimed && shop.additionalGrowingPotsAvailable > 0 ? `<div class="shop-section-label">GROWING POTS</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small basic plastic pot</strong><small>Usable medium · ${shop.additionalGrowingPotsAvailable} available · ${SMALL_BASIC_PLASTIC_POT_PRICE} coins each</small></div>${quantityControl(shop.additionalGrowingPotsAvailable, SMALL_BASIC_PLASTIC_POT_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-growing-pot>BUY SELECTED</button></div>` : '';
-    const buyContent = `<div class="shop-content-heading">BUY</div>${premiumContent}<div class="shop-section-label">PLAYER-SOLD STOCK</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${potContent}`;
+    const fertilizerContent = shop.starterKitClaimed
+      ? `<div class="shop-section-label">GROWING SUPPLIES</div><div class="shop-offer"><div class="inventory-art">✚</div><div class="shop-offer-copy"><strong>Basic Fertiliser · box of ${BASIC_FERTILIZER_PELLETS_PER_BOX} pellets</strong><small>Owned: ${shop.basicFertilizerCharges} · Each pellet shortens active growth by ${BASIC_FERTILIZER_GROWTH_REDUCTION_MS / 1000} seconds</small></div>${quantityControl(1, BASIC_FERTILIZER_BOX_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-fertilizer>BUY BOX FOR ${BASIC_FERTILIZER_BOX_PRICE} COINS</button></div>`
+      : '';
+    const buyContent = `<div class="shop-content-heading">BUY</div>${premiumContent}<div class="shop-section-label">PLAYER-SOLD STOCK</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${fertilizerContent}${potContent}`;
     const goldenPothosDelivery = shop.saleComplete
       ? ''
-      : `<div class="shop-request is-special-delivery${shop.inventoryPot === 'ordinary' ? ' is-ready' : ''}"><div class="delivery-summary"><strong>★ SPECIAL DELIVERY</strong><span>GOLDEN POTHOS</span><small>Reward: ${OPENING_POTHOS_DELIVERY_REWARD} coins · ${shop.inventoryPot === 'ordinary' ? 'Ready to deliver' : 'Find one and bring it here'}</small></div>${shop.inventoryPot === 'ordinary' ? `<button class="shop-sell-button delivery-action" type="button" data-shop-deliver="small-golden-pothos">DELIVER · +${OPENING_POTHOS_DELIVERY_REWARD}</button>` : ''}</div>`;
+      : `<div class="shop-request is-special-delivery${shop.inventoryItem === 'small-golden-pothos' ? ' is-ready' : ''}"><div class="delivery-summary"><strong>★ SPECIAL DELIVERY</strong><span>GOLDEN POTHOS</span><small>Reward: ${OPENING_POTHOS_DELIVERY_REWARD} coins · ${shop.inventoryItem === 'small-golden-pothos' ? 'Ready to deliver' : 'Find one and bring it here'}</small></div>${shop.inventoryItem === 'small-golden-pothos' ? `<button class="shop-sell-button delivery-action" type="button" data-shop-deliver="small-golden-pothos">DELIVER · +${OPENING_POTHOS_DELIVERY_REWARD}</button>` : ''}</div>`;
     const basilDelivery = shop.buySellGraphicsEra === 'atari-colour' && !shop.basilDeliveryComplete
       ? `<div class="shop-request is-special-delivery${shop.harvestQuantities.basil > 0 ? ' is-ready' : ''}"><div class="delivery-summary"><strong>★ SPECIAL DELIVERY</strong><span>FRESH BASIL</span><small>Reward: ${BASIL_DELIVERY_REWARD} coins · ${shop.harvestQuantities.basil > 0 ? 'Ready to deliver' : 'Grow and harvest one bunch'}</small></div>${shop.harvestQuantities.basil > 0 ? `<button class="shop-sell-button delivery-action" type="button" data-shop-deliver="basil">DELIVER · +${BASIL_DELIVERY_REWARD}</button>` : ''}</div>`
       : '';
@@ -1441,6 +1520,8 @@ export class HudController {
       basilHarvestSaleRecorded: false,
       mintHarvestSaleRecorded: false,
       secondRentalMoveConfirmation: false,
+      repairComplete: false,
+      foundPotCount: 0,
     };
     if (listing === 'mid-rental') {
       const eligible = state.basilHarvestSaleRecorded && state.mintHarvestSaleRecorded;
@@ -1459,10 +1540,12 @@ export class HudController {
       return '<div class="property-details"><div class="property-heading">FOR SALE <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Future property preview"><span>HOUSE</span><span>LAND</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>High-level property</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A future property listing. Price, unlock conditions and interior access are not available in this prototype.</p></div>';
     }
     const shortfall = Math.max(0, RENTAL_BOND_COST - state.coins);
+    const openingChecklistComplete = state.repairComplete && state.foundPotCount >= 3;
+    const openingChecklist = `<div class="property-details-list"><span>POTS FOUND <b>${Math.min(3, state.foundPotCount)} / 3</b></span><span>ITEM REPAIRED <b>${state.repairComplete ? 'COMPLETE' : 'REQUIRED'}</b></span></div>`;
     const rentalContent = state.rentalBondPaid
-      ? `<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Apartment key ${state.rentalKeyOwned ? 'received and stored in the Bag.' : 'will be restored from this rental.'} Use the STARTER APARTMENT door on the street to enter.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can · basic fertiliser</small></div>`
-      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time starter kit together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
-    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
+      ? `<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Apartment key ${state.rentalKeyOwned ? 'received and stored in the Bag.' : 'will be restored from this rental.'} Use the STARTER APARTMENT door on the street to enter.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can · 1 basic fertiliser pellet</small></div>`
+      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${!openingChecklistComplete ? '<p class="property-warning">Complete the found-pot and repair requirements before renting.</p>' : shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time starter kit together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
+    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${openingChecklist}${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
   }
 
   private basilPanelMarkup(): string {
@@ -1481,13 +1564,14 @@ export class HudController {
       seedQuantities: this.seedQuantities,
       harvestQuantities: this.harvestQuantities,
     };
+    const selectedPot = state.growingPots.find((pot) => pot.id === state.selectedPotId) ?? null;
+    const selectedDefinition = selectedPot?.crop ? getPlantDefinition(selectedPot.crop.species) : null;
     const stageLabels: Record<BasilStage, string> = {
-      empty: 'EMPTY', planted: 'NEEDS WATER', seedling: 'GROWING', mature: 'READY TO HARVEST',
+      empty: 'EMPTY', planted: 'NEEDS WATER', seedling: 'GROWING', mature: selectedDefinition?.yieldMode === 'whole-plant' ? 'READY TO LIFT' : 'READY TO HARVEST',
     };
     const minutes = Math.floor(state.timeRemainingMs / 60000);
     const seconds = Math.ceil((state.timeRemainingMs % 60000) / 1000);
     const timeLabel = state.timeRemainingMs > 0 ? `${minutes}:${String(seconds).padStart(2, '0')} remaining` : '';
-    const selectedPot = state.growingPots.find((pot) => pot.id === state.selectedPotId) ?? null;
     const potName = 'Small basic plastic pot';
     const speciesLabel = selectedPot?.crop ? getPlantDefinition(selectedPot.crop.species).label : '';
     let status = '';
@@ -1515,7 +1599,9 @@ export class HudController {
         ? `<button class="basil-action" type="button" data-use-basic-fertilizer>FERTILISE CROP <small>×${state.basicFertilizerCharges}</small></button>`
         : '';
     } else {
-      action = '<button class="basil-action" type="button" data-harvest-crop>HARVEST CROP</button>';
+      action = selectedDefinition?.yieldMode === 'whole-plant'
+        ? `<button class="basil-action" type="button" data-harvest-crop>LIFT ${selectedDefinition.label.toUpperCase()} INTO BAG</button>`
+        : '<button class="basil-action" type="button" data-harvest-crop>HARVEST CROP</button>';
     }
     return `<div class="basil-panel"><div class="basil-pot-header"><span class="basil-stage-art">${state.stage === 'mature' ? '♣' : state.stage === 'seedling' ? '⌁' : '▱'}</span><div><strong>${potName.toUpperCase()}</strong>${speciesLabel ? `<small>${this.escapeHtml(speciesLabel)}</small>` : ''}<b>${stageLabels[state.stage]}</b>${status ? `<small>${this.escapeHtml(status)}</small>` : ''}</div></div>${action}<p class="basil-feedback ${this.basilFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.basilFeedback)}</p></div>`;
   }

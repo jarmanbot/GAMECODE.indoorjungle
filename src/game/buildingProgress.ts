@@ -3,7 +3,7 @@ export type BuildingId = typeof BUILDING_IDS[number];
 
 export const BUILDING_GRAPHICS_ERAS = ['atari-bw', 'green-crt', 'atari-colour'] as const;
 export type BuildingGraphicsEra = typeof BUILDING_GRAPHICS_ERAS[number];
-export type BuildingOperationalState = 'operational' | 'locked' | 'under-construction';
+export type BuildingOperationalState = 'operational' | 'vacant' | 'locked' | 'under-construction';
 
 export interface BuildingProgress {
   operationalState: BuildingOperationalState;
@@ -16,7 +16,7 @@ export const DEFAULT_BUILDING_PROGRESS: BuildingProgressState = {
   'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' },
   'starter-apartment': { operationalState: 'operational', graphicsEra: 'atari-bw' },
   'real-estate': { operationalState: 'operational', graphicsEra: 'atari-bw' },
-  nursery: { operationalState: 'locked', graphicsEra: 'atari-bw' },
+  nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' },
 };
 
 export type BuildingUpgradeRequirement =

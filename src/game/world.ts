@@ -221,6 +221,9 @@ export const OPENING_DROP_POINT = { x: 715, y: -1080 };
 // The collectible sits on the lower edge of the front pavement: with its
 // existing drawing scale, the pot base meets the road-edge line at y=944.
 export const POT_POSITION = { x: 1080, y: 930 };
+// Post-upgrade ordinary collectible at the far-right edge of the currently
+// accessible starting neighbourhood.
+export const RARE_BEGONIA_POSITION = { x: 2940, y: 930 };
 export const START_POSITION = { x: 560, y: 890 };
 export const BROKEN_POT_PIECES_SCALE = 2.268;
 
@@ -308,17 +311,21 @@ export const BASIL_GROWTH_DURATION_MS = 30_000;
 export const BASIL_HARVEST_PRICE = 5;
 export const BASIL_SEED_PRICE = 2;
 export const SMALL_BASIC_PLASTIC_POT_PRICE = 10;
+export const BASIC_FERTILIZER_BOX_PRICE = 20;
+export const BASIC_FERTILIZER_PELLETS_PER_BOX = 10;
+export const BASIC_FERTILIZER_GROWTH_REDUCTION_MS = 30_000;
 export const OPENING_POTHOS_SALE_PRICE = 5;
 export const OPENING_POTHOS_DELIVERY_REWARD = 15;
 export const BASIL_DELIVERY_REWARD = 9;
 export const WINDOW_JOB_REWARD = 4;
 export const REPAIRED_POT_SALE_PRICE = 75;
+export const RARE_BEGONIA_SALE_PRICE = 300;
 export const RENTAL_BOND_COST = 60;
 // Pass 5 prototype values. These are intentionally provisional and are not
 // a rent/bills system: the starter bond transfers and only the difference is
 // paid when moving to the second rental.
-export const SECOND_RENTAL_TOTAL_BOND = 120;
-export const SECOND_RENTAL_MOVE_COST = 60;
+export const SECOND_RENTAL_TOTAL_BOND = 600;
+export const SECOND_RENTAL_MOVE_COST = SECOND_RENTAL_TOTAL_BOND - RENTAL_BOND_COST;
 export const SHOP_BUYBACK_MARKUP_NUMERATOR = 140;
 export const SHOP_BUYBACK_MARKUP_DENOMINATOR = 100;
 
