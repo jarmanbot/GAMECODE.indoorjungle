@@ -388,7 +388,9 @@ export function drawBuySellBuilding(scene: Phaser.Scene, building: Building, sty
   drawBuySellDoor(door, false);
   objects.push(door);
 
-  const foregroundTrim = scene.add.graphics().setDepth(31);
+  // Threshold and shallow steps are ground details. Keep them below Alex so
+  // the entry animation reads as walking over the sill instead of under it.
+  const foregroundTrim = scene.add.graphics().setDepth(28);
   foregroundTrim.fillStyle(0x6e7677, 1).fillRect(doorX - 10, BUY_SELL_DOOR_BOTTOM, BUY_SELL_DOOR_WIDTH + 20, 8);
   foregroundTrim.fillStyle(0x858d8d, 1).fillRect(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, BUY_SELL_DOOR_WIDTH + 12, 8);
   foregroundTrim.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 10, BUY_SELL_DOOR_BOTTOM, doorX + BUY_SELL_DOOR_WIDTH + 10, BUY_SELL_DOOR_BOTTOM);
