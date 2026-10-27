@@ -3,6 +3,13 @@ import { emptyPlantQuantities, PLANT_SPECIES, type PlantSpecies, type PlantStage
 import { RENTAL_BOND_COST, SECOND_RENTAL_TOTAL_BOND } from './world';
 import type { PropertyId } from './world';
 import { isPremiumPlantId, type PremiumPlantId } from './shopCatalog';
+import {
+  BUILDING_GRAPHICS_ERAS,
+  DEFAULT_BUILDING_PROGRESS,
+  type BuildingGraphicsEra,
+  type BuildingOperationalState,
+  type BuildingProgressState,
+} from './buildingProgress';
 
 export type PotCondition = 'ordinary' | 'broken' | 'repaired';
 export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot';
@@ -35,13 +42,14 @@ export const SPECIAL_REPAIR_POT_INSTANCE_ID = 'special-repair-pot-1';
 export const BASIL_HARVEST_STOCK_ID = 'fresh-basil-leaves';
 export const MINT_HARVEST_STOCK_ID = 'fresh-mint-leaves';
 export const DEFAULT_SHOP_STOCK_QUALITY = 'standard';
-
 export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' | 'complete'
   | 'place-pot' | 'plant-basil' | 'water-basil' | 'grow-basil' | 'harvest-basil' | 'sell-basil'
   | 'plant-mint' | 'water-mint' | 'grow-mint' | 'harvest-mint' | 'sell-mint' | 'buy-seeds' | 'move-rental';
 
 export interface ProgressState {
   openingComplete: boolean;
+  openingGoldenPothosCollected: boolean;
+  buildings: BuildingProgressState;
   graphicsUpgradeUnlocked: boolean;
   graphicsUpgradeInstalled: boolean;
   graphicsUpgradeStage: GraphicsUpgradeStage;
@@ -75,6 +83,7 @@ export interface ProgressState {
   activeProperty: PropertyId;
   rentalBondTotal: number;
   basilHarvestSaleRecorded: boolean;
+  basilDeliveryComplete: boolean;
   mintHarvestSaleRecorded: boolean;
   starterKitClaimed: boolean;
   starterKitGranted: boolean;
@@ -102,6 +111,13 @@ export interface ProgressState {
 
 export const DEFAULT_PROGRESS: ProgressState = {
   openingComplete: false,
+  openingGoldenPothosCollected: false,
+  buildings: {
+    'buy-sell': { ...DEFAULT_BUILDING_PROGRESS['buy-sell'] },
+    'starter-apartment': { ...DEFAULT_BUILDING_PROGRESS['starter-apartment'] },
+    'real-estate': { ...DEFAULT_BUILDING_PROGRESS['real-estate'] },
+    nursery: { ...DEFAULT_BUILDING_PROGRESS.nursery },
+  },
   graphicsUpgradeUnlocked: false,
   graphicsUpgradeInstalled: false,
   graphicsUpgradeStage: 'none',
@@ -135,6 +151,7 @@ export const DEFAULT_PROGRESS: ProgressState = {
   activeProperty: 'none',
   rentalBondTotal: 0,
   basilHarvestSaleRecorded: false,
+  basilDeliveryComplete: false,
   mintHarvestSaleRecorded: false,
   starterKitClaimed: false,
   starterKitGranted: false,
@@ -219,7 +236,9 @@ function syncLegacyMirrors(state: ProgressState): ProgressState {
 }
 
 export function sanitizeProgress(value: unknown): ProgressState {
-  const input = value && typeof value === 'object' ? value as Partial<ProgressState> : {};
+  const input = value && typeof value === 'object'
+    ? value as Partial<ProgressState> & { buildingGraphics?: Record<string, unknown> }
+    : {};
   const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
   const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
@@ -240,7 +259,60 @@ export function sanitizeProgress(value: unknown): ProgressState {
 
   const legacyPothosStock = Boolean(input.shopGoldenPothosStock) || Boolean(input.saleComplete);
   const shopStock = sanitizeShopStock(input.shopStock, legacyPothosStock, condition);
-  const saleComplete = Boolean(input.saleComplete) || legacyPothosStock || shopStock.some((entry) => entry.item === 'small-golden-pothos');
+  const saleComplete = typeof input.saleComplete === 'boolean'
+    ? input.saleComplete
+    : legacyPothosStock || shopStock.some((entry) => entry.item === 'small-golden-pothos');
+  // This explicit milestone is authoritative for new saves. Older saves are
+  // migrated from durable ownership, placement, sale and later-upgrade facts;
+  // current inventory alone is never used after this migration is persisted.
+  const savedBuildings = input.buildings && typeof input.buildings === 'object'
+    ? input.buildings as Partial<BuildingProgressState> : {};
+  const legacyBuildingGraphics = input.buildingGraphics && typeof input.buildingGraphics === 'object'
+    ? input.buildingGraphics as Record<string, unknown> : {};
+  const savedBuySellEra = savedBuildings['buy-sell']?.graphicsEra;
+  const openingGoldenPothosCollected = Boolean(input.openingGoldenPothosCollected)
+    || inventoryItem === 'small-golden-pothos'
+    || placedItem?.item === 'small-golden-pothos'
+    || saleComplete
+    || shopStock.some((entry) => entry.item === 'small-golden-pothos')
+    || savedBuySellEra === 'green-crt'
+    || savedBuySellEra === 'atari-colour'
+    || legacyBuildingGraphics.buySell === 'atari-colour'
+    || graphicsUpgradeInstalled;
+  const graphicsEra = (value: unknown, fallback: BuildingGraphicsEra): BuildingGraphicsEra =>
+    BUILDING_GRAPHICS_ERAS.includes(value as BuildingGraphicsEra) ? value as BuildingGraphicsEra : fallback;
+  const operationalState = (value: unknown, fallback: BuildingOperationalState): BuildingOperationalState =>
+    value === 'operational' || value === 'locked' || value === 'under-construction' ? value : fallback;
+  const savedOrMigratedBuySellEra = graphicsEra(savedBuySellEra,
+    legacyBuildingGraphics.buySell === 'atari-colour' || graphicsUpgradeInstalled
+      ? 'atari-colour'
+      : openingGoldenPothosCollected ? 'green-crt' : 'atari-bw');
+  // The repaired-pot installation is the next approved Buy/Sell upgrade. It
+  // advances Green CRT to Atari Colour while preserving an existing Colour
+  // save and never downgrading a building.
+  const migratedBuySellEra: BuildingGraphicsEra = graphicsUpgradeInstalled
+    && savedOrMigratedBuySellEra !== 'atari-colour'
+    ? 'atari-colour'
+    : savedOrMigratedBuySellEra;
+  const buildings: BuildingProgressState = {
+    'buy-sell': {
+      operationalState: operationalState(savedBuildings['buy-sell']?.operationalState, DEFAULT_BUILDING_PROGRESS['buy-sell'].operationalState),
+      graphicsEra: migratedBuySellEra,
+    },
+    'starter-apartment': {
+      operationalState: operationalState(savedBuildings['starter-apartment']?.operationalState, DEFAULT_BUILDING_PROGRESS['starter-apartment'].operationalState),
+      graphicsEra: graphicsEra(savedBuildings['starter-apartment']?.graphicsEra ?? legacyBuildingGraphics.apartment, 'atari-bw'),
+    },
+    'real-estate': {
+      operationalState: operationalState(savedBuildings['real-estate']?.operationalState, DEFAULT_BUILDING_PROGRESS['real-estate'].operationalState),
+      graphicsEra: graphicsEra(savedBuildings['real-estate']?.graphicsEra ?? legacyBuildingGraphics.realEstate, 'atari-bw'),
+    },
+    nursery: {
+      operationalState: operationalState(savedBuildings.nursery?.operationalState,
+        Boolean(input.nurseryConstructionComplete) ? 'operational' : graphicsUpgradeInstalled ? 'under-construction' : 'locked'),
+      graphicsEra: graphicsEra(savedBuildings.nursery?.graphicsEra ?? legacyBuildingGraphics.nursery, 'atari-bw'),
+    },
+  };
   const repairedPotSaleComplete = Boolean(input.repairedPotSaleComplete) || input.task === 'complete' || shopStock.some((entry) => entry.item === 'special-repair-pot');
   // Repair completion leaves the pot on the ground. The graphics upgrade is
   // deliberately unlocked only after that repaired pot has been picked up
@@ -304,11 +376,20 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const rentalBondTotal = rentalBondPaid ? (activeProperty === 'second-rental' ? SECOND_RENTAL_TOTAL_BOND : RENTAL_BOND_COST) : 0;
   const shopHasBasilSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-basil-leaves');
   const shopHasMintSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-mint-leaves');
+  const basilHarvestSaleRecorded = Boolean(input.basilHarvestSaleRecorded) || shopHasBasilSaleEvidence;
+  // Before dedicated delivery state existed, the first recorded basil sale
+  // also cleared the request. Preserve that completed state for old saves;
+  // explicit false remains authoritative for new ordinary sales.
+  const basilDeliveryComplete = typeof input.basilDeliveryComplete === 'boolean'
+    ? input.basilDeliveryComplete
+    : basilHarvestSaleRecorded;
   const ownedPremiumPlants = Array.isArray(input.ownedPremiumPlants)
     ? [...new Set(input.ownedPremiumPlants.filter(isPremiumPlantId))]
     : [];
   const progress: ProgressState = {
     openingComplete,
+    openingGoldenPothosCollected,
+    buildings,
     graphicsUpgradeUnlocked,
     graphicsUpgradeInstalled,
     graphicsUpgradeStage: graphicsUpgradeInstalled ? (graphicsUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : graphicsUpgradeStage,
@@ -322,7 +403,8 @@ export function sanitizeProgress(value: unknown): ProgressState {
     brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,
     rentalBondPaid, rentalKeyOwned: Boolean(input.rentalKeyOwned) || rentalBondPaid, activeProperty, rentalBondTotal,
-    basilHarvestSaleRecorded: Boolean(input.basilHarvestSaleRecorded) || shopHasBasilSaleEvidence,
+    basilHarvestSaleRecorded,
+    basilDeliveryComplete,
     mintHarvestSaleRecorded: Boolean(input.mintHarvestSaleRecorded) || shopHasMintSaleEvidence,
     starterKitClaimed: Boolean(input.starterKitClaimed), starterKitGranted: Boolean(input.starterKitGranted),
     growingPots: sanitizeGrowingPots(input), seedQuantities: seeds, harvestQuantities: harvests, growingEvents: events,

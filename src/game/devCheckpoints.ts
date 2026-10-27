@@ -12,9 +12,12 @@ import {
 } from './progress';
 import {
   BASIL_GROWTH_DURATION_MS,
+  BASIL_DELIVERY_REWARD,
   HOME_PLAYER_START,
   SECOND_HOME_PLAYER_START,
   OPENING_POTHOS_SALE_PRICE,
+  OPENING_POTHOS_DELIVERY_REWARD,
+  POT_POSITION,
   REPAIRED_POT_SALE_PRICE,
   RENTAL_BOND_COST,
   SECOND_RENTAL_MOVE_COST,
@@ -44,9 +47,21 @@ interface DevCheckpointDefinition extends Omit<DevCheckpointSnapshot, 'progress'
 }
 
 const clonePots = (pots: GrowingPotState[]): GrowingPotState[] => pots.map((pot) => ({ ...pot, crop: pot.crop ? { ...pot.crop } : null }));
+const cloneBuildings = (buildings: ProgressState['buildings']): ProgressState['buildings'] => ({
+  'buy-sell': { ...buildings['buy-sell'] },
+  'starter-apartment': { ...buildings['starter-apartment'] },
+  'real-estate': { ...buildings['real-estate'] },
+  nursery: { ...buildings.nursery },
+});
 const withState = (base: ProgressState, overrides: Partial<ProgressState>): ProgressState => sanitizeProgress({
   ...base,
   ...overrides,
+  buildings: {
+    'buy-sell': { ...base.buildings['buy-sell'], ...overrides.buildings?.['buy-sell'] },
+    'starter-apartment': { ...base.buildings['starter-apartment'], ...overrides.buildings?.['starter-apartment'] },
+    'real-estate': { ...base.buildings['real-estate'], ...overrides.buildings?.['real-estate'] },
+    nursery: { ...base.buildings.nursery, ...overrides.buildings?.nursery },
+  },
   growingPots: overrides.growingPots ? clonePots(overrides.growingPots) : clonePots(base.growingPots),
   seedQuantities: { ...base.seedQuantities, ...(overrides.seedQuantities ?? {}) },
   harvestQuantities: { ...base.harvestQuantities, ...(overrides.harvestQuantities ?? {}) },
@@ -58,17 +73,29 @@ const withState = (base: ProgressState, overrides: Partial<ProgressState>): Prog
 // action exercises the intro popup followed by Alex's descent.
 const freshStart = (): ProgressState => sanitizeProgress({ ...DEFAULT_PROGRESS, openingComplete: false });
 
-const goldenPothosCollected = (): ProgressState => withState(freshStart(), {
+const goldenPothosReadyToCollect = (): ProgressState => withState(freshStart(), {
   openingComplete: true,
+  openingGoldenPothosCollected: false,
+  buildings: cloneBuildings(DEFAULT_PROGRESS.buildings),
+  task: 'find',
+});
+
+const goldenPothosCollected = (): ProgressState => withState(goldenPothosReadyToCollect(), {
+  openingComplete: true,
+  openingGoldenPothosCollected: true,
+  buildings: {
+    ...cloneBuildings(DEFAULT_PROGRESS.buildings),
+    'buy-sell': { operationalState: 'operational', graphicsEra: 'green-crt' },
+  },
   inventoryPot: 'ordinary', inventoryItem: 'small-golden-pothos', inventoryInstanceId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, task: 'clean',
 });
 
-const bwShopSaleBeforeUpgrade = (): ProgressState => withState(goldenPothosCollected(), {
+const greenCrtShopSaleBeforeRepairedUpgrade = (): ProgressState => withState(goldenPothosCollected(), {
   task: 'sell',
 });
 
 const firstPlantSold = (): ProgressState => withState(goldenPothosCollected(), {
-  coins: OPENING_POTHOS_SALE_PRICE, inventoryPot: null, inventoryItem: null, inventoryInstanceId: null, saleComplete: true, shopGoldenPothosStock: true,
+  coins: OPENING_POTHOS_DELIVERY_REWARD, inventoryPot: null, inventoryItem: null, inventoryInstanceId: null, saleComplete: true, shopGoldenPothosStock: true,
   shopStock: [{ stockId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, item: 'small-golden-pothos', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'ordinary', quantity: 1, instanceIds: [OPENING_GOLDEN_POTHOS_INSTANCE_ID] }], task: 'clean',
 });
 
@@ -77,7 +104,7 @@ const buybackStockReady = (): ProgressState => withState(firstPlantSold(), { coi
 const windowJobAccepted = (): ProgressState => withState(firstPlantSold(), { windowJobAccepted: true, cleanerOwned: true, equippedTool: 'cleaner', toolSlots: ['cleaner', null, null], task: 'clean' });
 
 const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
-  coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD, windowJobAccepted: false, windowCleaningProgress: 9, windowJobComplete: true,
+  coins: OPENING_POTHOS_DELIVERY_REWARD + WINDOW_JOB_REWARD, windowJobAccepted: false, windowCleaningProgress: 9, windowJobComplete: true,
   cleanerOwned: false, repairToolOwned: true, glueCharges: 1, equippedTool: 'repair', toolSlots: ['repair', null, null], brokenPotAvailable: true, brokenPotOwned: false, brokenPotPiecesRemaining: 3, task: 'repair',
 });
 
@@ -96,10 +123,15 @@ const upgradePromptPending = (): ProgressState => withState(repairedSpecialPotCo
 });
 const upgradeInstalledAcknowledged = (): ProgressState => withState(repairedSpecialPotCollected(), {
   graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'green-screen', nurseryConstructionComplete: true,
+  buildings: {
+    ...cloneBuildings(repairedSpecialPotCollected().buildings),
+    'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-colour' },
+    nursery: { operationalState: 'operational', graphicsEra: 'atari-bw' },
+  },
 });
 
 const repairedPotSold = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
-  coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE, inventoryPot: null, inventoryItem: null, inventoryInstanceId: null, repairedPotSaleComplete: true,
+  coins: OPENING_POTHOS_DELIVERY_REWARD + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE, inventoryPot: null, inventoryItem: null, inventoryInstanceId: null, repairedPotSaleComplete: true,
   shopStock: [...specialPotRepaired().shopStock, { stockId: SPECIAL_REPAIR_POT_INSTANCE_ID, item: 'special-repair-pot', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'repaired', quantity: 1, instanceIds: [SPECIAL_REPAIR_POT_INSTANCE_ID] }], task: 'complete',
 });
 
@@ -131,7 +163,7 @@ const multipleMatchingHarvestUnits = (): ProgressState => {
 };
 
 const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
-  coins: OPENING_POTHOS_SALE_PRICE + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
+  coins: OPENING_POTHOS_DELIVERY_REWARD + WINDOW_JOB_REWARD + REPAIRED_POT_SALE_PRICE - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
 });
 
 const starterKitClaimed = (): ProgressState => withState(apartmentRented(), {
@@ -156,14 +188,15 @@ const basilHarvested = (): ProgressState => withState(basilPlanted(), {
   growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID, 1)], harvestQuantities: { basil: 1, mint: 0 }, task: 'sell-basil',
 });
 const firstBasilSaleComplete = (): ProgressState => withState(basilHarvested(), {
-  coins: apartmentRented().coins + getPlantDefinition('basil').harvestPrice, harvestQuantities: { basil: 0, mint: 0 },
+  coins: apartmentRented().coins + BASIL_DELIVERY_REWARD, harvestQuantities: { basil: 0, mint: 0 },
   shopStock: [...basilHarvested().shopStock, { stockId: BASIL_HARVEST_STOCK_ID, item: 'fresh-basil-leaves', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'fresh', quantity: 1, instanceIds: [] }], task: 'buy-seeds',
-  basilHarvestSaleRecorded: true,
+  basilHarvestSaleRecorded: true, basilDeliveryComplete: true,
 });
 
 const secondRentalEligibleBase = (): ProgressState => withState(starterKitClaimed(), {
   coins: SECOND_RENTAL_MOVE_COST,
   basilHarvestSaleRecorded: true,
+  basilDeliveryComplete: true,
   mintHarvestSaleRecorded: true,
   growingEvents: { basil: 1, mint: 1 },
   task: 'move-rental',
@@ -221,8 +254,9 @@ const mintMature = (): ProgressState => {
 
 const definitions: DevCheckpointDefinition[] = [
   { id: 'fresh-start', label: 'Fresh start · opening intro', order: 10, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: freshStart },
+  { id: 'golden-pothos-ready-to-collect', label: 'Golden Pothos · ready to collect', order: 15, scene: 'street', spawn: { x: POT_POSITION.x - 90, y: POT_POSITION.y }, zoom: 'close', crop: 'none', build: goldenPothosReadyToCollect },
   { id: 'golden-pothos-collected', label: 'Golden Pothos collected', order: 20, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: goldenPothosCollected },
-  { id: 'bw-shop-sale-before-upgrade', label: 'B&W shop sale before graphics upgrade', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: bwShopSaleBeforeUpgrade },
+  { id: 'green-crt-shop-sale-before-repaired-upgrade', label: 'Green CRT shop sale before repaired-pot upgrade', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: greenCrtShopSaleBeforeRepairedUpgrade },
   { id: 'first-plant-sold', label: 'First plant sold', order: 30, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold },
   { id: 'buyback-stock-ready', label: 'Buyback stock ready', order: 35, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buybackStockReady },
   { id: 'window-job-accepted', label: 'Window-cleaning job accepted', order: 40, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobAccepted },
@@ -256,6 +290,9 @@ const definitions: DevCheckpointDefinition[] = [
 
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {
   const result = sanitizeProgress(progress);
+  if (result.openingGoldenPothosCollected && result.buildings['buy-sell'].graphicsEra === 'atari-bw') throw new Error(`Developer checkpoint ${id} collected the opening Pothos without upgrading Buy/Sell.`);
+  if (result.graphicsUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} installed the repaired-pot upgrade without advancing Buy/Sell to Atari Colour.`);
+  if (result.basilDeliveryComplete && !result.basilHarvestSaleRecorded) throw new Error(`Developer checkpoint ${id} completed the basil delivery without recording the sale.`);
   if (result.coins < 0) throw new Error(`Developer checkpoint ${id} has negative coins.`);
   if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);
   if (result.activeProperty === 'second-rental' && result.rentalBondTotal !== SECOND_RENTAL_TOTAL_BOND) throw new Error(`Developer checkpoint ${id} has an invalid second-rental bond.`);

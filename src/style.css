@@ -246,6 +246,40 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .shop-sell-button { grid-column: 2 / -1; min-height: 42px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; cursor: pointer; font-size: 11px; font-weight: 900; }
 .shop-sell-button:hover { background: #f6f7f3; color: #111416; }
 .shop-request, .job-card { display: grid; align-content: start; gap: 7px; padding: 11px; background: #2b3234; border: 2px solid #697271; }
+.shop-request.is-special-delivery { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 96px; padding: 13px 14px; border: 4px double #f6f7f3; background: #111416; box-shadow: inset 0 0 0 2px #343c3e; }
+.delivery-summary { min-width: 0; display: grid; gap: 5px; }
+.delivery-summary strong { overflow: hidden; color: #f6f7f3; font-size: 15px; letter-spacing: .05em; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.delivery-summary span { color: #f6f7f3; font-size: 12px; font-weight: 900; letter-spacing: .05em; }
+.delivery-summary small { overflow: hidden; margin: 0; color: #c4ccca; font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.shop-request .delivery-action { grid-column: auto; min-height: 48px; padding: 7px 10px; font-size: 11px; letter-spacing: .02em; white-space: nowrap; }
+.shop-request.is-special-delivery.is-ready { animation: special-delivery-ready 1.8s ease-in-out infinite; }
+@keyframes special-delivery-ready {
+  0%, 100% { border-color: #f6f7f3; background: #111416; box-shadow: inset 0 0 0 2px #343c3e, 0 0 0 0 rgba(246,247,243,0); }
+  55% { border-color: #929b98; background: #343c3e; box-shadow: inset 0 0 0 2px #111416, 0 0 0 3px rgba(246,247,243,.28); }
+}
+.job-card.is-compact-job { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 9px; }
+.job-card.is-compact-job > div { min-width: 0; display: grid; gap: 2px; }
+.job-card.is-compact-job strong, .job-card.is-compact-job small { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
+.job-card.is-compact-job .shop-sell-button { min-height: 36px; padding: 5px 10px; }
+.job-card.current-wanted-job { gap: 9px; min-height: 154px; padding: 14px; border-width: 3px; }
+.job-card.current-wanted-job > strong { font-size: 15px; }
+.job-card.current-wanted-job .shop-detail-list { gap: 5px; font-size: 9px; }
+.job-card.current-wanted-job .shop-sell-button { min-height: 44px; font-size: 11px; }
+.current-requests-empty, .wanted-sell-list .empty-state { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; justify-items: start; align-items: center; gap: 1px 8px; min-height: 0; padding: 6px 8px; text-align: left; }
+.current-requests-empty .empty-mark, .wanted-sell-list .empty-mark { grid-row: 1 / span 2; font-size: 18px; }
+.current-requests-empty strong, .wanted-sell-list .empty-state strong { font-size: 10px; letter-spacing: .05em; line-height: 1.15; }
+.current-requests-empty small, .wanted-sell-list .empty-state small { overflow: hidden; margin: 0; font-size: 8px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.wanted-sell-list { display: grid; gap: 6px; }
+.wanted-sell-list .shop-offer { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 7px; padding: 5px 7px; border-width: 1px; }
+.wanted-sell-list .inventory-art { display: none; }
+.wanted-sell-list .shop-offer-copy { display: flex; align-items: baseline; gap: 6px; }
+.wanted-sell-list .shop-offer-copy strong, .wanted-sell-list .shop-offer-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wanted-sell-list .shop-offer-copy strong { font-size: 9px; }
+.wanted-sell-list .shop-offer-copy small { font-size: 7.5px; line-height: 1.1; }
+.wanted-sell-list .shop-quantity-row { grid-column: 1; min-height: 23px; justify-content: flex-start; font-size: 7.5px; }
+.wanted-sell-list .shop-quantity-row.is-single { display: none; }
+.wanted-sell-list .shop-quantity-row input { min-height: 24px; width: 52px; }
+.wanted-sell-list .shop-sell-button { grid-column: 2; grid-row: 1 / span 2; align-self: center; min-height: 32px; padding: 4px 7px; font-size: 8px; }
 .shop-request.is-complete, .job-card.is-complete { border-color: #f6f7f3; }
 .shop-request strong, .job-card strong { font-size: 13px; line-height: 1.25; }
 .shop-request small, .job-card small { color: #c4ccca; font-size: 10px; line-height: 1.35; }
@@ -261,6 +295,9 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .job-card .shop-sell-button { grid-column: auto; }
 .shop-feedback { min-height: 0; margin: 8px 0 0; color: #f6f7f3; font-size: 10px; font-weight: 900; }
 .shop-feedback:not(.is-visible) { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .shop-request.is-special-delivery.is-ready { animation: none; border-color: #f6f7f3; background: #343c3e; }
+}
 .property-details { display: grid; gap: 12px; }
 .property-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding-bottom: 9px; border-bottom: 2px solid #697271; color: #f6f7f3; font-size: 17px; font-weight: 900; letter-spacing: .08em; }
 .property-heading span { color: #b9c0be; font-size: 10px; letter-spacing: .08em; text-align: right; }

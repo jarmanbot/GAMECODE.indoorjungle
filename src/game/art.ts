@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { BUY_SELL_GRAPHICS_DEBUG } from './config';
+import type { BuildingGraphicsEra } from './buildingProgress';
 import {
   BUILDINGS,
   APARTMENT_DOOR_BOTTOM,
@@ -32,8 +34,15 @@ const DEEP = 0x1b2023;
 const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
+const BUY_SELL_GREEN_CRT_TEXTURE = 'buy-sell-facade-green-crt';
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none'): Phaser.GameObjects.Graphics | undefined {
+export interface BuySellArtwork {
+  door: Phaser.GameObjects.Graphics;
+  objects: Phaser.GameObjects.GameObject[];
+  pulseLayers: Phaser.GameObjects.GameObject[];
+}
+
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw'): BuySellArtwork | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -50,19 +59,18 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
   drawVacantLot(scene, eastZone.x, eastZone.y, eastZone.width, eastZone.height, eastZone.label);
   drawConstructionSite(scene, worksZone.x, worksZone.y, worksZone.width, worksZone.height, worksZone.label);
   drawRoadAndPavement(scene);
-  drawBuySellPavement(scene);
   drawUndevelopedPlots(scene);
 
-  let buySellDoor: Phaser.GameObjects.Graphics | undefined;
+  let buySellArtwork: BuySellArtwork | undefined;
   BUILDINGS.forEach((building) => {
-    const door = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty);
-    if (door) buySellDoor = door;
+    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics);
+    if (artwork) buySellArtwork = artwork;
   });
   drawStreetDetails(scene);
 
   addWorldLabel(scene, 156, 1120, 'ROADS CONTINUE →', 0xced4d2, 18);
   addWorldLabel(scene, 3290, 1120, '← FUTURE NEIGHBOURHOODS', 0xced4d2, 18);
-  return buySellDoor;
+  return buySellArtwork;
 }
 
 function drawOpeningFallSkyline(scene: Phaser.Scene): void {
@@ -227,15 +235,6 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
   }
 }
 
-function drawBuySellPavement(scene: Phaser.Scene): void {
-  const g = scene.add.graphics().setDepth(-8);
-  const bayX = BUY_SELL_ENTRANCE.x - 42;
-  g.fillStyle(0x737b7c, 1).fillRect(bayX, PAVEMENT_Y, 84, PAVEMENT_HEIGHT - 8);
-  g.lineStyle(3, 0xd7dbda, 0.85).lineBetween(bayX, PAVEMENT_Y + 11, bayX + 84, PAVEMENT_Y + 11);
-  g.lineStyle(2, 0x4d5557, 0.75).lineBetween(bayX + 12, PAVEMENT_Y + 22, bayX + 12, PAVEMENT_Y + PAVEMENT_HEIGHT - 16);
-  g.lineBetween(bayX + 72, PAVEMENT_Y + 22, bayX + 72, PAVEMENT_Y + PAVEMENT_HEIGHT - 16);
-}
-
 function drawUndevelopedPlots(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(-3);
   g.fillStyle(0x3b4344, 1).fillRect(0, 1252, WORLD_WIDTH, WORLD_HEIGHT - 1252);
@@ -277,9 +276,9 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none'): Phaser.GameObjects.Graphics | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw'): BuySellArtwork | undefined {
   if (building.kind === 'shop') {
-    return drawBuySellBuilding(scene, building, graphicsUpgradeInstalled);
+    return drawBuySellBuilding(scene, building, buySellGraphics, graphicsUpgradeInstalled);
   }
   const g = scene.add.graphics().setDepth(5);
   const { x, y, width, height } = building;
@@ -306,66 +305,118 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   }
 }
 
-function drawBuySellBuilding(scene: Phaser.Scene, building: Building, graphicsUpgradeInstalled = false): Phaser.GameObjects.Graphics {
-  const g = scene.add.graphics().setDepth(5);
+export function drawBuySellBuilding(scene: Phaser.Scene, building: Building, style: BuildingGraphicsEra, graphicsUpgradeInstalled = false): BuySellArtwork {
   const x = building.x;
   const y = building.y;
   const entranceCenterX = BUY_SELL_ENTRANCE.x;
+  const colour = style === 'atari-colour';
+  const greenCrt = style === 'green-crt';
+  const wallColour = colour ? 0xb85b38 : greenCrt ? 0x070b08 : 0x5e6669;
+  const roofColour = colour ? 0x173a55 : greenCrt ? 0x070b08 : 0x252a2d;
+  const trimColour = colour ? 0xeadbb8 : greenCrt ? 0x39ff5a : 0x858d8d;
+  const brightTrim = colour ? 0xf2e5c7 : greenCrt ? 0x39ff5a : WHITE;
+  const brickColour = colour ? 0x833d2d : 0x747c7d;
+  const signColour = colour ? 0x102f48 : greenCrt ? 0x070b08 : INK;
+  const recessColour = colour ? 0x08283d : greenCrt ? 0x070b08 : DEEP;
+  const shelfColour = colour ? 0x337d78 : greenCrt ? 0x39ff5a : 0x8a9291;
+  const doorX = entranceCenterX - BUY_SELL_DOOR_WIDTH / 2;
+  const bodyLeft = x + 8;
+  const bodyRight = x + building.width - 8;
+  const objects: Phaser.GameObjects.GameObject[] = [];
 
-  // A shallow roof cap and sparse masonry keep the shop legible as a
-  // building without turning the facade into a dense UI-like border.
-  g.fillStyle(graphicsUpgradeInstalled ? 0x5f7790 : 0x5e6669, 1).fillRect(x + 8, y + 8, building.width - 16, building.height - 8);
-  g.fillStyle(0x252a2d, 1).fillRect(x - 8, y - 8, building.width + 16, 18);
-  g.fillStyle(0x858d8d, 1).fillRect(x + 4, y + 10, building.width - 8, 8);
-  g.lineStyle(4, INK, 0.95).strokeRect(x + 8, y + 8, building.width - 16, building.height - 8);
+  // The facade is built around the aperture rather than painted as one large
+  // rectangle. This prevents any background block from covering the doorway.
+  const facade: Phaser.GameObjects.GameObject = greenCrt && scene.textures.exists(BUY_SELL_GREEN_CRT_TEXTURE)
+    ? scene.add.image(x - 8, y - 8, BUY_SELL_GREEN_CRT_TEXTURE).setOrigin(0).setDepth(5)
+    : (() => {
+        const graphics = scene.add.graphics().setDepth(5);
+        graphics.fillStyle(wallColour, 1)
+          .fillRect(bodyLeft, y + 8, bodyRight - bodyLeft, BUY_SELL_DOOR_TOP - (y + 8))
+          .fillRect(bodyLeft, BUY_SELL_DOOR_TOP, doorX - bodyLeft, BUY_SELL_DOOR_BOTTOM - BUY_SELL_DOOR_TOP)
+          .fillRect(doorX + BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_TOP, bodyRight - (doorX + BUY_SELL_DOOR_WIDTH), BUY_SELL_DOOR_BOTTOM - BUY_SELL_DOOR_TOP);
+        graphics.fillStyle(roofColour, 1).fillRect(x - 8, y - 8, building.width + 16, 18);
+        graphics.fillStyle(trimColour, 1).fillRect(x + 4, y + 10, building.width - 8, 8);
+        graphics.lineStyle(4, INK, 0.95);
+        graphics.lineBetween(bodyLeft, y + 8, bodyRight, y + 8);
+        graphics.lineBetween(bodyLeft, y + 8, bodyLeft, BUY_SELL_DOOR_BOTTOM);
+        graphics.lineBetween(bodyRight, y + 8, bodyRight, BUY_SELL_DOOR_BOTTOM);
+        graphics.lineBetween(bodyLeft, BUY_SELL_DOOR_BOTTOM, doorX, BUY_SELL_DOOR_BOTTOM);
+        graphics.lineBetween(doorX + BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_BOTTOM, bodyRight, BUY_SELL_DOOR_BOTTOM);
+        const brickPatches = [
+          [x + 20, y + 91, 42, 11], [x + 64, y + 103, 28, 10],
+          [x + 276, y + 91, 38, 11], [x + 250, y + 103, 22, 10],
+          [x + 18, y + 286, 48, 12], [x + 70, y + 298, 30, 10],
+        ];
+        graphics.fillStyle(brickColour, 0.8);
+        brickPatches.forEach(([patchX, patchY, patchWidth, patchHeight]) => graphics.fillRect(patchX, patchY, patchWidth, patchHeight));
+        return graphics;
+      })();
+  objects.push(facade);
 
-  const brickPatches = [
-    [x + 20, y + 91, 42, 11], [x + 64, y + 103, 28, 10],
-    [x + 276, y + 91, 38, 11], [x + 250, y + 103, 22, 10],
-    [x + 18, y + 286, 48, 12], [x + 70, y + 298, 30, 10],
-    [x + 286, y + 270, 34, 11], [x + 242, y + 300, 42, 10],
-  ];
-  g.fillStyle(0x747c7d, 0.7);
-  brickPatches.forEach(([patchX, patchY, patchWidth, patchHeight]) => {
-    g.fillRect(patchX, patchY, patchWidth, patchHeight);
-  });
+  const fixedSign = scene.add.graphics().setDepth(8);
+  fixedSign.fillStyle(signColour, 1).fillRect(x + 90, y + 32, 170, 38);
+  fixedSign.lineStyle(3, brightTrim, 0.95).strokeRect(x + 90, y + 32, 170, 38);
+  const fixedSignText = addWorldLabel(scene, x + building.width / 2, y + 51, 'BUY / SELL', brightTrim, 17, true);
+  objects.push(fixedSign, fixedSignText);
 
-  // One compact sign, kept separate from the window and entrance.
-  g.fillStyle(INK, 1).fillRect(x + 90, y + 32, 170, 38);
-  g.lineStyle(3, WHITE, 0.9).strokeRect(x + 90, y + 32, 170, 38);
-  addWorldLabel(scene, x + building.width / 2, y + 51, 'BUY / SELL', WHITE, 17, true);
-
-  // The display is now the dominant facade feature. It stays decorative and
-  // non-collectible, while the entrance sits clearly beside it on the right.
   const windowX = BUY_SELL_WINDOW.x;
   const windowY = BUY_SELL_WINDOW.y;
   const windowWidth = BUY_SELL_WINDOW.width;
   const windowHeight = BUY_SELL_WINDOW.height;
-  g.fillStyle(DEEP, 1).fillRect(windowX, windowY, windowWidth, windowHeight);
-  g.lineStyle(6, WHITE, 0.95).strokeRect(windowX, windowY, windowWidth, windowHeight);
-  g.lineStyle(3, 0x7f8888, 0.75).lineBetween(windowX + windowWidth / 2, windowY + 10, windowX + windowWidth / 2, windowY + windowHeight - 12);
-  g.lineStyle(3, 0x8b9392, 0.55).lineBetween(windowX + 18, windowY + 30, windowX + 62, windowY + 6);
-  g.lineBetween(windowX + windowWidth - 70, windowY + 56, windowX + windowWidth - 22, windowY + 24);
-  g.fillStyle(0x8a9291, 1).fillRect(windowX + 14, windowY + windowHeight - 34, windowWidth - 28, 10);
-  drawPot(g, windowX + 48, windowY + windowHeight - 30, 0.62, graphicsUpgradeInstalled);
-  g.fillStyle(0x9ea5a5, 1).fillRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
-  g.lineStyle(2, INK, 1).strokeRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
-  g.fillStyle(INK, 1).fillRect(windowX + windowWidth / 2 - 6, windowY + windowHeight - 49, 3, 3).fillRect(windowX + windowWidth / 2 + 1, windowY + windowHeight - 49, 3, 3);
-  drawPot(g, windowX + windowWidth - 50, windowY + windowHeight - 30, 0.56, graphicsUpgradeInstalled);
+  const windowLayer = scene.add.graphics().setDepth(6);
+  if (!greenCrt) {
+    windowLayer.fillStyle(recessColour, 1).fillRect(windowX, windowY, windowWidth, windowHeight);
+    windowLayer.lineStyle(6, brightTrim, 0.95).strokeRect(windowX, windowY, windowWidth, windowHeight);
+    windowLayer.lineStyle(3, colour ? 0x4f8f96 : 0x7f8888, 0.75).lineBetween(windowX + windowWidth / 2, windowY + 10, windowX + windowWidth / 2, windowY + windowHeight - 12);
+    windowLayer.lineStyle(3, colour ? 0x7fb5ad : 0x8b9392, 0.55).lineBetween(windowX + 18, windowY + 30, windowX + 62, windowY + 6);
+    windowLayer.lineBetween(windowX + windowWidth - 70, windowY + 56, windowX + windowWidth - 22, windowY + 24);
+  }
+  objects.push(windowLayer);
 
-  // Keep the dark opening and frame behind Alex so the entrance animation can
-  // show him stepping into the doorway before he fades out.
+  // Merchandise remains a separate layer and continues to follow the later
+  // global pot/plant graphics upgrade rather than this building milestone.
+  const stockLayer = scene.add.graphics().setDepth(7);
+  stockLayer.fillStyle(shelfColour, 1).fillRect(windowX + 14, windowY + windowHeight - 34, windowWidth - 28, 10);
+  drawPot(stockLayer, windowX + 48, windowY + windowHeight - 30, 0.62, graphicsUpgradeInstalled);
+  stockLayer.fillStyle(0x9ea5a5, 1).fillRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
+  stockLayer.lineStyle(2, INK, 1).strokeRect(windowX + windowWidth / 2 - 10, windowY + windowHeight - 56, 20, 24);
+  stockLayer.fillStyle(INK, 1).fillRect(windowX + windowWidth / 2 - 6, windowY + windowHeight - 49, 3, 3).fillRect(windowX + windowWidth / 2 + 1, windowY + windowHeight - 49, 3, 3);
+  drawPot(stockLayer, windowX + windowWidth - 50, windowY + windowHeight - 30, 0.56, graphicsUpgradeInstalled);
+  objects.push(stockLayer);
+
   const door = scene.add.graphics().setDepth(29);
   drawBuySellDoor(door, false);
+  objects.push(door);
 
-  // Two shallow steps meet the pavement; there is no deep rectangle below the
-  // door for input or decoration to accidentally read as an entrance.
-  const doorX = entranceCenterX - BUY_SELL_DOOR_WIDTH / 2;
-  g.fillStyle(0x6e7677, 1).fillRect(doorX - 10, BUY_SELL_DOOR_BOTTOM, BUY_SELL_DOOR_WIDTH + 20, 8);
-  g.fillStyle(0x858d8d, 1).fillRect(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, BUY_SELL_DOOR_WIDTH + 12, 8);
-  g.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 10, BUY_SELL_DOOR_BOTTOM, doorX + BUY_SELL_DOOR_WIDTH + 10, BUY_SELL_DOOR_BOTTOM);
-  g.lineBetween(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, doorX + BUY_SELL_DOOR_WIDTH + 6, BUY_SELL_DOOR_BOTTOM + 8);
-  return door;
+  const foregroundTrim = scene.add.graphics().setDepth(31);
+  foregroundTrim.fillStyle(0x6e7677, 1).fillRect(doorX - 10, BUY_SELL_DOOR_BOTTOM, BUY_SELL_DOOR_WIDTH + 20, 8);
+  foregroundTrim.fillStyle(0x858d8d, 1).fillRect(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, BUY_SELL_DOOR_WIDTH + 12, 8);
+  foregroundTrim.lineStyle(2, WHITE, 0.75).lineBetween(doorX - 10, BUY_SELL_DOOR_BOTTOM, doorX + BUY_SELL_DOOR_WIDTH + 10, BUY_SELL_DOOR_BOTTOM);
+  foregroundTrim.lineBetween(doorX - 6, BUY_SELL_DOOR_BOTTOM + 8, doorX + BUY_SELL_DOOR_WIDTH + 6, BUY_SELL_DOOR_BOTTOM + 8);
+  objects.push(foregroundTrim);
+
+  if (BUY_SELL_GRAPHICS_DEBUG) {
+    const debug = scene.add.graphics().setDepth(90);
+    debug.lineStyle(3, 0xff4f6d, 1).strokeRect(x, y, building.width, building.height);
+    debug.lineStyle(3, 0x44d7ff, 1).strokeRect(x - 8, y - 8, building.width + 16, building.height + 8);
+    debug.lineStyle(3, 0xffd84a, 1).strokeRect(windowX, windowY, windowWidth, windowHeight);
+    debug.lineStyle(3, 0x7dff6a, 1).strokeRect(doorX, BUY_SELL_DOOR_TOP, BUY_SELL_DOOR_WIDTH, BUY_SELL_DOOR_HEIGHT);
+    debug.lineStyle(2, 0xff7cf4, 1).strokeRect(doorX - 18, BUY_SELL_DOOR_TOP - 18, BUY_SELL_DOOR_WIDTH + 36, BUY_SELL_DOOR_HEIGHT + 36);
+    objects.push(debug);
+    const debugLabels = [
+      ['NOMINAL', x + 4, y + 4, '#ff4f6d'],
+      ['FACADE', x - 4, y - 18, '#44d7ff'],
+      ['WINDOW', windowX + 4, windowY + 4, '#ffd84a'],
+      ['APERTURE', doorX + 2, BUY_SELL_DOOR_TOP + 4, '#7dff6a'],
+      ['TARGET', doorX - 14, BUY_SELL_DOOR_TOP - 14, '#ff7cf4'],
+    ] as const;
+    debugLabels.forEach(([text, labelX, labelY, labelColour]) => {
+      const label = scene.add.text(labelX, labelY, text, { color: labelColour, fontFamily: 'monospace', fontSize: '9px', backgroundColor: '#111416' }).setDepth(91);
+      objects.push(label);
+    });
+  }
+
+  return { door, objects, pulseLayers: greenCrt ? [facade, fixedSign, fixedSignText] : [facade, windowLayer, fixedSign, fixedSignText] };
 }
 
 export function drawMatchingDoor(g: Phaser.GameObjects.Graphics, centerX: number, doorTop: number, width: number, height: number, open: boolean): void {

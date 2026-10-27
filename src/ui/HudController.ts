@@ -11,10 +11,12 @@ import {
   STARTING_WALKABLE_MAX_X,
   STARTING_WALKABLE_MIN_X,
   BASIL_HARVEST_PRICE,
+  BASIL_DELIVERY_REWARD,
   BASIL_SEED_PRICE,
   getShopBuybackPrice,
   HOMES_WINDOW_CLEAN_SECTIONS,
   OPENING_POTHOS_SALE_PRICE,
+  OPENING_POTHOS_DELIVERY_REWARD,
   REPAIRED_POT_SALE_PRICE,
   WINDOW_JOB_REWARD,
   RENTAL_BOND_COST,
@@ -80,7 +82,7 @@ export class HudController {
   private readonly graphicsUpgradeOk = document.querySelector<HTMLButtonElement>('#graphics-upgrade-ok')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
-  private shopTab: 'sell' | 'buy' | 'wanted' = 'sell';
+  private shopTab: 'sell' | 'buy' | 'wanted' = 'wanted';
   private shopFeedback = '';
   private propertyFeedback = '';
   private basilFeedback = '';
@@ -831,7 +833,7 @@ export class HudController {
     this.cityMapPanCleanup = null;
     this.activePanelKind = kind;
     if (kind === 'shop') {
-      this.shopTab = 'sell';
+      this.shopTab = 'wanted';
       this.shopFeedback = '';
     }
     if (kind.startsWith('property-')) this.propertyFeedback = '';
@@ -1208,6 +1210,12 @@ export class HudController {
         else this.scene?.sellOpeningPot();
       });
     });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-deliver]').forEach((deliveryButton) => {
+      this.bindButtonActivation(deliveryButton, () => {
+        if (deliveryButton.dataset.shopDeliver === 'small-golden-pothos') this.scene?.deliverOpeningPothos();
+        if (deliveryButton.dataset.shopDeliver === 'basil') this.scene?.deliverBasilHarvest();
+      });
+    });
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-stock]').forEach((buyButton) => {
       this.bindButtonActivation(buyButton, () => {
         const quantity = Number(buyButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
@@ -1346,6 +1354,9 @@ export class HudController {
       inventoryPot: this.potCondition,
       inventoryItem: this.inventoryItem,
       saleComplete: false,
+      basilHarvestSaleRecorded: false,
+      basilDeliveryComplete: false,
+      buySellGraphicsEra: 'atari-bw' as const,
       windowJobAccepted: false,
       windowCleaningProgress: 0,
       windowJobComplete: false,
@@ -1365,7 +1376,7 @@ export class HudController {
       : `${HOMES_WINDOW_CLEAN_SECTIONS.length} sections · ${windowSprayTotal} sprays total`;
     const quantityControl = (maximum: number, unitPrice: number, transaction: 'buy' | 'sell'): string => maximum > 1
       ? `<div class="shop-quantity-row"><label>QUANTITY <input type="number" min="1" max="${maximum}" value="1" inputmode="numeric" data-shop-quantity data-unit-price="${unitPrice}" data-transaction="${transaction}"></label><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`
-      : `<div class="shop-quantity-row"><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`;
+      : `<div class="shop-quantity-row is-single"><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`;
     const stockName = (entry: ShopStockEntry): string => entry.item === 'small-golden-pothos'
       ? 'Small Golden Pothos'
       : entry.item === 'special-repair-pot' ? 'Empty repaired pot'
@@ -1398,17 +1409,21 @@ export class HudController {
       : '<div class="shop-section-label">SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying seeds.</small></div>';
     const potContent = shop.starterKitClaimed && shop.additionalGrowingPotsAvailable > 0 ? `<div class="shop-section-label">GROWING POTS</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small basic plastic pot</strong><small>Usable medium · ${shop.additionalGrowingPotsAvailable} available · ${SMALL_BASIC_PLASTIC_POT_PRICE} coins each</small></div>${quantityControl(shop.additionalGrowingPotsAvailable, SMALL_BASIC_PLASTIC_POT_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-growing-pot>BUY SELECTED</button></div>` : '';
     const buyContent = `<div class="shop-content-heading">BUY</div>${premiumContent}<div class="shop-section-label">PLAYER-SOLD STOCK</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${potContent}`;
-    const deliveryContent = shop.saleComplete
+    const goldenPothosDelivery = shop.saleComplete
       ? ''
-      : `<div class="shop-request"><strong>Small Golden Pothos</strong><small>Location: BUY / SELL counter</small><div class="shop-detail-row"><span>REWARD</span><strong>${OPENING_POTHOS_SALE_PRICE} COINS</strong></div><span class="shop-status">WANTED</span></div>`;
+      : `<div class="shop-request is-special-delivery${shop.inventoryPot === 'ordinary' ? ' is-ready' : ''}"><div class="delivery-summary"><strong>★ SPECIAL DELIVERY</strong><span>GOLDEN POTHOS</span><small>Reward: ${OPENING_POTHOS_DELIVERY_REWARD} coins · ${shop.inventoryPot === 'ordinary' ? 'Ready to deliver' : 'Find one and bring it here'}</small></div>${shop.inventoryPot === 'ordinary' ? `<button class="shop-sell-button delivery-action" type="button" data-shop-deliver="small-golden-pothos">DELIVER · +${OPENING_POTHOS_DELIVERY_REWARD}</button>` : ''}</div>`;
+    const basilDelivery = shop.buySellGraphicsEra === 'atari-colour' && !shop.basilDeliveryComplete
+      ? `<div class="shop-request is-special-delivery${shop.harvestQuantities.basil > 0 ? ' is-ready' : ''}"><div class="delivery-summary"><strong>★ SPECIAL DELIVERY</strong><span>FRESH BASIL</span><small>Reward: ${BASIL_DELIVERY_REWARD} coins · ${shop.harvestQuantities.basil > 0 ? 'Ready to deliver' : 'Grow and harvest one bunch'}</small></div>${shop.harvestQuantities.basil > 0 ? `<button class="shop-sell-button delivery-action" type="button" data-shop-deliver="basil">DELIVER · +${BASIL_DELIVERY_REWARD}</button>` : ''}</div>`
+      : '';
     const jobContent = shop.windowJobAccepted || shop.windowJobComplete
       ? ''
-      : `<div class="job-card is-available"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE window</b></span><span>REWARD <b>${WINDOW_JOB_REWARD} COINS + repair tool and glue</b></span><span>REQUIREMENTS <b>${windowRequirement}</b></span><span>STATUS <b>AVAILABLE</b></span></div><small>Accept this job to borrow the cleaner.</small><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>`;
+      : `<div class="job-card is-available current-wanted-job"><strong>Wanted: Casual Window Washer</strong><div class="shop-detail-list"><span>LOCATION <b>REAL ESTATE</b></span><span>REWARD <b>${WINDOW_JOB_REWARD} COINS + TOOLS</b></span><span>REQUIREMENTS <b>${windowRequirement.toUpperCase()}</b></span><span>STATUS <b>AVAILABLE NOW</b></span></div><button class="shop-sell-button" type="button" data-accept-window-job>ACCEPT JOB</button></div>`;
     const futureJob = (title: string, role: string): string => `<div class="job-card is-locked"><strong>${title}</strong><div class="shop-detail-list"><span>ROLE <b>${role}</b></span><span>REWARD <b>NOT SET</b></span><span>REQUIREMENTS <b>FUTURE JOB</b></span><span>STATUS <b>LOCKED</b></span></div><small>Not accessible yet. This role will be available in a future update.</small></div>`;
     const futureJobs = `${futureJob('Wanted: Full-time cleaner', 'FULL-TIME CLEANER')}${futureJob('Wanted: Cleaning contract', 'CLEANING CONTRACT')}${futureJob('Wanted: Service robot nursery worker', 'NURSERY WORKER')}`;
-    const actionableWanted = !shop.saleComplete || (!shop.windowJobAccepted && !shop.windowJobComplete);
-    const currentRequests = `${deliveryContent}${jobContent}` || '<div class="empty-state"><span class="empty-mark">—</span><strong>No active requests</strong><small>Check back when another accessible job is available.</small></div>';
-    const wantedContent = `<div class="shop-content-heading">WANTED</div><div class="shop-section-label">CURRENT REQUESTS</div>${currentRequests}<div class="shop-section-label">FUTURE OPPORTUNITIES</div>${futureJobs}`;
+    const actionableWanted = !shop.saleComplete || Boolean(basilDelivery) || (!shop.windowJobAccepted && !shop.windowJobComplete);
+    const currentRequests = `${goldenPothosDelivery}${basilDelivery}${jobContent}` || '<div class="empty-state current-requests-empty"><span class="empty-mark">—</span><strong>COME BACK LATER</strong><small>There are no current requests or available jobs.</small></div>';
+    const wantedSellOffers = sellOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No eligible items to sell</strong><small>Collect or grow an item before selling.</small></div>';
+    const wantedContent = `<div class="shop-content-heading">WANTED</div><div class="shop-section-label">CURRENT REQUESTS</div>${currentRequests}<div class="shop-section-label">WE ARE CURRENTLY BUYING</div><div class="wanted-sell-list">${wantedSellOffers}</div><div class="shop-section-label">FUTURE OPPORTUNITIES</div>${futureJobs}`;
     const tab = (key: 'buy' | 'sell' | 'wanted', label: string): string => `<button type="button" data-shop-tab="${key}" class="${this.shopTab === key ? 'is-active' : ''}${key === 'wanted' && actionableWanted && this.shopTab !== 'wanted' ? ' is-attention' : ''}" role="tab" aria-selected="${this.shopTab === key}" aria-controls="shop-panel-content">${label}</button>`;
     const content = this.shopTab === 'sell' ? sellContent : this.shopTab === 'buy' ? buyContent : wantedContent;
     return `<div class="shop-tabs" role="tablist" aria-label="Buy and Sell tabs">${tab('buy', 'BUY')}${tab('sell', 'SELL')}${tab('wanted', 'WANTED')}</div><div id="shop-panel-content" class="shop-panel-content">${content}</div><p class="shop-feedback ${this.shopFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.shopFeedback)}</p>`;
