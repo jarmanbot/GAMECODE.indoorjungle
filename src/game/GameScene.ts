@@ -1196,6 +1196,9 @@ export class GameScene extends Phaser.Scene {
 
   private runOpeningGroundBounce(index: number): void {
     if (!this.openingSequenceActive) return;
+    // This method is entered at each ground contact: the initial crash and
+    // the two progressively smaller bounce landings.
+    this.audio.playCrash(index === 0 ? 1 : index === 1 ? 0.72 : 0.48);
     if (index >= 2) {
       this.player.setRotation(0);
       this.finishOpeningSequence();
@@ -5878,7 +5881,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (!this.modalOpen && !this.shopInterior && !this.homeInterior && this.progress.windowJobAccepted
       && this.isNearWindowApproach() && (this.windowFacePromptRequired || !this.isFacingWindow())) {
-      this.hud.setAction('FACE REAL ESTATE WINDOW');
+      this.hud.setAction('FACE REAL ESTATE WINDOW · HIT B TO SPRAY');
       return;
     }
     this.hud.setAction(null);
