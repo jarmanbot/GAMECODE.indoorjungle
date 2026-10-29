@@ -4,6 +4,27 @@ A first playable visual prototype built directly in the workspace root with Type
 
 For the current progression, economy, controls, save schema, checkpoints and known limitations, see [PROJECT_STATUS_REPORT.md](./PROJECT_STATUS_REPORT.md).
 
+## Playtest Candidate 1 journey
+
+The current fresh-save playtest is expected to follow this implemented route:
+
+1. Choose **New Game**, confirm the overwrite, acknowledge Alex's opening message, and complete the tower fall/landing sequence.
+2. Find the Small Golden Pothos, collect it, enter Birch's Buy'n Sell, and complete its special delivery (15 coins).
+3. In Buy/Sell → Wanted, accept **Wanted: Casual Window Washer**. Clean both Real Estate windows with three completed B-button sprays per window. The job pays 4 coins and grants the repair tool and glue.
+4. Collect all four special-pot pieces in any order, put the pieces down from the Bag, and complete ten repair actions. Pick up the repaired pot to install and acknowledge the first graphics upgrade.
+5. Find the Rare Spotted Begonia at the far-right accessible edge. Sell the Begonia and repaired pot through Buy/Sell; together with the earlier work, these satisfy the implemented opening housing route.
+6. Use Rose's Real Estate menu to pay the 60-coin starter bond, receive the key, enter the starter apartment, and claim the one-time starter kit.
+7. Place pots on the grow table; plant, water, grow, harvest, and sell genuine basil and mint. Repeat implemented crop sales as needed to save the additional second-rental payment.
+8. Once genuine basil and mint harvest sales are recorded and 540 additional coins are available, arrange the move through Rose. The transfer records the 600-coin total bond and unlocks the two-room rental with six growing positions.
+
+The exact candidate endpoint is the successful second-rental transfer. A one-time
+**PLAYTEST COMPLETE** modal appears at that point (and on Continue for a compatible
+older save already at that endpoint). Continuing keeps the save; restarting requires
+explicit confirmation. No content beyond the second rental is part of Candidate 1.
+
+Build identity is available in Settings, including candidate name, build date, Git
+commit (when available at build time), and save-data version.
+
 ## Run
 
 ```bash
@@ -99,7 +120,7 @@ use Return to normal save before checking the regular player save.
 - Pass 4 Buy/Sell presentation: the interior exit mirrors the exterior entrance on the front/right wall, and successful buy/sell transactions commit state once before a short shopkeeper handover animation. Sold stock uses its actual Pothos, repaired-pot, or harvested-leaf appearance; purchases animate from shelves/supply positions to Alex. The shopkeeper remains upgraded independently of Alex's selected style.
 - Pass 5 rental expansion: after genuine basil and mint harvest sales, the existing Real Estate listing can arrange a second two-room rental. The 60-coin starter bond transfers, the additional payment is 540 coins, the recorded bond becomes 600 coins, and placed pots/crops move without resetting their identities or timers. The second interior has six growing positions; the rental supplies space, not free pots.
 - Opening job: collect the Small Golden Pothos first, accept the job at the counter, then tap each of the two REAL ESTATE AGENT windows and use the equipped cleaner three times per window. Completion rewards 4 coins, a reusable repair tool, and one starter glue charge.
-- Repair job: collect the three broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 75 coins.
+- Repair job: collect the four broken-pot pieces after cleaning by selecting each piece and pressing B, choose Repair from Bag, then tap B ten times beside the visible ground pot to repair it. Explicitly sell the repaired pot for 75 coins.
 - Housing search: the starter rental checklist now requires one repaired item and three genuinely found pots. The post-upgrade third find is a Rare Spotted Begonia at the far-right edge of the accessible neighbourhood; it is an ordinary 300-coin Buy/Sell purchase, not a special delivery, and its collected state prevents respawning.
 - BUY / SELL shows the outstanding Golden Pothos request in its street window, followed by a one-unit basil request after the Atari Colour upgrade. The Golden Pothos special delivery pays 15 coins and the basil special delivery pays 9 coins; ordinary sales do not clear an outstanding request. Items Alex sells become persistent shop stock: the opening Small Golden Pothos, repaired pot, Rare Spotted Begonia, herb harvests and whole potted crops all retain their own type/condition and use the configured 1.4× buyback price. Three one-time premium plants are visible from the start and cost 250, 750 and 2,000 coins; purchases persist in the Bag. Matching products stack only within the same species/type, quality and condition. Basic growing pots cost 10 coins; replacements remain available when lifting a whole plant leaves an open grow-table capacity.
 - Normal progress is stored in `indoor-jungle-progress-v1`. Development checkpoints use the separate `indoor-jungle-progress-dev-test-v1` namespace, plus development-only session metadata; no external service is involved.

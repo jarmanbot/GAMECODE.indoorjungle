@@ -168,6 +168,10 @@ interface PendingShopkeeperTransaction {
 }
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
 const DEV_BUILD = import.meta.env.DEV;
+// Broken fragments are intentionally drawn much larger than their anchor
+// points. This range covers the complete visible fragment plus Alex's feet so
+// standing beside or over a piece always counts as close enough.
+const BROKEN_POT_PIECE_PICKUP_RANGE = 145;
 
 const PLANT_TASKS: Record<PlantSpecies, {
   plant: TaskState;
@@ -1069,6 +1073,7 @@ export class GameScene extends Phaser.Scene {
     if (this.progress.openingComplete) {
       this.startHousingThoughtReminder();
       this.presentGraphicsUpgradeIfNeeded();
+      this.presentPlaytestCompletionIfNeeded();
       return;
     }
     this.startOpeningSequence();
@@ -2598,7 +2603,18 @@ export class GameScene extends Phaser.Scene {
     this.updateApartmentRentalSign();
     this.syncHudState();
     this.showToast(`Move complete. ${SECOND_RENTAL_TOTAL_BOND}-coin bond recorded; ${SECOND_RENTAL_MOVE_COST} coins paid.`, 2200);
+    this.presentPlaytestCompletionIfNeeded();
     return true;
+  }
+
+  private presentPlaytestCompletionIfNeeded(): void {
+    if (this.testSaveMode || this.activeProperty !== 'second-rental' || this.progress.playtestCompletionShown) return;
+    this.progress.playtestCompletionShown = true;
+    this.saveProgress();
+    // The second-rental action is confirmed from a panel that closes after
+    // this method returns. Present on the next tick so that close cannot
+    // accidentally re-enable world input behind the completion dialog.
+    this.time.delayedCall(0, () => this.hud.showPlaytestComplete());
   }
 
   private setBuySellArtwork(artwork: BuySellArtwork | undefined): void {
@@ -3813,7 +3829,8 @@ export class GameScene extends Phaser.Scene {
     if (this.openingSequenceActive || this.modalOpen || this.phoneLandscapeBlocked || this.shopTransitioning || this.joystickPointerHeld || this.activeGardeningAction) return;
     if (this.sprayAnimating) this.cancelToolUse(false);
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
-    if (this.isNearPoint(point, new Phaser.Math.Vector2(this.player.x, this.player.y), 54)) {
+    if ((this.shopInterior || this.homeInterior)
+      && this.isNearPoint(point, new Phaser.Math.Vector2(this.player.x, this.player.y), 54)) {
       this.cancelTapWalk();
       this.clearInteractionHighlight();
       this.showThought(this.getCurrentThought());
@@ -3902,18 +3919,21 @@ export class GameScene extends Phaser.Scene {
       }
       const brokenPosition = this.getBrokenPotPiecePosition(brokenPieceIndex);
       const approach = new Phaser.Math.Vector2(brokenPosition.x - 72, brokenPosition.y);
-      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, brokenPosition.x, brokenPosition.y) <= 105) {
+      // Record the chosen fragment before selecting the interaction. A close
+      // interaction completes synchronously, so assigning this afterwards
+      // loses the piece ID and makes taps appear to do nothing.
+      this.pendingBrokenPotPieceIndex = brokenPieceIndex;
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, brokenPosition.x, brokenPosition.y) <= BROKEN_POT_PIECE_PICKUP_RANGE) {
         this.selectPendingInteraction('select-broken-piece', approach);
-        this.pendingBrokenPotPieceIndex = brokenPieceIndex;
       } else {
         const tapPath = this.getTapPath(approach.x, approach.y);
         if (!tapPath) {
+          this.pendingBrokenPotPieceIndex = null;
           this.cancelTapWalk();
           this.showToast('That pot cannot be reached.', 1500);
           return;
         }
         this.selectPendingInteraction('select-broken-piece', approach, tapPath);
-        this.pendingBrokenPotPieceIndex = brokenPieceIndex;
       }
       return;
     }
@@ -4021,6 +4041,16 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
+    // Interactive world objects take priority over Alex's self-tap area.
+    // Otherwise, standing on or immediately beside a small collectible makes
+    // its enlarged touch target overlap Alex and the pickup tap is swallowed
+    // by the thought-bubble action.
+    if (this.isNearPoint(point, new Phaser.Math.Vector2(this.player.x, this.player.y), 54)) {
+      this.cancelTapWalk();
+      this.clearInteractionHighlight();
+      this.showThought(this.getCurrentThought());
+      return;
+    }
     const tapPath = this.getTapPath(point.x, point.y);
     if (!tapPath) {
       this.cancelTapWalk();
@@ -4096,7 +4126,14 @@ export class GameScene extends Phaser.Scene {
     approach: Phaser.Math.Vector2,
     path?: Phaser.Math.Vector2[],
   ): void {
+    const selectedBrokenPiece = interaction === 'select-broken-piece'
+      ? this.pendingBrokenPotPieceIndex
+      : null;
     this.cancelTapWalk(interaction === 'gardening-action');
+    // cancelTapWalk normally clears stale piece targeting. For a newly
+    // selected fragment, restore the current ID after that cleanup so both
+    // immediate and path-followed selection can complete.
+    if (interaction === 'select-broken-piece') this.pendingBrokenPotPieceIndex = selectedBrokenPiece;
     if (interaction !== 'window-clean') this.selectedWindowSectionIndex = null;
     this.pendingInteraction = interaction;
     this.showInteractionHighlight(interaction, approach);
@@ -4491,7 +4528,7 @@ export class GameScene extends Phaser.Scene {
     if (pieceIndex === null || this.progress.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[pieceIndex])) return;
     const position = this.getBrokenPotPiecePosition(pieceIndex);
     if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !this.brokenPot.visible || this.progress.brokenPotPiecesRemaining <= 0) return;
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) return;
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > BROKEN_POT_PIECE_PICKUP_RANGE) return;
     this.selectedBrokenPotPieceIndex = pieceIndex;
     this.brokenPotPieceSelected = true;
     this.syncHudState();
@@ -4503,7 +4540,7 @@ export class GameScene extends Phaser.Scene {
     if (pieceIndex === null || this.progress.brokenPotPiecesCollected.includes(BROKEN_POT_PIECE_IDS[pieceIndex])) return;
     const position = this.getBrokenPotPiecePosition(pieceIndex);
     if (this.shopInterior || this.homeInterior || !this.brokenPotPieceSelected || this.inventoryHasPot || !this.brokenPot.visible) return;
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > 110) {
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, position.x, position.y) > BROKEN_POT_PIECE_PICKUP_RANGE) {
       this.showToast('Move closer to the broken piece first.', 1400);
       return;
     }
@@ -5628,6 +5665,11 @@ export class GameScene extends Phaser.Scene {
       this.cancelToolUse(true);
     }
     this.updateInteraction();
+  }
+
+  restartPlaytest(): void {
+    this.restartPrototype();
+    this.startOpeningSequence();
   }
 
   private isPhoneDevice(): boolean {

@@ -28,6 +28,7 @@ export type GraphicsUpgradeStage = 'none' | 'prompt' | 'installing' | 'acknowled
 export type BasilStage = 'empty' | 'planted' | 'seedling' | 'mature';
 export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | PlantProductItem;
 export type ShopStockCondition = PotCondition | 'fresh' | 'living';
+export const SAVE_DATA_VERSION = 1;
 
 export interface PlacedWorldItem {
   item: InventoryItem;
@@ -62,6 +63,7 @@ export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' |
   | 'buy-seeds' | 'move-rental';
 
 export interface ProgressState {
+  playtestCompletionShown: boolean;
   openingComplete: boolean;
   openingGoldenPothosCollected: boolean;
   rareBegoniaCollected: boolean;
@@ -130,6 +132,7 @@ export interface ProgressState {
 }
 
 export const DEFAULT_PROGRESS: ProgressState = {
+  playtestCompletionShown: false,
   openingComplete: false,
   openingGoldenPothosCollected: false,
   rareBegoniaCollected: false,
@@ -467,6 +470,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
     ? [...new Set(input.ownedPremiumPlants.filter(isPremiumPlantId))]
     : [];
   const progress: ProgressState = {
+    playtestCompletionShown: Boolean(input.playtestCompletionShown),
     openingComplete,
     openingGoldenPothosCollected,
     rareBegoniaCollected,

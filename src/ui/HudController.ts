@@ -39,6 +39,7 @@ import type { PropertyId } from '../game/world';
 import { emptyPlantQuantities, getPlantDefinition, getPlantDefinitionByProduct, isPlantProductItem, isPlantSpecies, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
 import { PREMIUM_PLANT_CATALOG, isPremiumPlantId, type PremiumPlantId } from '../game/shopCatalog';
 import type { GrowingPotState } from '../game/growing';
+import { BUILD_COMMIT, BUILD_DATE, PLAYTEST_CANDIDATE, SAVE_DATA_VERSION } from '../game/buildInfo';
 
 const DEV_BUILD = import.meta.env.DEV;
 
@@ -85,6 +86,9 @@ export class HudController {
   private readonly graphicsUpgradeCard = document.querySelector<HTMLElement>('#graphics-upgrade-card')!;
   private readonly graphicsUpgradeContent = document.querySelector<HTMLElement>('#graphics-upgrade-content')!;
   private readonly graphicsUpgradeOk = document.querySelector<HTMLButtonElement>('#graphics-upgrade-ok')!;
+  private readonly playtestCompleteOverlay = document.querySelector<HTMLElement>('#playtest-complete-overlay')!;
+  private readonly playtestCompleteActions = document.querySelector<HTMLElement>('#playtest-complete-actions')!;
+  private readonly playtestRestartConfirm = document.querySelector<HTMLElement>('#playtest-restart-confirm')!;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' | 'wanted' = 'wanted';
@@ -189,6 +193,20 @@ export class HudController {
     this.bindButtonActivation(this.startConfirmNew, () => this.startNewAction?.());
     this.bindButtonActivation(this.startCancelNew, () => { this.startConfirm.hidden = true; this.startNew.hidden = false; });
     this.bindButtonActivation(this.graphicsUpgradeOk, () => this.graphicsUpgradeAction?.());
+    this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-continue')!, () => this.hidePlaytestComplete());
+    this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-close')!, () => this.hidePlaytestComplete());
+    this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-restart')!, () => {
+      this.playtestCompleteActions.hidden = true;
+      this.playtestRestartConfirm.hidden = false;
+    });
+    this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-restart-cancel')!, () => {
+      this.playtestRestartConfirm.hidden = true;
+      this.playtestCompleteActions.hidden = false;
+    });
+    this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-restart-confirm-button')!, () => {
+      this.hidePlaytestComplete();
+      this.scene?.restartPlaytest();
+    });
     this.bindJoystickControls();
     this.bindArcadeControls();
     this.applyJoystickSide();
@@ -228,6 +246,22 @@ export class HudController {
     this.startScreen.hidden = true;
     this.startContinueAction = null;
     this.startNewAction = null;
+  }
+
+  showPlaytestComplete(): void {
+    this.resetHeldInputs();
+    this.closeToolPopup();
+    this.playtestRestartConfirm.hidden = true;
+    this.playtestCompleteActions.hidden = false;
+    this.playtestCompleteOverlay.hidden = false;
+    this.scene?.setModalOpen(true);
+  }
+
+  hidePlaytestComplete(): void {
+    this.playtestCompleteOverlay.hidden = true;
+    this.playtestRestartConfirm.hidden = true;
+    this.playtestCompleteActions.hidden = false;
+    this.scene?.setModalOpen(false);
   }
 
   showGraphicsUpgradePrompt(action: () => void): void {
@@ -1263,7 +1297,7 @@ export class HudController {
       const sfxOn = this.audio.sfxEnabled;
       return {
         title: 'Settings',
-        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${this.graphicsUpgradeInstalled ? `<div class="settings-choice"><strong>Alex graphics</strong><small>Choose an unlocked Alex appearance.</small><div class="settings-choice-row"><button type="button" data-alex-graphics="atari-bw" class="${this.alexGraphics === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button><button type="button" data-alex-graphics="green-screen" class="${this.alexGraphics === 'green-screen' ? 'is-selected' : ''}">GREEN SCREEN</button></div></div>` : ''}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${this.graphicsUpgradeInstalled ? `<div class="settings-choice"><strong>Alex graphics</strong><small>Choose an unlocked Alex appearance.</small><div class="settings-choice-row"><button type="button" data-alex-graphics="atari-bw" class="${this.alexGraphics === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button><button type="button" data-alex-graphics="green-screen" class="${this.alexGraphics === 'green-screen' ? 'is-selected' : ''}">GREEN SCREEN</button></div></div>` : ''}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div><div class="build-information"><strong>${PLAYTEST_CANDIDATE}</strong><small>Build ${BUILD_DATE} · commit ${BUILD_COMMIT} · save data v${SAVE_DATA_VERSION}</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
       };
     }
     return {
