@@ -1,4 +1,4 @@
-import { createEmptyGrowingPot, GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, type GrowingCropState, type GrowingPotState } from './growing';
+import { GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, type GrowingCropState, type GrowingPotState } from './growing';
 import {
   emptyPlantQuantities,
   getPlantDefinition,
@@ -24,11 +24,12 @@ export type PotCondition = 'ordinary' | 'broken' | 'repaired';
 export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia';
 export type EquippedTool = 'cleaner' | 'repair' | 'watering-can' | null;
 export type AlexGraphics = 'atari-bw' | 'green-screen';
+export type InterfaceTheme = 'auto' | 'green-crt' | 'atari-bw';
 export type GraphicsUpgradeStage = 'none' | 'prompt' | 'installing' | 'acknowledgement';
 export type BasilStage = 'empty' | 'planted' | 'seedling' | 'mature';
 export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | PlantProductItem;
 export type ShopStockCondition = PotCondition | 'fresh' | 'living';
-export const SAVE_DATA_VERSION = 1;
+export const SAVE_DATA_VERSION = 3;
 
 export interface PlacedWorldItem {
   item: InventoryItem;
@@ -73,6 +74,7 @@ export interface ProgressState {
   graphicsUpgradeInstalled: boolean;
   graphicsUpgradeStage: GraphicsUpgradeStage;
   alexGraphics: AlexGraphics;
+  interfaceTheme: InterfaceTheme;
   nurseryConstructionComplete: boolean;
   coins: number;
   inventoryPot: PotCondition | null;
@@ -85,6 +87,7 @@ export interface ProgressState {
   shopStock: ShopStockEntry[];
   ownedPremiumPlants: PremiumPlantId[];
   windowJobAccepted: boolean;
+  buySellRasterUpgradePending: boolean;
   windowCleaningProgress: number;
   windowCleaningSections: Record<string, number>;
   windowJobComplete: boolean;
@@ -106,11 +109,11 @@ export interface ProgressState {
   basilHarvestSaleRecorded: boolean;
   basilDeliveryComplete: boolean;
   mintHarvestSaleRecorded: boolean;
-  starterKitClaimed: boolean;
-  starterKitGranted: boolean;
+  welcomeGiftsClaimed: Partial<Record<PropertyId, boolean>>;
+  propertyHandoversAcknowledged: Partial<Record<PropertyId, boolean>>;
+  mintLowSuppliesAcknowledged: boolean;
 
-  // Authoritative growing model. The legacy basil fields below are retained
-  // as compatibility mirrors for old saves and older external tooling only.
+  // Authoritative growing model.
   growingPots: GrowingPotState[];
   seedQuantities: Record<PlantSpecies, number>;
   harvestQuantities: Record<PlantSpecies, number>;
@@ -118,14 +121,6 @@ export interface ProgressState {
   additionalGrowingPotsPurchased: number;
   growingPotPurchaseSerial: number;
 
-  // Compatibility mirrors for the pre multi-pot save schema.
-  starterPotPlaced: boolean;
-  starterPotSlot: number;
-  basilPlanted: boolean;
-  basilSeeds: number;
-  basilHarvests: number;
-  basilGrowthStartedAt: number | null;
-  basilCycleCount: number;
   basicFertilizerCharges: number;
   wateringCanOwned: boolean;
   toolSlots: EquippedTool[];
@@ -146,7 +141,8 @@ export const DEFAULT_PROGRESS: ProgressState = {
   graphicsUpgradeUnlocked: false,
   graphicsUpgradeInstalled: false,
   graphicsUpgradeStage: 'none',
-  alexGraphics: 'atari-bw',
+  alexGraphics: 'green-screen',
+  interfaceTheme: 'auto',
   nurseryConstructionComplete: false,
   coins: 0,
   inventoryPot: null,
@@ -159,6 +155,7 @@ export const DEFAULT_PROGRESS: ProgressState = {
   shopStock: [],
   ownedPremiumPlants: [],
   windowJobAccepted: false,
+  buySellRasterUpgradePending: false,
   windowCleaningProgress: 0,
   windowCleaningSections: Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0])),
   windowJobComplete: false,
@@ -180,21 +177,15 @@ export const DEFAULT_PROGRESS: ProgressState = {
   basilHarvestSaleRecorded: false,
   basilDeliveryComplete: false,
   mintHarvestSaleRecorded: false,
-  starterKitClaimed: false,
-  starterKitGranted: false,
+  welcomeGiftsClaimed: {},
+  propertyHandoversAcknowledged: {},
+  mintLowSuppliesAcknowledged: false,
   growingPots: [],
   seedQuantities: emptyPlantQuantities(),
   harvestQuantities: emptyPlantQuantities(),
   growingEvents: emptyPlantQuantities(),
   additionalGrowingPotsPurchased: 0,
   growingPotPurchaseSerial: 0,
-  starterPotPlaced: false,
-  starterPotSlot: 1,
-  basilPlanted: false,
-  basilSeeds: 0,
-  basilHarvests: 0,
-  basilGrowthStartedAt: null,
-  basilCycleCount: 0,
   basicFertilizerCharges: 0,
   wateringCanOwned: false,
   toolSlots: [null, null, null],
@@ -234,33 +225,7 @@ function sanitizeGrowingPots(input: Partial<ProgressState>): GrowingPotState[] {
     result.push({ id, type, medium: 'usable', slot, crop: sanitizeCrop(raw.crop) });
   }
 
-  // Legacy saves had one starter pot represented by flat basil fields. Convert
-  // that state once, retaining its slot, crop, and growth timing.
-  if (result.length === 0 && input.starterKitGranted) {
-    const slot = input.starterPotPlaced
-      ? Math.max(0, Math.min(GROWING_TABLE_SLOT_COUNT - 1, Math.floor(Number(input.starterPotSlot) || 1)))
-      : null;
-    const basilPlanted = Boolean(input.basilPlanted);
-    const growthStartedAt = finiteTimestamp(input.basilGrowthStartedAt);
-    const crop = basilPlanted
-      ? { species: 'basil' as const, stage: growthStartedAt === null ? 'planted' as const : 'seedling' as const, wateredAt: growthStartedAt, growthStartedAt }
-      : null;
-    result.push({ ...createEmptyGrowingPot(STARTER_GROWING_POT_ID, slot), crop });
-  }
   return result;
-}
-
-function syncLegacyMirrors(state: ProgressState): ProgressState {
-  const starter = state.growingPots.find((pot) => pot.id === STARTER_GROWING_POT_ID);
-  const crop = starter?.crop?.species === 'basil' ? starter.crop : null;
-  state.starterPotPlaced = starter?.slot !== null && starter?.slot !== undefined;
-  state.starterPotSlot = starter?.slot ?? 1;
-  state.basilPlanted = Boolean(crop);
-  state.basilSeeds = state.seedQuantities.basil;
-  state.basilHarvests = state.harvestQuantities.basil;
-  state.basilGrowthStartedAt = crop?.growthStartedAt ?? null;
-  state.basilCycleCount = state.growingEvents.basil;
-  return state;
 }
 
 export function sanitizeProgress(value: unknown): ProgressState {
@@ -268,6 +233,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
     ? value as Partial<ProgressState> & { buildingGraphics?: Record<string, unknown> }
     : {};
   const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
+  const interfaceTheme: InterfaceTheme = input.interfaceTheme === 'green-crt' || input.interfaceTheme === 'atari-bw' ? input.interfaceTheme : 'auto';
   const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
   const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
@@ -302,15 +268,19 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const legacyBuildingGraphics = input.buildingGraphics && typeof input.buildingGraphics === 'object'
     ? input.buildingGraphics as Record<string, unknown> : {};
   const savedBuySellEra = savedBuildings['buy-sell']?.graphicsEra;
-  const openingGoldenPothosCollected = Boolean(input.openingGoldenPothosCollected)
-    || inventoryItem === 'small-golden-pothos'
+  const durableOpeningPothosEvidence = inventoryItem === 'small-golden-pothos'
     || placedItem?.item === 'small-golden-pothos'
     || saleComplete
     || shopStock.some((entry) => entry.item === 'small-golden-pothos')
-    || savedBuySellEra === 'green-crt'
     || savedBuySellEra === 'atari-colour'
     || legacyBuildingGraphics.buySell === 'atari-colour'
     || graphicsUpgradeInstalled;
+  // A previous migration accidentally treated the initial Green CRT facade
+  // as collection evidence. Repair only untouched `find` saves with no
+  // durable item/sale/upgrade evidence; genuine collected saves advance the
+  // task and therefore remain completed.
+  const openingGoldenPothosCollected = durableOpeningPothosEvidence
+    || (Boolean(input.openingGoldenPothosCollected) && input.task !== 'find');
   const graphicsEra = (value: unknown, fallback: BuildingGraphicsEra): BuildingGraphicsEra =>
     BUILDING_GRAPHICS_ERAS.includes(value as BuildingGraphicsEra) ? value as BuildingGraphicsEra : fallback;
   const operationalState = (value: unknown, fallback: BuildingOperationalState): BuildingOperationalState =>
@@ -321,6 +291,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
   // longer advances or selects Nursery artwork.
   const nurseryOperationalState: BuildingOperationalState = savedNurseryState === 'operational'
     ? 'operational'
+    : graphicsUpgradeInstalled ? 'under-construction'
     : savedNurseryState === 'under-construction'
       ? 'under-construction'
       : savedNurseryState === 'vacant' || savedNurseryState === 'locked'
@@ -329,17 +300,16 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const nurseryGraphicsEra: BuildingGraphicsEra = nurseryOperationalState === 'operational'
     ? 'atari-colour'
     : nurseryOperationalState === 'under-construction' ? 'green-crt' : 'atari-bw';
-  const savedOrMigratedBuySellEra = graphicsEra(savedBuySellEra,
-    legacyBuildingGraphics.buySell === 'atari-colour' || graphicsUpgradeInstalled
-      ? 'atari-colour'
-      : openingGoldenPothosCollected ? 'green-crt' : 'atari-bw');
-  // The repaired-pot installation is the next approved Buy/Sell upgrade. It
-  // advances Green CRT to Atari Colour while preserving an existing Colour
-  // save and never downgrading a building.
+  const buySellRasterUpgradePending = Boolean(input.buySellRasterUpgradePending);
+  const acceptedCleaningMilestone = Boolean(input.windowJobAccepted) || Boolean(input.windowJobComplete);
   const migratedBuySellEra: BuildingGraphicsEra = graphicsUpgradeInstalled
-    && savedOrMigratedBuySellEra !== 'atari-colour'
+    || savedBuySellEra === 'atari-colour' || legacyBuildingGraphics.buySell === 'atari-colour'
     ? 'atari-colour'
-    : savedOrMigratedBuySellEra;
+    : savedBuySellEra === 'atari-bw' && acceptedCleaningMilestone && !buySellRasterUpgradePending ? 'atari-bw' : 'green-crt';
+  const savedRealEstateEra = savedBuildings['real-estate']?.graphicsEra ?? legacyBuildingGraphics.realEstate;
+  const migratedRealEstateEra: BuildingGraphicsEra = graphicsUpgradeInstalled || savedRealEstateEra === 'atari-colour'
+    ? 'atari-colour'
+    : 'green-crt';
   const buildings: BuildingProgressState = {
     'buy-sell': {
       operationalState: operationalState(savedBuildings['buy-sell']?.operationalState, DEFAULT_BUILDING_PROGRESS['buy-sell'].operationalState),
@@ -347,13 +317,11 @@ export function sanitizeProgress(value: unknown): ProgressState {
     },
     'starter-apartment': {
       operationalState: operationalState(savedBuildings['starter-apartment']?.operationalState, DEFAULT_BUILDING_PROGRESS['starter-apartment'].operationalState),
-      graphicsEra: graphicsEra(savedBuildings['starter-apartment']?.graphicsEra ?? legacyBuildingGraphics.apartment, 'atari-bw'),
+      graphicsEra: 'green-crt',
     },
     'real-estate': {
       operationalState: operationalState(savedBuildings['real-estate']?.operationalState, DEFAULT_BUILDING_PROGRESS['real-estate'].operationalState),
-      graphicsEra: graphicsUpgradeInstalled
-        ? 'green-crt'
-        : graphicsEra(savedBuildings['real-estate']?.graphicsEra ?? legacyBuildingGraphics.realEstate, 'atari-bw'),
+      graphicsEra: migratedRealEstateEra,
     },
     nursery: {
       operationalState: nurseryOperationalState,
@@ -405,9 +373,9 @@ export function sanitizeProgress(value: unknown): ProgressState {
     const sourceSeeds = input.seedQuantities && typeof input.seedQuantities === 'object' ? input.seedQuantities[species] : undefined;
     const sourceHarvests = input.harvestQuantities && typeof input.harvestQuantities === 'object' ? input.harvestQuantities[species] : undefined;
     const sourceEvents = input.growingEvents && typeof input.growingEvents === 'object' ? input.growingEvents[species] : undefined;
-    seeds[species] = quantity(sourceSeeds ?? (species === 'basil' ? input.basilSeeds : 0));
-    harvests[species] = quantity(sourceHarvests ?? (species === 'basil' ? input.basilHarvests : 0));
-    events[species] = quantity(sourceEvents ?? (species === 'basil' ? input.basilCycleCount : 0));
+    seeds[species] = quantity(sourceSeeds);
+    harvests[species] = quantity(sourceHarvests);
+    events[species] = quantity(sourceEvents);
   }
   let piecesRemaining = Number.isFinite(Number(input.brokenPotPiecesRemaining))
     ? Math.max(0, Math.min(BROKEN_POT_PIECE_COUNT, Math.floor(Number(input.brokenPotPiecesRemaining))))
@@ -449,7 +417,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
     || Boolean(input.windowJobAccepted)
     || Boolean(input.windowJobComplete)
     || Boolean(input.rentalBondPaid)
-    || Boolean(input.starterKitClaimed)
+    || Object.values(input.welcomeGiftsClaimed ?? {}).some(Boolean)
     || Boolean(input.placedWorldItem)
     || (Array.isArray(input.growingPots) && input.growingPots.length > 0);
   const openingComplete = typeof input.openingComplete === 'boolean' ? input.openingComplete : legacyProgressExists;
@@ -479,12 +447,13 @@ export function sanitizeProgress(value: unknown): ProgressState {
     graphicsUpgradeUnlocked,
     graphicsUpgradeInstalled,
     graphicsUpgradeStage: graphicsUpgradeInstalled ? (graphicsUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : graphicsUpgradeStage,
-    alexGraphics: graphicsUpgradeInstalled ? alexGraphics : 'atari-bw',
+    alexGraphics: graphicsUpgradeInstalled ? alexGraphics : 'green-screen',
+    interfaceTheme,
     nurseryConstructionComplete: buildings.nursery.operationalState === 'operational',
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock, ownedPremiumPlants,
-    windowJobAccepted: Boolean(input.windowJobAccepted), windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
+    windowJobAccepted: Boolean(input.windowJobAccepted), buySellRasterUpgradePending, windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
     brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned, brokenPotPiecesCollected,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,
@@ -492,7 +461,13 @@ export function sanitizeProgress(value: unknown): ProgressState {
     basilHarvestSaleRecorded,
     basilDeliveryComplete,
     mintHarvestSaleRecorded: Boolean(input.mintHarvestSaleRecorded) || shopHasMintSaleEvidence,
-    starterKitClaimed: Boolean(input.starterKitClaimed), starterKitGranted: Boolean(input.starterKitGranted),
+    welcomeGiftsClaimed: input.welcomeGiftsClaimed && typeof input.welcomeGiftsClaimed === 'object'
+      ? { 'starter-apartment': input.welcomeGiftsClaimed['starter-apartment'] === true, 'second-rental': input.welcomeGiftsClaimed['second-rental'] === true }
+      : {},
+    propertyHandoversAcknowledged: input.propertyHandoversAcknowledged && typeof input.propertyHandoversAcknowledged === 'object'
+      ? { 'starter-apartment': input.propertyHandoversAcknowledged['starter-apartment'] === true, 'second-rental': input.propertyHandoversAcknowledged['second-rental'] === true }
+      : {},
+    mintLowSuppliesAcknowledged: Boolean(input.mintLowSuppliesAcknowledged),
     growingPots: sanitizeGrowingPots(input), seedQuantities: seeds, harvestQuantities: harvests, growingEvents: events,
     additionalGrowingPotsPurchased: Math.max(0, Math.min(MAX_ADDITIONAL_GROWING_POTS, quantity(input.additionalGrowingPotsPurchased))),
     growingPotPurchaseSerial: Math.max(
@@ -500,10 +475,8 @@ export function sanitizeProgress(value: unknown): ProgressState {
       ...sanitizeGrowingPots(input).map((pot) => Number(pot.id.match(/growing-pot-(\d+)$/)?.[1] ?? 1) - 1),
       quantity(input.additionalGrowingPotsPurchased),
     ),
-    starterPotPlaced: false, starterPotSlot: 1, basilPlanted: false, basilSeeds: 0, basilHarvests: 0, basilGrowthStartedAt: null, basilCycleCount: 0,
     basicFertilizerCharges: quantity(input.basicFertilizerCharges), wateringCanOwned, toolSlots,
   };
-  syncLegacyMirrors(progress);
   return progress;
 }
 
@@ -550,8 +523,4 @@ function sanitizeShopStock(value: unknown, legacyPothosStock: boolean, inventory
   }
   if (!hasNewStockField && legacyPothosStock && inventoryPot !== 'ordinary' && !normalized.some((entry) => entry.item === 'small-golden-pothos')) normalized.push({ stockId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, item: 'small-golden-pothos', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'ordinary', quantity: 1, instanceIds: [OPENING_GOLDEN_POTHOS_INSTANCE_ID] });
   return normalized;
-}
-
-export function syncProgressLegacyMirrors(progress: ProgressState): ProgressState {
-  return syncLegacyMirrors(progress);
 }

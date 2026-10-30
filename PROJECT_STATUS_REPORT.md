@@ -1,5 +1,17 @@
 # Indoor Jungle — Current Project Status Report
 
+## Opening graphics progression — current decision
+
+Graphics eras are explicit per system, not one global automatic sequence.
+Fresh saves start with Green CRT Alex, interface, Buy/Sell and Real Estate;
+the opening tower is restrained Atari colour, while the apartment, Nursery
+vacant lot and street remain Atari B&W. First Pothos collection advances only
+Buy/Sell to Atari B&W. First cleaning completion advances only Real Estate to
+Atari B&W. The repaired-pot module installation advances Alex and Auto UI to
+Atari B&W, applies the one-time 25% visual-only Alex scale, advances Buy/Sell
+to Atari colour, and places the Nursery in Green CRT construction. Existing
+progress is migrated forward without replaying milestone rewards or prompts.
+
 Audit date: 25 October 2026
 
 Workspace: /Users/jarmandonohue/GAMECODE.indoorjungle
@@ -31,7 +43,7 @@ Implemented in the current source:
   non-saleable Bag item and older saves with `rentalBondPaid` migrate to the
   key without another charge.
 - A successful rental closes the property panel and shows a dismissible key
-  handover. The main objective then directs Alex to claim the starter kit.
+  handover. The room key, access and one-time Welcome Gift are committed atomically with the successful rental.
 - Alex’s housing reminder appears for three seconds immediately after loading
   or restarting an unrented save, then repeats every 30 seconds of active
   pre-rental play. Tapping Alex shows the current objective for three seconds
@@ -79,7 +91,7 @@ The game currently contains:
 - REAL ESTATE AGENT window-cleaning job.
 - Broken-pot collection and repair loop.
 - Starter apartment rental.
-- Starter kit and a three-slot starter grow table, plus the Pass 5 six-slot second-rental grow room.
+- Welcome Gift and a three-slot starter grow table, plus the Pass 5 six-slot second-rental grow room.
 - Independent growing pots with stable IDs, reusable medium, basil and mint crops, growth timing, fertiliser and harvest state.
 - Basil and mint seed purchasing, fresh-leaf selling and species-specific shop stacks.
 - City map with locked future districts.
@@ -642,9 +654,9 @@ The rental unlocks the apartment door. No new district is unlocked. After the
 initial basil/mint introduction and both recorded harvest sales, the task can
 become `move-rental` and its checklist tracks the second-rental requirements.
 
-### 10. Claim the starter kit
+### 10. Receive the Welcome Gift
 
-The one-time starter kit contains:
+The one-time welcome gift contains:
 
 ~~~text
 Reusable starter pot and used medium
@@ -657,8 +669,8 @@ Basic watering can
 After claiming:
 
 ~~~text
-starterKitClaimed = true
-starterKitGranted = true
+povoWelcomeGiftClaimed = true
+povoWelcomeGiftGranted = true
 basilSeeds = 1
 wateringCanOwned = true
 basicFertilizerCharges = 1
@@ -738,7 +750,7 @@ max(0, 30,000 − (currentTime − basilGrowthStartedAt)) for basil; mint uses 6
 
 ### 14. Use basic fertiliser
 
-One basic fertiliser charge is supplied by the starter kit. It can only be
+One basic fertiliser charge is supplied by the welcome gift. It can only be
 used while basil is actively growing.
 
 Using it changes the growth timestamp to:
@@ -881,11 +893,11 @@ backend.
 
 The save schema tracks coins, inventory, stable item identity, placed street
 items, shop stock, window-job state, tools, glue, broken-pot pieces, repair
-progress, rental state, starter-kit state, grow-table slot, basil seeds, basil
+progress, rental state, welcome-gift state, grow-table slot, basil seeds, basil
 harvests, crop timestamps, fertiliser charges and the current objective.
 
 Save migration handles older Pothos completion flags, carried and placed item
-conflicts, old tool-slot layouts, older starter-kit records, pre-fertiliser
+conflicts, old tool-slot layouts, older welcome-gift records, pre-fertiliser
 saves, crops that matured while the game was closed and legacy shop stock.
 
 ## Developer checkpoints
@@ -906,8 +918,8 @@ Current checkpoint registry:
 12. Upgraded shop — items ready to sell
 13. Upgraded shop stock ready to buy back
 14. Multiple matching harvest units
-15. Apartment rented — starter kit unclaimed
-16. Starter kit claimed
+15. POVO rental ready
+16. POVO handover acknowledged
 17. Basil planted — needs water
 18. Basil growing
 19. Basil mature
@@ -934,7 +946,7 @@ Checkpoint coin states:
 | Special pot repaired | 14 |
 | Repaired pot sold | 89 |
 | Apartment rented | 29 |
-| Starter kit claimed | 29 |
+| Welcome Gift claimed | 29 |
 | Basil planted | 29 |
 | Basil growing | 29 |
 | Basil mature | 29 |
@@ -1094,7 +1106,7 @@ Verified during the read-only audit:
 - git diff --check.
 - TypeScript/Vite production build using npm run build.
 - Source-level checkpoint builders for fresh start, the opening loop,
-  apartment/starter-kit stages, three ready pots, basil crop stages and
+  apartment/welcome-gift stages, three ready pots, basil crop stages and
   second-pot mint stages.
 
 Pass 5 source checks additionally covered the second-rental state fields,

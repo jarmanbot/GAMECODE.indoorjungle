@@ -95,18 +95,18 @@
     </main>
     <div id="start-screen" class="start-screen" hidden>
       <section class="start-card" role="dialog" aria-modal="true" aria-labelledby="start-title">
-        <span class="eyebrow">INDOOR JUNGLE</span>
+        <span class="boot-kicker">INDOOR JUNGLE</span>
         <h1 id="start-title">INDOOR JUNGLE</h1>
-        <p class="start-tagline">A small monochrome city. A fresh start.</p>
+        <p class="start-tagline">SYSTEM BOOT<span class="boot-cursor" aria-hidden="true">█</span></p>
         <div class="start-actions">
-          <button id="start-continue" type="button">CONTINUE</button>
-          <button id="start-new" type="button">NEW GAME</button>
+          <button id="start-continue" type="button"><span aria-hidden="true">&gt; </span>CONTINUE SAVED GAME</button>
+          <button id="start-new" type="button"><span aria-hidden="true">&gt; </span>NEW GAME</button>
         </div>
         <div id="start-confirm" class="start-confirm" hidden>
-          <strong>Overwrite the normal save?</strong>
-          <small>Your existing progress will be replaced. Developer test saves are separate.</small>
-          <div class="start-confirm-actions"><button id="start-confirm-new" type="button">START NEW GAME</button><button id="start-cancel-new" type="button">CANCEL</button></div>
+          <strong>EXISTING SAVE DETECTED</strong>
+          <small>Starting a new game will replace the current normal save. Developer test saves remain separate.</small>
         </div>
+        <div id="start-terminal-status" class="boot-terminal-status" role="status" aria-live="polite" hidden></div>
       </section>
     </div>
     <div id="playtest-complete-overlay" class="playtest-complete-overlay" hidden>
@@ -119,9 +119,10 @@
           <button id="playtest-close" type="button">CLOSE</button>
         </div>
         <div id="playtest-restart-confirm" class="playtest-restart-confirm" hidden>
-          <strong>Restart the playtest?</strong>
-          <small>This will overwrite the current normal playtest save. Developer test saves remain separate.</small>
-          <div class="playtest-complete-actions"><button id="playtest-restart-confirm-button" type="button">CONFIRM RESTART</button><button id="playtest-restart-cancel" type="button">CANCEL</button></div>
+          <strong>RESTART PLAYTEST?</strong>
+          <small>Current normal-save progress will be replaced. Developer test saves remain separate.</small>
+          <div class="playtest-complete-actions"><button id="playtest-restart-cancel" type="button">&gt; CANCEL</button><button id="playtest-restart-confirm-button" type="button">RESTART</button></div>
+          <div id="restart-terminal-status" class="boot-terminal-status" role="status" aria-live="polite" hidden></div>
         </div>
       </section>
     </div>

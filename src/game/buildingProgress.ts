@@ -13,9 +13,9 @@ export interface BuildingProgress {
 export type BuildingProgressState = Record<BuildingId, BuildingProgress>;
 
 export const DEFAULT_BUILDING_PROGRESS: BuildingProgressState = {
-  'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' },
-  'starter-apartment': { operationalState: 'operational', graphicsEra: 'atari-bw' },
-  'real-estate': { operationalState: 'operational', graphicsEra: 'atari-bw' },
+  'buy-sell': { operationalState: 'operational', graphicsEra: 'green-crt' },
+  'starter-apartment': { operationalState: 'operational', graphicsEra: 'green-crt' },
+  'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' },
   nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' },
 };
 

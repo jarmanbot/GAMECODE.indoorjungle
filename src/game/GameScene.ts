@@ -9,7 +9,6 @@ import {
   OPENING_GOLDEN_POTHOS_INSTANCE_ID,
   RARE_SPOTTED_BEGONIA_INSTANCE_ID,
   sanitizeProgress,
-  syncProgressLegacyMirrors,
   SPECIAL_REPAIR_POT_INSTANCE_ID,
   type BasilStage,
   type AlexGraphics,
@@ -23,7 +22,7 @@ import {
   type ShopStockItem,
   type TaskState,
 } from './progress';
-import { GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, createEmptyGrowingPot, type GrowingPotState } from './growing';
+import { GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, createEmptyGrowingPot, getGrowSlotState, type GrowSlotState, type GrowingPotState } from './growing';
 import {
   getPlantDefinition,
   getPlantDefinitionByProduct,
@@ -34,6 +33,7 @@ import {
   type PlantSpecies,
 } from './plants';
 import { getPremiumPlantDefinition, PREMIUM_PLANT_CATALOG, type PremiumPlantId } from './shopCatalog';
+import { getPropertyWelcomeGift } from './welcomeGifts';
 import {
   BUILDINGS,
   APARTMENT_DOOR_BOTTOM,
@@ -69,7 +69,7 @@ import {
   HOME_GROWING_SPOTS,
   SECOND_HOME_GROWING_SPOTS,
   HOME_PLAYER_START,
-  HOME_STARTER_KIT,
+  HOME_WELCOME_GIFT,
   HOME_WORLD_HEIGHT,
   HOME_WORLD_WIDTH,
   SECOND_HOME_PLAYER_START,
@@ -109,6 +109,7 @@ import {
   PAVEMENT_Y,
   POT_POSITION,
   RARE_BEGONIA_POSITION,
+  HEAVY_POT_POSITION,
   SHOP_COUNTER,
   SHOP_COUNTER_APPROACH,
   SHOP_COUNTER_HEIGHT,
@@ -147,7 +148,7 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'pickup-begonia' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-real-estate' | 'exit-real-estate' | 'enter-home' | 'exit-home' | 'claim-starter-kit' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot' | 'gardening-action';
+type PendingInteraction = 'pickup' | 'pickup-begonia' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-real-estate' | 'exit-real-estate' | 'enter-home' | 'exit-home' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot' | 'gardening-action';
 type PlayerFacing = 'front' | 'back' | 'left' | 'right';
 type GardeningActionType = 'plant' | 'water' | 'fertilize' | 'harvest';
 interface GardeningAction {
@@ -193,6 +194,7 @@ export class GameScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Graphics;
   private pot!: Phaser.GameObjects.Graphics;
   private rareBegonia!: Phaser.GameObjects.Graphics;
+  private heavyPot!: Phaser.GameObjects.Graphics;
   private placedItemDisplay?: Phaser.GameObjects.Graphics;
   private brokenPot!: Phaser.GameObjects.Graphics;
   private windowDirtOverlay!: Phaser.GameObjects.Graphics;
@@ -201,10 +203,7 @@ export class GameScene extends Phaser.Scene {
   private repairPickupPrompt?: Phaser.GameObjects.Text;
   private buySellDoor?: Phaser.GameObjects.Graphics;
   private buySellArtworkObjects: Phaser.GameObjects.GameObject[] = [];
-  private buySellPulseLayers: Phaser.GameObjects.GameObject[] = [];
-  private buySellUpgradeTimer?: Phaser.Time.TimerEvent;
   private buySellUpgradeAnimating = false;
-  private buySellUpgradeNotification?: Phaser.GameObjects.Text;
   private starterApartmentDoor?: Phaser.GameObjects.Graphics;
   private cars: Car[] = [];
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -225,10 +224,11 @@ export class GameScene extends Phaser.Scene {
   private saleComplete = false;
   private coins = 0;
   private progress: ProgressState = sanitizeProgress(DEFAULT_PROGRESS);
-  private readonly normalProgressKey = 'indoor-jungle-progress-v1';
-  private readonly devProgressKey = 'indoor-jungle-progress-dev-test-v1';
+  private readonly normalProgressKey = 'indoor-jungle-progress-v3';
+  private readonly devProgressKey = 'indoor-jungle-progress-dev-test-v3';
   private readonly devModeKey = 'indoor-jungle-dev-test-mode-v1';
   private readonly devSessionKey = 'indoor-jungle-dev-test-session-v1';
+  private readonly displayPreferencesKey = 'indoor-jungle-display-preferences';
   private testSaveMode = false;
   private devSessionMeta: DevSessionMeta | null = null;
   private modalOpen = false;
@@ -248,6 +248,7 @@ export class GameScene extends Phaser.Scene {
   private thoughtBubbleText?: Phaser.GameObjects.Text;
   private thoughtBubbleRemainingMs = 0;
   private thoughtBubbleIsAutomatic = false;
+  private mintLowSuppliesTimer?: Phaser.Time.TimerEvent;
   private housingThoughtElapsedMs = 0;
   private placementHighlight!: Phaser.GameObjects.Graphics;
   private placementOptionsHighlight!: Phaser.GameObjects.Graphics;
@@ -258,7 +259,7 @@ export class GameScene extends Phaser.Scene {
   private streetArtworkObjects: Phaser.GameObjects.GameObject[] = [];
   private shopObjects: Phaser.GameObjects.GameObject[] = [];
   private homeObjects: Phaser.GameObjects.GameObject[] = [];
-  private homeStarterKitObjects: Phaser.GameObjects.GameObject[] = [];
+  private homeWelcomeGiftObjects: Phaser.GameObjects.GameObject[] = [];
   private basilPot?: Phaser.GameObjects.Graphics;
   private growingPotDisplays = new Map<string, Phaser.GameObjects.Graphics>();
   private basilWaterEffect?: Phaser.GameObjects.Graphics;
@@ -311,7 +312,7 @@ export class GameScene extends Phaser.Scene {
   private activeProperty: PropertyId = 'none';
   private rentalBondTotal = 0;
   private secondRentalMoveConfirmation = false;
-  private starterKitClaimed = false;
+  private get povoWelcomeGiftClaimed(): boolean { return this.progress.welcomeGiftsClaimed['starter-apartment'] === true; }
   private rentalFeedbackAt = 0;
   private basilPotSelected = false;
   private selectedGrowingSpotIndex: number | null = null;
@@ -359,7 +360,7 @@ export class GameScene extends Phaser.Scene {
     this.textures.get('nursery-open-atari-colour').setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
-    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery);
+    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery, this.progress.buildings['real-estate'].graphicsEra);
     this.setBuySellArtwork(buySellArtwork);
     this.starterApartmentDoor = drawStarterApartmentDoor(this);
     this.realEstateDoor = drawRealEstateDoor(this, this.progress.buildings['real-estate'].graphicsEra);
@@ -371,6 +372,7 @@ export class GameScene extends Phaser.Scene {
     this.createPlayer();
     this.createPot();
     this.createRareBegonia();
+    this.createHeavyPot();
     this.createBrokenPot();
     this.createPlacedItem();
     this.createSprayEffect();
@@ -610,7 +612,11 @@ export class GameScene extends Phaser.Scene {
     if (!isOpen && this.pendingShopkeeperTransactions.length > 0) {
       // The HUD uses a short close transition. Do not let Birch start moving
       // behind a panel that is still visibly fading away.
-      this.time.delayedCall(170, () => this.beginNextPendingShopkeeperTransaction());
+      this.shopTransitioning = true;
+      this.time.delayedCall(170, () => {
+        this.shopTransitioning = false;
+        this.beginNextPendingShopkeeperTransaction();
+      });
     }
   }
 
@@ -658,9 +664,8 @@ export class GameScene extends Phaser.Scene {
     else if (this.realEstateInterior && this.isWithinShopCounterRange()) this.hud.openRealEstatePanel();
     else if (this.shopInterior && this.isWithinShopCounterRange()) this.openShopPanel();
     else if (this.homeInterior && this.isNearHomeExit()) this.selectPendingInteraction('exit-home', new Phaser.Math.Vector2(HOME_EXIT.x, HOME_EXIT_DOOR_BOTTOM - 22));
-    else if (this.homeInterior && this.isNearStarterKit()) this.claimStarterKit();
     else if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
-      if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
+      if (!this.povoWelcomeGiftClaimed) this.showToast('Claim the welcome gift first.', 1500);
       else if (!this.getSelectedGrowingPot()) {
         const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);
         if (nearbyPot) this.selectGrowingPot(nearbyPot.id);
@@ -844,7 +849,7 @@ export class GameScene extends Phaser.Scene {
     this.toolHeld = false;
   }
 
-  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; basilHarvestSaleRecorded: boolean; basilDeliveryComplete: boolean; buySellGraphicsEra: 'atari-bw' | 'green-crt' | 'atari-colour'; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; basilHarvests: number; basilSeeds: number; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number>; additionalGrowingPotsAvailable: number; basicFertilizerCharges: number; starterKitClaimed: boolean; shopStock: ShopStockEntry[]; ownedPremiumPlants: PremiumPlantId[] } {
+  getShopPanelState(): { inventoryPot: PotCondition | null; inventoryItem: InventoryItem | null; saleComplete: boolean; basilHarvestSaleRecorded: boolean; basilDeliveryComplete: boolean; buySellGraphicsEra: 'atari-bw' | 'green-crt' | 'atari-colour'; windowJobAccepted: boolean; windowCleaningProgress: number; windowJobComplete: boolean; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number>; additionalGrowingPotsAvailable: number; basicFertilizerCharges: number; povoWelcomeGiftClaimed: boolean; shopStock: ShopStockEntry[]; ownedPremiumPlants: PremiumPlantId[] } {
     return {
       inventoryPot: this.inventoryPot,
       inventoryItem: this.progress.inventoryItem,
@@ -855,13 +860,11 @@ export class GameScene extends Phaser.Scene {
       windowJobAccepted: this.progress.windowJobAccepted,
       windowCleaningProgress: this.progress.windowCleaningProgress,
       windowJobComplete: this.progress.windowJobComplete,
-      basilHarvests: this.progress.basilHarvests,
-      basilSeeds: this.progress.basilSeeds,
       seedQuantities: { ...this.progress.seedQuantities },
       harvestQuantities: { ...this.progress.harvestQuantities },
       additionalGrowingPotsAvailable: Math.max(0, this.getActiveGrowingSpots().length - this.progress.growingPots.length),
       basicFertilizerCharges: this.progress.basicFertilizerCharges,
-      starterKitClaimed: this.starterKitClaimed,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
       shopStock: this.progress.shopStock.map((entry) => ({ ...entry, instanceIds: [...entry.instanceIds] })),
       ownedPremiumPlants: [...this.progress.ownedPremiumPlants],
     };
@@ -871,17 +874,15 @@ export class GameScene extends Phaser.Scene {
     return this.shopTransactionBusy;
   }
 
-  getBasilPanelState(): { starterKitClaimed: boolean; starterPotPlaced: boolean; stage: BasilStage; seeds: number; harvests: number; timeRemainingMs: number; wateringCanOwned: boolean; basilCycleCount: number; basicFertilizerCharges: number; selectedPotId: string | null; growingPots: GrowingPotState[]; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number> } {
+  getBasilPanelState(): { povoWelcomeGiftClaimed: boolean; slotState: GrowSlotState; stage: BasilStage; timeRemainingMs: number; wateringCanOwned: boolean; basicFertilizerCharges: number; selectedPotId: string | null; growingPots: GrowingPotState[]; seedQuantities: Record<PlantSpecies, number>; harvestQuantities: Record<PlantSpecies, number> } {
     const selected = this.getSelectedGrowingPot();
+    const selectedStage = selected?.crop ? this.getCropStage(selected) : 'empty';
     return {
-      starterKitClaimed: this.starterKitClaimed,
-      starterPotPlaced: this.progress.starterPotPlaced,
-      stage: selected?.crop ? this.getCropStage(selected) : 'empty',
-      seeds: this.progress.basilSeeds,
-      harvests: this.progress.basilHarvests,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
+      slotState: getGrowSlotState(selected, selectedStage === 'mature'),
+      stage: selectedStage,
       timeRemainingMs: selected ? this.getCropTimeRemaining(selected) : this.getBasilTimeRemaining(),
       wateringCanOwned: this.progress.wateringCanOwned,
-      basilCycleCount: this.progress.basilCycleCount,
       basicFertilizerCharges: this.progress.basicFertilizerCharges,
       seedQuantities: { ...this.progress.seedQuantities },
       harvestQuantities: { ...this.progress.harvestQuantities },
@@ -890,12 +891,12 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number; basilHarvestSaleRecorded: boolean; mintHarvestSaleRecorded: boolean; secondRentalMoveConfirmation: boolean; repairComplete: boolean; foundPotCount: number } {
+  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; povoWelcomeGiftClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number; basilHarvestSaleRecorded: boolean; mintHarvestSaleRecorded: boolean; secondRentalMoveConfirmation: boolean; repairComplete: boolean; foundPotCount: number } {
     return {
       coins: this.coins,
       rentalBondPaid: this.rentalBondPaid,
       rentalKeyOwned: this.rentalKeyOwned,
-      starterKitClaimed: this.starterKitClaimed,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
       activeProperty: this.activeProperty,
       rentalBondTotal: this.rentalBondTotal,
       basilHarvestSaleRecorded: this.progress.basilHarvestSaleRecorded,
@@ -908,18 +909,18 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  getRentalState(): { rentalBondPaid: boolean; rentalKeyOwned: boolean; starterKitClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number } {
+  getRentalState(): { rentalBondPaid: boolean; rentalKeyOwned: boolean; povoWelcomeGiftClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number } {
     return {
       rentalBondPaid: this.rentalBondPaid,
       rentalKeyOwned: this.rentalKeyOwned,
-      starterKitClaimed: this.starterKitClaimed,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
       activeProperty: this.activeProperty,
       rentalBondTotal: this.rentalBondTotal,
     };
   }
 
-  getRealEstateGraphicsEra(): 'atari-bw' | 'green-crt' {
-    return this.progress.buildings['real-estate'].graphicsEra === 'green-crt' ? 'green-crt' : 'atari-bw';
+  getRealEstateGraphicsEra(): 'atari-bw' | 'green-crt' | 'atari-colour' {
+    return this.progress.buildings['real-estate'].graphicsEra;
   }
 
   private syncHudState(): void {
@@ -938,7 +939,7 @@ export class GameScene extends Phaser.Scene {
       brokenPotPieceSelected: this.brokenPotPieceSelected,
       brokenPotPiecesOwned: this.progress.brokenPotPiecesOwned,
       canPlaceItem: this.itemPlacementMode && Boolean(this.placementTarget),
-      starterKitClaimed: this.starterKitClaimed,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
       rentalBondPaid: this.rentalBondPaid,
       rentalKeyOwned: this.rentalKeyOwned,
       activeProperty: this.activeProperty,
@@ -953,16 +954,14 @@ export class GameScene extends Phaser.Scene {
       foundPotCount: Number(this.progress.openingGoldenPothosCollected)
         + Number(this.progress.brokenPotOwned)
         + Number(this.progress.rareBegoniaCollected),
-      starterPotPlaced: this.progress.starterPotPlaced,
-      basilSeeds: this.progress.basilSeeds,
-      basilHarvests: this.progress.basilHarvests,
-      basilCycleCount: this.progress.basilCycleCount,
+      growingEvents: { ...this.progress.growingEvents },
       basicFertilizerCharges: this.progress.basicFertilizerCharges,
       seedQuantities: this.progress.seedQuantities,
       harvestQuantities: this.progress.harvestQuantities,
       growingPots: this.progress.growingPots,
       graphicsUpgradeInstalled: this.progress.graphicsUpgradeInstalled,
       alexGraphics: this.progress.alexGraphics,
+      interfaceTheme: this.progress.interfaceTheme,
       ownedPremiumPlants: this.progress.ownedPremiumPlants,
     });
   }
@@ -977,11 +976,27 @@ export class GameScene extends Phaser.Scene {
     this.hud.openPanel('settings');
   }
 
+  public setInterfaceTheme(theme: 'auto' | 'green-crt' | 'atari-bw'): void {
+    if (theme === 'atari-bw' && !this.progress.graphicsUpgradeInstalled) return;
+    this.progress.interfaceTheme = theme;
+    try { localStorage.setItem(this.displayPreferencesKey, JSON.stringify({ interfaceTheme: theme })); } catch { /* storage can be unavailable */ }
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.closePanel();
+    this.hud.openPanel('settings');
+  }
+
   private loadProgress(): void {
     let rentalKeyWasSaved = false;
     let buildingProgressWasSaved = false;
     let hadSavedProgress = false;
     try {
+      // Save schema v2 intentionally starts progression fresh. Preferences use
+      // separate keys and are not removed here.
+      localStorage.removeItem('indoor-jungle-progress-v1');
+      localStorage.removeItem('indoor-jungle-progress-dev-test-v1');
+      localStorage.removeItem('indoor-jungle-progress-v2');
+      localStorage.removeItem('indoor-jungle-progress-dev-test-v2');
       const raw = localStorage.getItem(this.getProgressStorageKey());
       const saved = raw ? JSON.parse(raw) as Partial<ProgressState> : null;
       hadSavedProgress = saved !== null;
@@ -991,6 +1006,13 @@ export class GameScene extends Phaser.Scene {
     } catch {
       this.progress = sanitizeProgress(DEFAULT_PROGRESS);
     }
+    try {
+      const preferences = JSON.parse(localStorage.getItem(this.displayPreferencesKey) ?? '{}') as { interfaceTheme?: unknown };
+      if (preferences.interfaceTheme === 'auto' || preferences.interfaceTheme === 'green-crt'
+        || (preferences.interfaceTheme === 'atari-bw' && this.progress.graphicsUpgradeInstalled)) {
+        this.progress.interfaceTheme = preferences.interfaceTheme;
+      }
+    } catch { /* malformed or unavailable preferences use the progression-safe default */ }
     this.devSessionMeta = this.testSaveMode ? this.readDevSessionMeta() : null;
     this.coins = this.progress.coins;
     this.inventoryPot = this.progress.inventoryPot;
@@ -1001,30 +1023,8 @@ export class GameScene extends Phaser.Scene {
     this.rentalKeyOwned = this.progress.rentalKeyOwned;
     this.activeProperty = this.progress.activeProperty;
     this.rentalBondTotal = this.progress.rentalBondTotal;
-    this.starterKitClaimed = this.progress.starterKitClaimed;
     if ((this.rentalBondPaid && !rentalKeyWasSaved) || (hadSavedProgress && !buildingProgressWasSaved)) this.saveProgress();
     this.updateSecondRentalObjective();
-    if (this.rentalBondPaid && this.starterKitClaimed && !this.progress.starterKitGranted) {
-      // The previous apartment pass persisted the claim flag before the
-      // repeatable kit contents existed. Migrate that valid old claim once.
-      this.grantStarterKitState();
-      this.saveProgress();
-    }
-    // Older saves predate the starter-kit fertiliser. Award it only while the
-    // first basil cycle has not begun, so a consumed charge cannot respawn.
-    if (this.progress.starterKitClaimed && this.progress.starterKitGranted
-      && this.progress.growingEvents.basil === 0 && this.progress.basicFertilizerCharges === 0) {
-      this.progress.basicFertilizerCharges = 1;
-      this.saveProgress();
-    }
-    // The starter kit now includes one mint seed as well as one basil seed.
-    // Migrate older claimed kits once, but do not respawn a mint seed after a
-    // player has already started a mint growing event.
-    if (this.progress.starterKitClaimed && this.progress.starterKitGranted
-      && this.progress.seedQuantities.mint === 0 && this.progress.growingEvents.mint === 0) {
-      this.progress.seedQuantities.mint = 1;
-      this.saveProgress();
-    }
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     // Older saves can retain the repair objective without the newer ground
     // item flag. Restore that item from the completed window-job state rather
@@ -1070,6 +1070,13 @@ export class GameScene extends Phaser.Scene {
 
   private continueNormalGame(): void {
     this.hud.hideStartScreen();
+    if (this.rentalBondPaid && !this.progress.propertyHandoversAcknowledged['starter-apartment']) {
+      this.time.delayedCall(0, () => this.presentPovoHandover());
+    }
+    if (this.progress.buySellRasterUpgradePending && this.progress.windowJobAccepted) {
+      this.enterShopNow();
+      return;
+    }
     if (this.progress.openingComplete) {
       this.startHousingThoughtReminder();
       this.presentGraphicsUpgradeIfNeeded();
@@ -1092,7 +1099,6 @@ export class GameScene extends Phaser.Scene {
     this.activeProperty = 'none';
     this.rentalBondTotal = 0;
     this.secondRentalMoveConfirmation = false;
-    this.starterKitClaimed = false;
     this.clearItemPlacement();
     this.cancelTapWalk();
     this.hud.resetHeldInputs();
@@ -1295,7 +1301,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private saveProgress(): void {
-    syncProgressLegacyMirrors(this.progress);
     this.progress.coins = this.coins;
     this.progress.inventoryPot = this.inventoryPot;
     const carriedItem = this.inventoryPot
@@ -1312,7 +1317,6 @@ export class GameScene extends Phaser.Scene {
     this.progress.rentalKeyOwned = this.rentalKeyOwned;
     this.progress.activeProperty = this.activeProperty;
     this.progress.rentalBondTotal = this.rentalBondTotal;
-    this.progress.starterKitClaimed = this.starterKitClaimed;
     this.progress.brokenPotOwned = this.inventoryPot === 'broken' || this.progress.brokenPotOwned;
     try { localStorage.setItem(this.getProgressStorageKey(), JSON.stringify(this.progress)); } catch { /* private browsing may deny storage */ }
     if (this.testSaveMode && this.player) this.writeDevSessionMeta({
@@ -1324,7 +1328,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateSecondRentalObjective(): void {
-    if (this.activeProperty !== 'starter-apartment' || !this.starterKitClaimed) return;
+    if (this.activeProperty !== 'starter-apartment' || !this.povoWelcomeGiftClaimed) return;
     if (this.progress.basilHarvestSaleRecorded && this.progress.mintHarvestSaleRecorded
       && this.progress.growingEvents.basil > 0 && this.progress.growingEvents.mint > 0
       && this.progress.task === 'buy-seeds') this.progress.task = 'move-rental';
@@ -1357,6 +1361,13 @@ export class GameScene extends Phaser.Scene {
     this.updateInteraction();
     this.startHousingThoughtReminder();
     this.presentGraphicsUpgradeIfNeeded();
+    if (snapshot.id === 'apartment-rented') this.time.delayedCall(0, () => this.presentPovoHandover());
+    if (snapshot.queuedPresentationCount) {
+      this.queueShopkeeperTransaction('fresh-basil-leaves', 1, 'sell', this.getShopItemShelfPosition('fresh-basil-leaves'), 'Basil sale presentation complete.');
+      if (snapshot.queuedPresentationCount > 1) this.queueShopkeeperTransaction('mint-seeds', 1, 'buy', new Phaser.Math.Vector2(695, 557), 'Mint seed-pack presentation complete.');
+    }
+    if (snapshot.shopPanelOpen) this.time.delayedCall(0, () => this.hud.openPanel('shop'));
+    if (snapshot.showMintThought) this.time.delayedCall(0, () => this.showThought('I should let the mint grow', true));
   }
 
   public resetDevTestSave(): void {
@@ -1412,11 +1423,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyProgressState(progress: ProgressState): void {
-    this.buySellUpgradeTimer?.remove(false);
-    this.buySellUpgradeTimer = undefined;
     this.buySellUpgradeAnimating = false;
-    this.buySellUpgradeNotification?.destroy();
-    this.buySellUpgradeNotification = undefined;
     this.graphicsUpgradePromptDelay?.remove(false);
     this.graphicsUpgradePromptDelay = undefined;
     this.progress = sanitizeProgress(progress);
@@ -1430,7 +1437,6 @@ export class GameScene extends Phaser.Scene {
     this.activeProperty = this.progress.activeProperty;
     this.rentalBondTotal = this.progress.rentalBondTotal;
     this.secondRentalMoveConfirmation = false;
-    this.starterKitClaimed = this.progress.starterKitClaimed;
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     this.lastSavedCleaningStage = Math.floor(this.progress.windowCleaningProgress);
     this.basilStageCache = this.getBasilStage();
@@ -1440,11 +1446,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearSceneForDevLoad(): void {
-    this.buySellUpgradeTimer?.remove(false);
-    this.buySellUpgradeTimer = undefined;
     this.buySellUpgradeAnimating = false;
-    this.buySellUpgradeNotification?.destroy();
-    this.buySellUpgradeNotification = undefined;
     this.openingSequenceActive = false;
     this.openingZoomDemoActive = false;
     this.openingZoomDemoTimer?.remove(false);
@@ -1485,7 +1487,7 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.forEach((object) => object.destroy());
     this.shopObjects = [];
     this.homeObjects = [];
-    this.homeStarterKitObjects = [];
+    this.homeWelcomeGiftObjects = [];
     this.shopGoldenPothosDisplay = [];
     this.shopPremiumPlantDisplay = [];
     this.shopInterior = false;
@@ -1496,7 +1498,7 @@ export class GameScene extends Phaser.Scene {
     this.growingPotDisplays.clear();
     this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
-    if (this.buySellDoor) setBuySellDoorOpen(this.buySellDoor, false, this.progress.buildings['buy-sell'].graphicsEra === 'atari-colour' ? 'green-crt' : this.progress.buildings['buy-sell'].graphicsEra);
+    if (this.buySellDoor) setBuySellDoorOpen(this.buySellDoor, false, this.progress.buildings['buy-sell'].graphicsEra);
     if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false);
     if (this.realEstateDoor) setRealEstateDoorOpen(this.realEstateDoor, false, this.progress.buildings['real-estate'].graphicsEra);
     this.player.setAlpha(1).setVisible(true);
@@ -1570,16 +1572,25 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private grantStarterKitState(): void {
-    this.progress.starterKitGranted = true;
-    this.progress.seedQuantities.basil = Math.max(1, this.progress.seedQuantities.basil);
-    this.progress.seedQuantities.mint = Math.max(1, this.progress.seedQuantities.mint);
-    this.progress.basicFertilizerCharges = Math.max(1, this.progress.basicFertilizerCharges);
-    this.progress.wateringCanOwned = true;
-    if (!this.progress.growingPots.some((pot) => pot.id === STARTER_GROWING_POT_ID)) {
-      this.progress.growingPots.push(createEmptyGrowingPot(STARTER_GROWING_POT_ID));
+  private grantPropertyWelcomeGift(propertyId: PropertyId): boolean {
+    const definition = getPropertyWelcomeGift(propertyId);
+    const ownsProperty = this.rentalBondPaid && (this.activeProperty === propertyId
+      || propertyId === 'starter-apartment' && this.activeProperty === 'second-rental');
+    if (!definition || !ownsProperty || this.progress.welcomeGiftsClaimed[propertyId]) return false;
+    for (const content of definition.contents) {
+      if (content.item === 'small-basic-plastic-pot') {
+        if (!this.progress.growingPots.some((pot) => pot.id === STARTER_GROWING_POT_ID)) {
+          this.progress.growingPots.push(createEmptyGrowingPot(STARTER_GROWING_POT_ID));
+        }
+      } else if (content.item === 'watering-can') {
+        this.progress.wateringCanOwned = true;
+        this.assignToolToSlot('watering-can');
+      } else if (content.item === 'basil-seeds') this.progress.seedQuantities.basil += content.quantity;
+      else if (content.item === 'mint-seeds') this.progress.seedQuantities.mint += content.quantity;
+      else if (content.item === 'basic-fertilizer') this.progress.basicFertilizerCharges += content.quantity;
     }
-    this.assignToolToSlot('watering-can');
+    this.progress.welcomeGiftsClaimed[propertyId] = true;
+    return true;
   }
 
   private assignToolToSlot(tool: Exclude<EquippedTool, null>): void {
@@ -1593,11 +1604,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateProgressVisuals(): void {
-    if (this.pot) this.pot.setVisible(!this.progress.openingGoldenPothosCollected && !this.inventoryHasPot && !this.progress.placedWorldItem);
+    if (this.pot) this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
     if (this.rareBegonia) {
       this.rareBegonia.clear();
       drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.graphicsUpgradeInstalled);
-      this.rareBegonia.setVisible(this.progress.graphicsUpgradeInstalled && !this.progress.rareBegoniaCollected);
+      this.rareBegonia.setVisible(!this.progress.rareBegoniaCollected);
     }
     // The broken pieces remain visible even while the opening pot is still in
     // the Bag. Selling is no longer the next required objective, so hiding
@@ -2094,11 +2105,12 @@ export class GameScene extends Phaser.Scene {
     if (!this.graphicsUpgradePresentationActive || this.progress.graphicsUpgradeStage !== 'installing') return;
     this.progress.graphicsUpgradeInstalled = true;
     this.progress.graphicsUpgradeStage = 'acknowledgement';
-    if (this.progress.buildings['buy-sell'].graphicsEra === 'green-crt') {
-      this.progress.buildings['buy-sell'].graphicsEra = 'atari-colour';
+    this.progress.buildings['buy-sell'].graphicsEra = 'atari-colour';
+    this.progress.buildings['real-estate'].graphicsEra = 'atari-colour';
+    if (this.progress.buildings.nursery.operationalState !== 'operational') {
+      this.progress.buildings.nursery = { operationalState: 'under-construction', graphicsEra: 'green-crt' };
     }
-    this.progress.buildings['real-estate'].graphicsEra = 'green-crt';
-    this.progress.alexGraphics = 'green-screen';
+    this.progress.alexGraphics = 'atari-bw';
     this.saveProgress();
     this.applyInstalledGraphics();
     this.hud.updateGraphicsInstallation(1, true);
@@ -2223,12 +2235,8 @@ export class GameScene extends Phaser.Scene {
       this.exitHome();
       return;
     }
-    if (this.homeInterior && this.isNearStarterKit()) {
-      this.claimStarterKit();
-      return;
-    }
     if (this.homeInterior && this.isNearGrowingSpotPlayer()) {
-      if (!this.starterKitClaimed) this.showToast('Claim the starter kit first.', 1500);
+      if (!this.povoWelcomeGiftClaimed) this.showToast('Claim the welcome gift first.', 1500);
       else if (!this.getSelectedGrowingPot()) {
         const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);
         if (nearbyPot) this.selectGrowingPot(nearbyPot.id);
@@ -2485,6 +2493,7 @@ export class GameScene extends Phaser.Scene {
   acceptWindowJob(): void {
     if (!this.shopInterior || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
+    this.progress.buySellRasterUpgradePending = this.progress.buildings['buy-sell'].graphicsEra === 'green-crt';
     this.progress.windowCleaningProgress = 0;
     this.progress.windowCleaningSections = Object.fromEntries(
       HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0]),
@@ -2535,22 +2544,36 @@ export class GameScene extends Phaser.Scene {
     this.rentalKeyOwned = true;
     this.activeProperty = 'starter-apartment';
     this.rentalBondTotal = RENTAL_BOND_COST;
-    this.starterKitClaimed = false;
     this.progress.rentalBondPaid = true;
     this.progress.rentalKeyOwned = true;
     this.progress.activeProperty = this.activeProperty;
     this.progress.rentalBondTotal = this.rentalBondTotal;
-    this.progress.starterKitClaimed = false;
+    this.progress.propertyHandoversAcknowledged['starter-apartment'] = false;
+    this.grantPropertyWelcomeGift('starter-apartment');
     this.progress.task = 'place-pot';
     this.updateApartmentRentalSign();
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshPropertyPanel('Bond paid. Your rental and starter kit are unlocked.');
+    this.hud.refreshPropertyPanel('Bond paid. Your POVO room key and Welcome Gift are ready.');
     this.hud.highlightBag();
     this.toastTimer?.remove(false);
     this.toastTimer = undefined;
-    this.hud.showDismissibleToast('RENTAL COMPLETE. Received apartment key ⚿. The key is in your Bag. Your starter apartment is unlocked; enter it to claim the starter kit.');
+    this.time.delayedCall(0, () => this.presentPovoHandover());
     return true;
+  }
+
+  private presentPovoHandover(): void {
+    if (!this.rentalBondPaid || !this.rentalKeyOwned || !this.povoWelcomeGiftClaimed
+      || this.progress.propertyHandoversAcknowledged['starter-apartment']) return;
+    const message = getPropertyWelcomeGift('starter-apartment')?.message
+      ?? "Here’s your room key to POVO Apartments.\nWe left a welcome gift for you.";
+    this.setModalOpen(true);
+    this.hud.showPropertyHandover(message, () => {
+      this.progress.propertyHandoversAcknowledged['starter-apartment'] = true;
+      this.saveProgress();
+      this.setModalOpen(false);
+      this.syncHudState();
+    });
   }
 
   reviewSecondRentalMove(): void {
@@ -2620,7 +2643,6 @@ export class GameScene extends Phaser.Scene {
   private setBuySellArtwork(artwork: BuySellArtwork | undefined): void {
     this.buySellDoor = artwork?.door;
     this.buySellArtworkObjects = artwork ? [...artwork.objects] : [];
-    this.buySellPulseLayers = artwork ? [...artwork.pulseLayers] : [];
   }
 
   private rebuildBuySellArtwork(): void {
@@ -2642,61 +2664,11 @@ export class GameScene extends Phaser.Scene {
     this.setObjectsVisible(artwork.objects, !this.shopInterior && !this.homeInterior);
   }
 
-  private scheduleBuySellUpgradeAfterPothosPickup(pickupMessageDuration: number): void {
-    if (this.buySellUpgradeAnimating || this.buySellUpgradeTimer) return;
-    this.buySellUpgradeAnimating = true;
-    this.buySellUpgradeTimer = this.time.delayedCall(pickupMessageDuration, () => {
-      this.buySellUpgradeTimer = undefined;
-      const targets = this.buySellPulseLayers.filter((object) => object.active);
-      if (targets.length === 0) {
-        this.finishBuySellUpgradePresentation();
-        return;
-      }
-      this.tweens.add({
-        targets,
-        alpha: 0.18,
-        duration: 150,
-        yoyo: true,
-        repeat: 2,
-        ease: 'Stepped',
-        onComplete: () => this.finishBuySellUpgradePresentation(),
-      });
-    });
-  }
-
-  private finishBuySellUpgradePresentation(): void {
-    this.buySellPulseLayers.forEach((object) => {
-      const displayObject = object as Phaser.GameObjects.GameObject & { setAlpha?: (value: number) => void };
-      displayObject.setAlpha?.(1);
-    });
-    this.rebuildBuySellArtwork();
-    const view = this.cameras.main.worldView;
-    this.buySellUpgradeNotification?.destroy();
-    this.buySellUpgradeNotification = this.add.text(view.centerX, view.top + 48 / this.cameras.main.zoom, `${BUY_SELL_SIGN_NAME} UPGRADED`, {
-      color: '#f6f7f3',
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      fontStyle: 'bold',
-      backgroundColor: '#111416',
-      padding: { left: 8, right: 8, top: 5, bottom: 5 },
-    }).setOrigin(0.5, 0).setDepth(40);
-    this.streetObjects.push(this.buySellUpgradeNotification);
-    this.time.delayedCall(1900, () => {
-      const notification = this.buySellUpgradeNotification;
-      if (notification) {
-        notification.destroy();
-        this.streetObjects = this.streetObjects.filter((object) => object !== notification);
-      }
-      this.buySellUpgradeNotification = undefined;
-      this.buySellUpgradeAnimating = false;
-    });
-  }
-
   private rebuildStreetArtwork(): void {
     const oldArtwork = new Set(this.streetArtworkObjects);
     this.streetArtworkObjects.forEach((object) => object.destroy());
     const before = new Set(this.children.list);
-    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery);
+    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery, this.progress.buildings['real-estate'].graphicsEra);
     this.setBuySellArtwork(buySellArtwork);
     this.starterApartmentDoor = drawStarterApartmentDoor(this);
     this.realEstateDoor = drawRealEstateDoor(this, this.progress.buildings['real-estate'].graphicsEra);
@@ -2706,23 +2678,6 @@ export class GameScene extends Phaser.Scene {
     this.streetObjects.push(...added);
     this.refreshWantedSign();
     this.updateProgressVisuals();
-  }
-
-  private claimStarterKit(): void {
-    if (!this.rentalBondPaid || this.starterKitClaimed) {
-      if (this.starterKitClaimed) this.showToast('Starter kit already claimed. Place the pot on the grow table.', 1900);
-      return;
-    }
-    this.starterKitClaimed = true;
-    this.progress.starterKitClaimed = true;
-    this.grantStarterKitState();
-    this.progress.task = 'place-pot';
-    this.saveProgress();
-    this.toastTimer?.remove(false);
-    this.toastTimer = undefined;
-    this.hud.showStarterKitClaimed();
-    this.drawHomeInteriorKit();
-    this.syncHudState();
   }
 
   plantBasil(): void { this.plantSelectedCrop('basil'); }
@@ -2931,6 +2886,7 @@ export class GameScene extends Phaser.Scene {
       this.progress.task = PLANT_TASKS[pot.crop.species].grow;
       const growthSeconds = Math.round(getPlantDefinition(pot.crop.species).growthDurationMs / 1000);
       this.showToast(`${getPlantDefinition(pot.crop.species).label} watered. It will mature in about ${growthSeconds} seconds.`, 2200);
+      if (pot.crop.species === 'mint' && !this.progress.mintLowSuppliesAcknowledged) this.showThought('I should let the mint grow', true);
     } else if (action.type === 'fertilize' && pot.crop) {
       const definition = getPlantDefinition(pot.crop.species);
       this.progress.basicFertilizerCharges -= 1;
@@ -2945,8 +2901,10 @@ export class GameScene extends Phaser.Scene {
       const species = pot.crop.species;
       const definition = getPlantDefinition(species);
       if (definition.yieldMode === 'whole-plant') {
+        this.destroyGrowingPotDisplay(pot.id);
         this.progress.growingPots = this.progress.growingPots.filter((candidate) => candidate.id !== pot.id);
         this.selectedGrowingPotId = null;
+        this.selectedGrowingSpotIndex = null;
       } else {
         pot.crop = null;
       }
@@ -3034,6 +2992,7 @@ export class GameScene extends Phaser.Scene {
     const total = definition.harvestPrice * amount;
     this.progress.harvestQuantities[species] -= amount;
     this.coins += total;
+    this.progress.coins = this.coins;
     if (species === 'basil') this.progress.basilHarvestSaleRecorded = true;
     if (species === 'mint') this.progress.mintHarvestSaleRecorded = true;
     this.progress.task = 'buy-seeds';
@@ -3073,29 +3032,31 @@ export class GameScene extends Phaser.Scene {
   buyBasilSeed(quantity = 1): void { this.buyPlantSeed('basil', quantity); }
 
   buyPlantSeed(species: PlantSpecies, quantity = 1): void {
-    if (!this.shopInterior || this.shopTransactionBusy || !this.starterKitClaimed) return;
+    if (!this.shopInterior || this.shopTransactionBusy || !this.povoWelcomeGiftClaimed) return;
     const definition = getPlantDefinition(species);
-    const amount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
-    if (!amount) return;
+    const packCount = this.normalizeTransactionQuantity(quantity, Number.MAX_SAFE_INTEGER);
+    if (!packCount) return;
+    const amount = definition.seedPackQuantity * packCount;
     const total = definition.seedPrice * amount;
     if (this.coins < total) {
       const shortfall = total - this.coins;
-      this.hud.refreshShopPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${amount} seed${amount === 1 ? '' : 's'}.`);
+      this.hud.refreshShopPanel(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${packCount} ${definition.label} seed pack${packCount === 1 ? '' : 's'}.`);
       this.showToast(`You need ${shortfall} more coin${shortfall === 1 ? '' : 's'} for ${definition.label.toLowerCase()} seeds.`, 1600);
       return;
     }
     this.coins -= total;
+    this.progress.coins = this.coins;
     this.progress.seedQuantities[species] += amount;
     this.progress.task = PLANT_TASKS[species].plant;
     this.saveProgress();
     this.syncHudState();
-    this.hud.refreshShopPanel(`${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} added to the Bag.`);
-    this.startShopkeeperTransaction(definition.seedItem, amount, 'buy', new Phaser.Math.Vector2(695, 557), `Bought ${amount} ${definition.label.toLowerCase()} seed${amount === 1 ? '' : 's'} for ${total} coins.`);
+    this.hud.refreshShopPanel(`${definition.label} seed pack added: ${amount} seeds.`);
+    this.startShopkeeperTransaction(definition.seedItem, packCount, 'buy', new Phaser.Math.Vector2(695, 557), `Bought ${packCount} ${definition.label.toLowerCase()} seed pack${packCount === 1 ? '' : 's'} (${amount} seeds) for ${total} coins.`);
   }
 
   buyBasicFertilizerBox(): void {
-    if (!this.shopInterior || this.shopTransactionBusy || !this.starterKitClaimed) {
-      if (this.shopInterior) this.hud.refreshShopPanel('Claim the starter kit before buying growing supplies.');
+    if (!this.shopInterior || this.shopTransactionBusy || !this.povoWelcomeGiftClaimed) {
+      if (this.shopInterior) this.hud.refreshShopPanel('Claim the welcome gift before buying growing supplies.');
       return;
     }
     if (this.coins < BASIC_FERTILIZER_BOX_PRICE) {
@@ -3119,8 +3080,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   buyAdditionalGrowingPot(quantity = 1): void {
-    if (!this.shopInterior || this.shopTransactionBusy || !this.starterKitClaimed) {
-      if (this.shopInterior) this.hud.refreshShopPanel('Claim the starter kit before buying additional growing pots.');
+    if (!this.shopInterior || this.shopTransactionBusy || !this.povoWelcomeGiftClaimed) {
+      if (this.shopInterior) this.hud.refreshShopPanel('Claim the welcome gift before buying additional growing pots.');
       return;
     }
     const amount = this.normalizeTransactionQuantity(quantity, Math.max(0, this.getActiveGrowingSpots().length - this.progress.growingPots.length));
@@ -3242,11 +3203,20 @@ export class GameScene extends Phaser.Scene {
       if (!display || pot.slot === null) { display?.setVisible(false); continue; }
       const spot = growingSpots[pot.slot];
       if (!spot) { display.setVisible(false); continue; }
-      display.setPosition(spot.x, spot.y).clear().setVisible(this.starterKitClaimed);
+      display.setPosition(spot.x, spot.y).clear().setVisible(this.povoWelcomeGiftClaimed);
       const stage = this.getCropStage(pot);
       drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9, this.progress.graphicsUpgradeInstalled);
       display.setAlpha(this.selectedGrowingPotId === pot.id ? 1 : 0.94);
     }
+  }
+
+  private destroyGrowingPotDisplay(potId: string): void {
+    const display = this.growingPotDisplays.get(potId);
+    if (!display) return;
+    if (this.basilPot === display) this.basilPot = undefined;
+    this.homeObjects = this.homeObjects.filter((object) => object !== display);
+    display.destroy();
+    this.growingPotDisplays.delete(potId);
   }
 
   private isNearGrowingSpot(point: Phaser.Math.Vector2): boolean { return this.getGrowingSpotIndexAtPoint(point) !== null; }
@@ -3291,7 +3261,7 @@ export class GameScene extends Phaser.Scene {
   private placeStarterPot(): void { this.placeSelectedGrowingPot(); }
 
   private prepareGrowingSlotPlacement(): void {
-    if (!this.homeInterior || !this.starterKitClaimed) return;
+    if (!this.homeInterior || !this.povoWelcomeGiftClaimed) return;
     const index = this.selectedGrowingSpotIndex;
     if (index === null) {
       this.showToast('Select an empty grow-table square first.', 1700);
@@ -3314,7 +3284,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   public placeSelectedGrowingPot(): void {
-    if (!this.homeInterior || !this.starterKitClaimed) return;
+    if (!this.homeInterior || !this.povoWelcomeGiftClaimed) return;
     if (!this.growingSlotReadyToPlace) {
       this.showToast('Tap an empty grow-table square first.', 1700);
       return;
@@ -3368,7 +3338,6 @@ export class GameScene extends Phaser.Scene {
     this.activeProperty = 'none';
     this.rentalBondTotal = 0;
     this.secondRentalMoveConfirmation = false;
-    this.starterKitClaimed = false;
     this.progress.openingComplete = false;
     this.housingThoughtElapsedMs = 0;
     this.thoughtBubble?.setVisible(false);
@@ -3429,7 +3398,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '16px',
       fontStyle: 'bold',
       align: 'center',
-      wordWrap: { width: 208, useAdvancedWrap: true },
+      wordWrap: { width: 132, useAdvancedWrap: true },
     }).setOrigin(0.5);
     this.thoughtBubble = this.add.container(this.player.x, this.player.y - 104, [this.thoughtBubbleBackdrop, this.thoughtBubbleText])
       .setDepth(40)
@@ -3440,18 +3409,39 @@ export class GameScene extends Phaser.Scene {
     if (!this.thoughtBubble || !this.thoughtBubbleBackdrop || !this.thoughtBubbleText) return;
     this.thoughtBubbleText.setFontSize(fontSize);
     this.thoughtBubbleText.setText(text);
-    const width = 236;
+    const greenScreen = this.progress.alexGraphics === 'green-screen';
+    const background = greenScreen ? 0x030805 : 0xf6f7f3;
+    const outline = greenScreen ? 0x39ff5a : 0x111416;
+    this.thoughtBubbleText.setColor(greenScreen ? '#b9ffbf' : '#111416');
+    const width = 164;
     const height = Math.max(58, this.thoughtBubbleText.height + 24);
     this.thoughtBubbleBackdrop.clear();
-    this.thoughtBubbleBackdrop.fillStyle(0xf6f7f3, 0.98).fillRoundedRect(-width / 2, -height / 2, width, height, 8);
-    this.thoughtBubbleBackdrop.lineStyle(3, 0x111416, 1).strokeRoundedRect(-width / 2, -height / 2, width, height, 8);
-    this.thoughtBubbleBackdrop.fillStyle(0xf6f7f3, 0.98).fillTriangle(-12, height / 2 - 2, 12, height / 2 - 2, 0, height / 2 + 16);
-    this.thoughtBubbleBackdrop.lineStyle(3, 0x111416, 1).lineBetween(-12, height / 2 - 2, 0, height / 2 + 16).lineBetween(0, height / 2 + 16, 12, height / 2 - 2);
+    this.thoughtBubbleBackdrop.fillStyle(background, 0.98).fillRoundedRect(-width / 2, -height / 2, width, height, 8);
+    this.thoughtBubbleBackdrop.lineStyle(2, outline, 1).strokeRoundedRect(-width / 2, -height / 2, width, height, 8);
+    this.thoughtBubbleBackdrop.fillStyle(background, 0.98).fillTriangle(-12, height / 2 - 2, 12, height / 2 - 2, 0, height / 2 + 16);
+    this.thoughtBubbleBackdrop.lineStyle(2, outline, 1).lineBetween(-12, height / 2 - 2, 0, height / 2 + 16).lineBetween(0, height / 2 + 16, 12, height / 2 - 2);
     this.thoughtBubbleText.setPosition(0, 0);
     this.thoughtBubbleIsAutomatic = automatic;
     this.thoughtBubbleRemainingMs = 3000;
     this.thoughtBubble.setVisible(true);
     this.updateThoughtBubblePosition();
+    if (text === 'I should let the mint grow' && !this.progress.mintLowSuppliesAcknowledged && !this.mintLowSuppliesTimer) {
+      this.mintLowSuppliesTimer = this.time.delayedCall(3050, () => {
+        this.mintLowSuppliesTimer = undefined;
+        this.presentMintLowSuppliesPopup();
+      });
+    }
+  }
+
+  private presentMintLowSuppliesPopup(): void {
+    if (this.progress.mintLowSuppliesAcknowledged) return;
+    this.setModalOpen(true);
+    this.hud.showAcknowledgement("I’m low on supplies, gotta get to the Buy’nSell.", () => {
+      this.progress.mintLowSuppliesAcknowledged = true;
+      this.saveProgress();
+      this.setModalOpen(false);
+      this.syncHudState();
+    });
   }
 
   private updateThoughtBubblePosition(): void {
@@ -3493,7 +3483,7 @@ export class GameScene extends Phaser.Scene {
 
   private getCurrentThought(): string {
     if (!this.rentalBondPaid) return 'I need a place to live';
-    if (!this.starterKitClaimed) return 'I should claim the starter kit';
+    if (!this.povoWelcomeGiftClaimed) return 'I should claim the welcome gift';
     const thoughts: Partial<Record<TaskState, string>> = {
       'place-pot': 'I need to place a pot on the grow table',
       'plant-basil': 'I should plant a seed',
@@ -3524,33 +3514,40 @@ export class GameScene extends Phaser.Scene {
   private drawPlayer(): void {
     this.player.clear();
     const lift = this.hopVisualOffset;
-    const greenScreen = this.progress.alexGraphics === 'green-screen' && this.progress.graphicsUpgradeInstalled;
-    const robotLight = greenScreen ? 0xb8d98c : 0xf5f6f2;
-    const robotInk = greenScreen ? 0x19331b : 0x111416;
+    const greenScreen = this.progress.alexGraphics === 'green-screen';
+    const robotLight = greenScreen ? 0x050b06 : 0xf5f6f2;
+    const robotInk = greenScreen ? 0x39ff5a : 0x111416;
+    const robotDetail = greenScreen ? 0x16752a : 0x697173;
+    const robotEye = greenScreen ? 0xb9ffbf : robotInk;
     this.player.fillStyle(0x111416, 0.65).fillEllipse(0, 32, 30, 8);
     const sideFacing = this.playerFacing === 'left' || this.playerFacing === 'right';
     const bodyX = sideFacing ? -11 : -14;
     const bodyWidth = sideFacing ? 22 : 28;
     this.player.fillStyle(robotLight, 1).fillRect(bodyX, -43 - lift, bodyWidth, 56);
-    this.player.lineStyle(3, robotInk, 1).strokeRect(bodyX, -43 - lift, bodyWidth, 56);
+    this.player.lineStyle(2, robotInk, 1).strokeRect(bodyX, -43 - lift, bodyWidth, 56);
 
     if (this.playerFacing === 'front') {
-      this.player.fillStyle(robotInk, 1).fillRect(-8, -31 - lift, 5, 6).fillRect(3, -31 - lift, 5, 6);
-      this.player.lineStyle(3, robotInk, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
+      this.player.fillStyle(robotEye, 1).fillRect(-8, -31 - lift, 5, 6).fillRect(3, -31 - lift, 5, 6);
+      this.player.lineStyle(2, greenScreen ? robotDetail : robotInk, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
     } else if (this.playerFacing === 'back') {
-      this.player.fillStyle(greenScreen ? 0x53734a : 0x3b4244, 1).fillRect(-8, -32 - lift, 16, 9);
-      this.player.lineStyle(2, greenScreen ? 0x8fbf76 : 0x697173, 1).lineBetween(-4, -28 - lift, 4, -28 - lift);
-      this.player.lineStyle(3, robotInk, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
+      this.player.fillStyle(greenScreen ? 0x0b1c0e : 0x3b4244, 1).fillRect(-8, -32 - lift, 16, 9);
+      this.player.lineStyle(2, robotDetail, 1).lineBetween(-4, -28 - lift, 4, -28 - lift);
+      this.player.lineStyle(2, greenScreen ? robotDetail : robotInk, 1).lineBetween(0, 14 - lift, 0, 29 - lift);
     } else {
       const eyeX = this.playerFacing === 'left' ? -8 : 3;
-      this.player.fillStyle(robotInk, 1).fillRect(eyeX, -31 - lift, 5, 6);
-      this.player.lineStyle(2, 0x697173, 1).lineBetween(0, -20 - lift, 0, 9 - lift);
+      this.player.fillStyle(robotEye, 1).fillRect(eyeX, -31 - lift, 5, 6);
+      this.player.lineStyle(2, robotDetail, 1).lineBetween(0, -20 - lift, 0, 9 - lift);
     }
     this.player.fillStyle(robotLight, 1).fillRect(-13, 13 - lift, 10, 18).fillRect(3, 13 - lift, 10, 18);
+    if (greenScreen) {
+      this.player.lineStyle(2, robotInk, 1).strokeRect(-13, 13 - lift, 10, 18).strokeRect(3, 13 - lift, 10, 18);
+    } else {
+      this.player.lineStyle(2, robotInk, 1).strokeRect(-13, 13 - lift, 10, 18).strokeRect(3, 13 - lift, 10, 18);
+    }
     this.drawPlayerToolAttachment(lift);
-    // The upgraded Green screen style is intentionally only a modest visual
-    // step up from Atari B&W; world position and collision remain unchanged.
-    this.player.setScale(greenScreen ? 1.08 : 1);
+    // The module package enlarges only the rendering. World position,
+    // collision, movement speed and interaction geometry remain unchanged.
+    this.player.setScale(this.progress.graphicsUpgradeInstalled ? 1.25 : 1);
   }
 
   private drawPlayerToolAttachment(lift: number): void {
@@ -3560,34 +3557,38 @@ export class GameScene extends Phaser.Scene {
     const handY = -4 - lift;
     const reach = action ? 5 + Math.sin(Math.min(1, this.gardeningActionElapsed / this.gardeningActionDuration) * Math.PI) * 8 : 0;
     const toolX = handX + sideSign * reach;
+    const greenScreen = this.progress.alexGraphics === 'green-screen';
+    const toolEdge = greenScreen ? 0x39ff5a : 0xf6f7f3;
+    const toolDark = greenScreen ? 0x050b06 : 0x111416;
+    const toolMid = greenScreen ? 0x123d1b : 0xbfc5c3;
 
     if (action?.type === 'plant') {
-      this.player.fillStyle(0xf6f7f3, 1).fillRect(toolX - 9, handY - 9, 18, 13);
-      this.player.lineStyle(2, 0x111416, 1).strokeRect(toolX - 9, handY - 9, 18, 13);
-      this.player.fillStyle(0x111416, 1).fillRect(toolX - 5, handY - 3, 10, 2);
+      this.player.fillStyle(greenScreen ? toolDark : toolEdge, 1).fillRect(toolX - 9, handY - 9, 18, 13);
+      this.player.lineStyle(2, greenScreen ? toolEdge : toolDark, 1).strokeRect(toolX - 9, handY - 9, 18, 13);
+      this.player.fillStyle(greenScreen ? toolMid : toolDark, 1).fillRect(toolX - 5, handY - 3, 10, 2);
       return;
     }
     if (action?.type === 'fertilize') {
-      this.player.fillStyle(0x111416, 1).fillRect(toolX - 8, handY - 10, 16, 14);
-      this.player.lineStyle(2, 0xf6f7f3, 1).strokeRect(toolX - 8, handY - 10, 16, 14);
-      this.player.lineStyle(2, 0xf6f7f3, 1).lineBetween(toolX - 4, handY - 6, toolX + 4, handY - 6);
+      this.player.fillStyle(toolDark, 1).fillRect(toolX - 8, handY - 10, 16, 14);
+      this.player.lineStyle(2, toolEdge, 1).strokeRect(toolX - 8, handY - 10, 16, 14);
+      this.player.lineStyle(2, toolEdge, 1).lineBetween(toolX - 4, handY - 6, toolX + 4, handY - 6);
       return;
     }
     if (action?.type === 'harvest') {
-      this.player.lineStyle(3, 0xf6f7f3, 1).lineBetween(handX, handY, toolX + sideSign * 12, handY - 8);
+      this.player.lineStyle(3, toolEdge, 1).lineBetween(handX, handY, toolX + sideSign * 12, handY - 8);
       return;
     }
     if (this.progress.equippedTool === 'watering-can') {
-      this.player.fillStyle(0xbfc5c3, 1).fillRect(toolX - 7, handY - 9, 13, 15);
-      this.player.lineStyle(2, 0x111416, 1).strokeRect(toolX - 7, handY - 9, 13, 15);
-      this.player.lineStyle(2, 0xf6f7f3, 1).lineBetween(toolX + sideSign * 5, handY - 5, toolX + sideSign * 13, handY - 12);
+      this.player.fillStyle(toolMid, 1).fillRect(toolX - 7, handY - 9, 13, 15);
+      this.player.lineStyle(2, greenScreen ? toolEdge : toolDark, 1).strokeRect(toolX - 7, handY - 9, 13, 15);
+      this.player.lineStyle(2, toolEdge, 1).lineBetween(toolX + sideSign * 5, handY - 5, toolX + sideSign * 13, handY - 12);
     } else if (this.progress.equippedTool === 'cleaner') {
-      this.player.lineStyle(3, 0xf6f7f3, 1).lineBetween(handX, handY, toolX + sideSign * 15, handY - 13);
-      this.player.fillStyle(0xbfc5c3, 1).fillRect(toolX + sideSign * 10 - 5, handY - 17, 10, 8);
-      this.player.lineStyle(2, 0x111416, 1).strokeRect(toolX + sideSign * 10 - 5, handY - 17, 10, 8);
+      this.player.lineStyle(3, toolEdge, 1).lineBetween(handX, handY, toolX + sideSign * 15, handY - 13);
+      this.player.fillStyle(toolMid, 1).fillRect(toolX + sideSign * 10 - 5, handY - 17, 10, 8);
+      this.player.lineStyle(2, greenScreen ? toolEdge : toolDark, 1).strokeRect(toolX + sideSign * 10 - 5, handY - 17, 10, 8);
     } else if (this.progress.equippedTool === 'repair') {
-      this.player.lineStyle(3, 0xf6f7f3, 1).lineBetween(handX, handY, toolX + sideSign * 12, handY + 10);
-      this.player.lineStyle(3, 0x111416, 1).lineBetween(toolX + sideSign * 8, handY + 5, toolX + sideSign * 16, handY + 12);
+      this.player.lineStyle(3, toolEdge, 1).lineBetween(handX, handY, toolX + sideSign * 12, handY + 10);
+      this.player.lineStyle(3, greenScreen ? toolMid : toolDark, 1).lineBetween(toolX + sideSign * 8, handY + 5, toolX + sideSign * 16, handY + 12);
     }
   }
 
@@ -3595,13 +3596,18 @@ export class GameScene extends Phaser.Scene {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
     drawGoldenPothos(this.pot, 0, 0, 0.9, this.progress.graphicsUpgradeInstalled);
-    this.pot.setVisible(!this.progress.openingGoldenPothosCollected && !this.inventoryHasPot && !this.progress.placedWorldItem);
+    this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
   }
 
   private createRareBegonia(): void {
     this.rareBegonia = this.add.graphics().setDepth(22).setPosition(RARE_BEGONIA_POSITION.x, RARE_BEGONIA_POSITION.y);
     drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.graphicsUpgradeInstalled);
-    this.rareBegonia.setVisible(this.progress.graphicsUpgradeInstalled && !this.progress.rareBegoniaCollected);
+    this.rareBegonia.setVisible(!this.progress.rareBegoniaCollected);
+  }
+
+  private createHeavyPot(): void {
+    this.heavyPot = this.add.graphics().setDepth(22).setPosition(HEAVY_POT_POSITION.x, HEAVY_POT_POSITION.y);
+    drawGoldenPothos(this.heavyPot, 0, 0, 1.55, false);
   }
 
   private createBrokenPot(): void {
@@ -3952,6 +3958,11 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.isNearPoint(point, HEAVY_POT_POSITION, 126) && this.heavyPot.visible) {
+      this.cancelTapWalk();
+      this.showToast('This pot is too big for Alex to lift. Needs a trolley or Heavy Lift upgrade.', 2400);
+      return;
+    }
     if (this.isNearPoint(point, RARE_BEGONIA_POSITION, 92) && this.rareBegonia.visible) {
       if (this.inventoryHasPot) {
         this.cancelTapWalk();
@@ -4223,23 +4234,11 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
-    if (this.isNearStarterKit(point)) {
-      const approach = new Phaser.Math.Vector2(HOME_STARTER_KIT.x - 120, HOME_STARTER_KIT.y);
-      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, HOME_STARTER_KIT.x, HOME_STARTER_KIT.y) <= 110) {
-        if (!this.starterKitClaimed) this.claimStarterKit();
-        else this.showToast('Starter kit already claimed. Place the pot on the grow table.', 1900);
-      } else {
-        const path = this.getHomeTapPath(approach.x, approach.y);
-        if (path) this.selectPendingInteraction('claim-starter-kit', approach, path);
-        else this.showToast('The starter kit cannot be reached.', 1500);
-      }
-      return;
-    }
     const growingSpotIndex = this.getGrowingSpotIndexAtPoint(point);
     if (growingSpotIndex !== null) {
-      if (!this.starterKitClaimed) {
+      if (!this.povoWelcomeGiftClaimed) {
         this.cancelTapWalk();
-        this.showToast('Claim the starter kit before using the grow table.', 1700);
+        this.showToast('Claim the welcome gift before using the grow table.', 1700);
         return;
       }
       this.selectedGrowingSpotIndex = growingSpotIndex;
@@ -4303,10 +4302,6 @@ export class GameScene extends Phaser.Scene {
     return Math.abs(point.x - HOME_EXIT.x) <= HOME_EXIT_ACTIVATION_HALF_WIDTH
       && point.y >= HOME_EXIT_ACTIVATION_TOP
       && point.y <= HOME_EXIT_ACTIVATION_BOTTOM;
-  }
-
-  private isNearStarterKit(point = new Phaser.Math.Vector2(this.player.x, this.player.y)): boolean {
-    return Phaser.Math.Distance.Between(point.x, point.y, HOME_STARTER_KIT.x, HOME_STARTER_KIT.y) <= 92;
   }
 
   private tryActivateMovementDoor(direction: Phaser.Math.Vector2, previousX: number, previousY: number): boolean {
@@ -4440,7 +4435,6 @@ export class GameScene extends Phaser.Scene {
     if (interaction === 'exit-shop') this.exitShop();
     if (interaction === 'enter-home') this.enterHome();
     if (interaction === 'exit-home') this.exitHome();
-    if (interaction === 'claim-starter-kit') this.claimStarterKit();
     if (interaction === 'place-starter-pot') this.placeStarterPot();
     if (interaction === 'select-basil-pot') this.selectBasilPot();
     if (interaction === 'place-growing-pot') this.prepareGrowingSlotPlacement();
@@ -4457,11 +4451,7 @@ export class GameScene extends Phaser.Scene {
     this.pot.setVisible(false);
     this.progress.inventoryPot = 'ordinary';
     this.progress.inventoryItem = 'small-golden-pothos';
-    const firstCollection = !this.progress.openingGoldenPothosCollected;
     this.progress.openingGoldenPothosCollected = true;
-    if (this.progress.buildings['buy-sell'].graphicsEra === 'atari-bw') {
-      this.progress.buildings['buy-sell'].graphicsEra = 'green-crt';
-    }
     // Collecting the first pot unlocks the opening job. Selling remains an
     // available transaction, but it is no longer the next required objective.
     this.progress.task = 'clean';
@@ -4469,12 +4459,11 @@ export class GameScene extends Phaser.Scene {
     this.syncHudState();
     this.hud.highlightBag();
     this.showToast('Found a Small Golden Pothos.', 1600);
-    if (firstCollection) this.scheduleBuySellUpgradeAfterPothosPickup(1600);
   }
 
   private collectRareBegonia(): void {
     if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !this.rareBegonia.visible) return;
-    if (!this.progress.graphicsUpgradeInstalled || this.progress.rareBegoniaCollected) return;
+    if (this.progress.rareBegoniaCollected) return;
     if (Phaser.Math.Distance.Between(this.player.x, this.player.y, RARE_BEGONIA_POSITION.x, RARE_BEGONIA_POSITION.y) > 115) return;
     this.inventoryHasPot = true;
     this.inventoryPot = 'ordinary';
@@ -4605,7 +4594,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private enterShop(): void {
-    if (this.shopInterior || this.homeInterior || this.shopTransitioning) return;
+    if (this.shopInterior || this.homeInterior || this.shopTransitioning || this.buySellUpgradeAnimating) return;
     this.clearItemPlacement();
     this.shopTransitioning = true;
     this.movementReleaseRequired = true;
@@ -4615,7 +4604,7 @@ export class GameScene extends Phaser.Scene {
     this.cancelTapWalk();
     this.streetPosition.set(this.player.x, this.player.y);
     this.streetZoomMode = this.zoomMode;
-    setBuySellDoorOpen(this.buySellDoor!, true, this.progress.buildings['buy-sell'].graphicsEra === 'atari-colour' ? 'green-crt' : this.progress.buildings['buy-sell'].graphicsEra);
+    setBuySellDoorOpen(this.buySellDoor!, true, this.progress.buildings['buy-sell'].graphicsEra);
     this.player.setAlpha(1);
     this.tweens.add({
       targets: this.player,
@@ -4795,7 +4784,10 @@ export class GameScene extends Phaser.Scene {
     this.shopGoldenPothosDisplay = [];
     this.shopPremiumPlantDisplay = [];
     this.shopInterior = false;
-    setBuySellDoorOpen(this.buySellDoor!, false, this.progress.buildings['buy-sell'].graphicsEra === 'atari-colour' ? 'green-crt' : this.progress.buildings['buy-sell'].graphicsEra);
+    const completeRasterUpgrade = this.progress.buySellRasterUpgradePending
+      && this.progress.windowJobAccepted
+      && this.progress.buildings['buy-sell'].graphicsEra === 'green-crt';
+    setBuySellDoorOpen(this.buySellDoor!, false, this.progress.buildings['buy-sell'].graphicsEra);
     this.setObjectsVisible(this.streetObjects, true);
     this.player.setPosition(BUY_SELL_ENTRANCE.x - 82, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.setRepairPickupPresentationVisible(this.repairPickupReady);
@@ -4808,7 +4800,50 @@ export class GameScene extends Phaser.Scene {
     this.hud.setMapPosition(this.player.x / WORLD_WIDTH, this.player.y);
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
+    if (completeRasterUpgrade) {
+      this.buySellUpgradeAnimating = true;
+      this.time.delayedCall(1200, () => {
+        if (!this.progress.buySellRasterUpgradePending) {
+          this.buySellUpgradeAnimating = false;
+          return;
+        }
+        this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw';
+        this.progress.buySellRasterUpgradePending = false;
+        this.saveProgress();
+        this.rebuildBuySellArtwork();
+        this.presentBuySellRasterUpgrade();
+      });
+    }
     this.persistDevSession();
+  }
+
+  private presentBuySellRasterUpgrade(): void {
+    this.buySellUpgradeAnimating = true;
+    this.buySellArtworkObjects.forEach((object) => {
+      const display = object as Phaser.GameObjects.GameObject & { setAlpha?: (alpha: number) => void };
+      display.setAlpha?.(0.2);
+      this.tweens.add({
+        targets: object,
+        alpha: 1,
+        duration: 190,
+        yoyo: true,
+        repeat: 2,
+        onComplete: () => display.setAlpha?.(1),
+      });
+    });
+    const view = this.cameras.main.worldView;
+    const notice = this.add.text(view.centerX, view.top + 48 / this.cameras.main.zoom, 'BUY/SELL MONOCHROME RASTER ONLINE', {
+      color: '#f6f7f3', fontFamily: 'monospace', fontSize: '14px', fontStyle: 'bold',
+      backgroundColor: '#111416', padding: { left: 8, right: 8, top: 5, bottom: 5 },
+    }).setOrigin(0.5, 0).setDepth(40);
+    this.time.delayedCall(1200, () => {
+      this.buySellArtworkObjects.forEach((object) => {
+        const display = object as Phaser.GameObjects.GameObject & { setAlpha?: (alpha: number) => void };
+        display.setAlpha?.(1);
+      });
+      this.buySellUpgradeAnimating = false;
+      notice.destroy();
+    });
   }
 
   private exitHome(): void {
@@ -4819,7 +4854,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.resetHeldInputs();
     this.cancelToolUse(true);
     this.cancelTapWalk();
-    if (this.homeExitDoor) drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, true);
+    if (this.homeExitDoor) drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, true, this.activeProperty === 'starter-apartment' ? 'green-crt' : 'atari-bw');
     this.tweens.add({
       targets: this.player,
       x: HOME_EXIT.x,
@@ -4845,7 +4880,7 @@ export class GameScene extends Phaser.Scene {
     this.homeObjects.forEach((object) => object.destroy());
     this.homeObjects = [];
     this.homeExitDoor = undefined;
-    this.homeStarterKitObjects = [];
+    this.homeWelcomeGiftObjects = [];
     this.basilPot = undefined;
     this.basilWaterEffect = undefined;
     this.homeInterior = false;
@@ -4926,11 +4961,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawRealEstateInterior(): void {
-    const greenCrt = this.progress.buildings['real-estate'].graphicsEra === 'green-crt';
-    const lineColour = greenCrt ? 0x39ff5a : 0xf6f7f3;
-    const cssColour = greenCrt ? '#39ff5a' : '#f6f7f3';
+    const era = this.progress.buildings['real-estate'].graphicsEra;
+    const greenCrt = era === 'green-crt';
+    const colour = era === 'atari-colour';
+    const lineColour = greenCrt ? 0x39ff5a : colour ? 0xf2e5c7 : 0xf6f7f3;
+    const cssColour = greenCrt ? '#39ff5a' : colour ? '#f2e5c7' : '#f6f7f3';
     const room = this.add.graphics().setDepth(-100);
-    room.fillStyle(greenCrt ? 0x050906 : 0x252a2d, 1).fillRect(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
+    room.fillStyle(greenCrt ? 0x050906 : colour ? 0x173a55 : 0x252a2d, 1).fillRect(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
     room.lineStyle(5, lineColour, 0.95).strokeRect(40, 80, SHOP_WORLD_WIDTH - 80, SHOP_WORLD_HEIGHT - 130);
     room.lineStyle(2, lineColour, 0.45);
     for (let x = 90; x < 850; x += 95) room.lineBetween(x, 100, x, 500);
@@ -4962,7 +4999,7 @@ export class GameScene extends Phaser.Scene {
     this.shopExitDoor = this.add.graphics().setDepth(4);
     drawMatchingDoor(this.shopExitDoor, SHOP_EXIT.x, SHOP_EXIT_DOOR_TOP, SHOP_EXIT_DOOR_WIDTH, SHOP_EXIT_DOOR_HEIGHT, false, greenCrt ? 'green-crt' : 'atari-bw');
     this.shopObjects.push(this.shopExitDoor);
-    const title = this.add.text(450, 125, 'REAL ESTATE AGENT · ROSE', { color: cssColour, fontFamily: SHOP_LABEL_FONT, fontSize: '30px', fontStyle: 'bold', backgroundColor: greenCrt ? '#050906' : '#111416', padding: { left: 8, right: 8, top: 4, bottom: 4 } }).setOrigin(0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
+    const title = this.add.text(450, 125, 'REAL ESTATE AGENT · ROSE', { color: cssColour, fontFamily: SHOP_LABEL_FONT, fontSize: '30px', fontStyle: 'bold', backgroundColor: greenCrt ? '#050906' : colour ? '#173a55' : '#111416', padding: { left: 8, right: 8, top: 4, bottom: 4 } }).setOrigin(0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
     const prompt = this.add.text(450, SHOP_COUNTER.y + 24, 'CLICK ROSE', { color: cssColour, fontFamily: SHOP_LABEL_FONT, fontSize: '24px', fontStyle: 'bold' }).setOrigin(0.5).setDepth(7).setResolution(Math.max(2, window.devicePixelRatio || 1));
     this.shopObjects.push(title, prompt);
   }
@@ -4970,16 +5007,17 @@ export class GameScene extends Phaser.Scene {
   private drawShopInterior(): void {
     const graphicsEra = this.progress.buildings['buy-sell'].graphicsEra;
     const upgraded = graphicsEra === 'atari-colour';
-    const outerWall = upgraded ? 0x173a55 : 0x252a2d;
-    const innerWall = upgraded ? 0xb85b38 : 0x454c4e;
-    const fixtureDark = upgraded ? 0x0c2b42 : 0x111416;
-    const fixtureMid = upgraded ? 0x337d78 : 0x858d8d;
-    const fixtureLight = upgraded ? 0xf2e5c7 : 0xf6f7f3;
+    const greenCrt = graphicsEra === 'green-crt';
+    const outerWall = upgraded ? 0x173a55 : greenCrt ? 0x030805 : 0x252a2d;
+    const innerWall = upgraded ? 0xb85b38 : greenCrt ? 0x050d07 : 0x454c4e;
+    const fixtureDark = upgraded ? 0x0c2b42 : greenCrt ? 0x030805 : 0x111416;
+    const fixtureMid = upgraded ? 0x337d78 : greenCrt ? 0x123d1b : 0x858d8d;
+    const fixtureLight = upgraded ? 0xf2e5c7 : greenCrt ? 0x39ff5a : 0xf6f7f3;
     const room = this.add.graphics().setDepth(-100);
     room.fillStyle(outerWall, 1).fillRect(0, 0, SHOP_WORLD_WIDTH, SHOP_WORLD_HEIGHT);
     room.fillStyle(innerWall, 1).fillRect(40, 80, SHOP_WORLD_WIDTH - 80, SHOP_WORLD_HEIGHT - 130);
     room.lineStyle(8, fixtureLight, 0.95).strokeRect(40, 80, SHOP_WORLD_WIDTH - 80, SHOP_WORLD_HEIGHT - 130);
-    room.lineStyle(3, upgraded ? 0x713a32 : 0x697271, 0.9);
+    room.lineStyle(greenCrt ? 2 : 3, upgraded ? 0x713a32 : greenCrt ? 0x16752a : 0x697271, 0.9);
     for (let x = 70; x < SHOP_WORLD_WIDTH - 50; x += 70) room.lineBetween(x, 90, x, SHOP_WORLD_HEIGHT - 70);
     this.shopObjects.push(room);
 
@@ -5147,15 +5185,7 @@ export class GameScene extends Phaser.Scene {
     feedback: string,
   ): void {
     if (!this.shopInterior || this.shopTransactionBusy) return;
-    if (this.pendingShopkeeperTransactions.length > 0) {
-      this.queueShopkeeperTransaction(item, quantity, direction, source, feedback);
-      this.hud.closePanel();
-      return;
-    }
-    // Closing the shop panel is the player's confirmation. Start the clerk's
-    // collect/carry/return animation immediately after the panel disappears.
-    this.hud.closePanel();
-    this.beginShopkeeperTransaction(item, quantity, direction, source, feedback);
+    this.queueShopkeeperTransaction(item, quantity, direction, source, feedback);
   }
 
   private queueShopkeeperTransaction(
@@ -5279,12 +5309,16 @@ export class GameScene extends Phaser.Scene {
   private drawHomeInterior(): void {
     const growingSpots = this.getActiveGrowingSpots();
     const secondRental = this.activeProperty === 'second-rental';
+    const starterGreen = !secondRental;
+    const roomBackground = starterGreen ? 0x030805 : 0x314246;
+    const roomSurface = starterGreen ? 0x050d07 : 0x454c4e;
+    const roomLine = starterGreen ? 0x39ff5a : 0xf6f7f3;
     const worldWidth = this.getActiveHomeWorldWidth();
     const worldHeight = this.getActiveHomeWorldHeight();
     const room = this.add.graphics().setDepth(-100);
-    room.fillStyle(secondRental ? 0x314246 : 0x252a2d, 1).fillRect(0, 0, worldWidth, worldHeight);
-    room.fillStyle(0x454c4e, 1).fillRect(48, 80, worldWidth - 96, worldHeight - 128);
-    room.lineStyle(8, 0xf6f7f3, 0.95).strokeRect(48, 80, worldWidth - 96, worldHeight - 128);
+    room.fillStyle(roomBackground, 1).fillRect(0, 0, worldWidth, worldHeight);
+    room.fillStyle(roomSurface, 1).fillRect(48, 80, worldWidth - 96, worldHeight - 128);
+    room.lineStyle(starterGreen ? 4 : 8, roomLine, 0.95).strokeRect(48, 80, worldWidth - 96, worldHeight - 128);
     room.lineStyle(3, 0x697271, 0.8).lineBetween(48, 500, worldWidth - 48, 500);
     if (secondRental) {
       room.lineStyle(6, 0x9aa5a3, 0.9).lineBetween(600, 120, 600, 490);
@@ -5303,7 +5337,7 @@ export class GameScene extends Phaser.Scene {
     const windowX = secondRental ? 930 : 610;
     const window = this.add.graphics().setDepth(3);
     window.fillStyle(0x111416, 1).fillRect(windowX, 180, 190, 150);
-    window.lineStyle(5, 0xf6f7f3, 1).strokeRect(windowX, 180, 190, 150);
+    window.lineStyle(starterGreen ? 3 : 5, roomLine, 1).strokeRect(windowX, 180, 190, 150);
     window.lineStyle(3, 0x858d8d, 1).lineBetween(windowX + 95, 180, windowX + 95, 330).lineBetween(windowX, 255, windowX + 190, 255);
     this.homeObjects.push(window);
 
@@ -5313,10 +5347,10 @@ export class GameScene extends Phaser.Scene {
     const tableLeft = firstSlot.x - 48;
     const tableRight = lastSlot.x + 48;
     growTable.fillStyle(0x111416, 1).fillRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
-    growTable.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
+    growTable.lineStyle(4, roomLine, 0.95).strokeRect(tableLeft, firstSlot.y - 42, tableRight - tableLeft, 84);
     growingSpots.forEach((spot) => {
       growTable.fillStyle(0x697271, 1).fillRect(spot.x - 38, spot.y - 27, 76, 54);
-      growTable.lineStyle(3, 0xf6f7f3, 0.95).strokeRect(spot.x - 38, spot.y - 27, 76, 54);
+      growTable.lineStyle(3, roomLine, 0.95).strokeRect(spot.x - 38, spot.y - 27, 76, 54);
     });
     this.homeObjects.push(growTable);
     growingSpots.forEach((spot, index) => {
@@ -5339,7 +5373,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBasilVisual();
 
     this.homeExitDoor = this.add.graphics().setDepth(4);
-    drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, false);
+    drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, false, starterGreen ? 'green-crt' : 'atari-bw');
     this.homeObjects.push(this.homeExitDoor);
 
     const labels = [
@@ -5355,35 +5389,35 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setDepth(7);
       this.homeObjects.push(label);
     });
-    this.drawHomeInteriorKit();
+    this.drawHomeInteriorWelcomeGift();
   }
 
-  private drawHomeInteriorKit(): void {
-    this.homeStarterKitObjects.forEach((object) => object.destroy());
-    this.homeStarterKitObjects = [];
+  private drawHomeInteriorWelcomeGift(): void {
+    this.homeWelcomeGiftObjects.forEach((object) => object.destroy());
+    this.homeWelcomeGiftObjects = [];
     if (!this.homeInterior || this.activeProperty === 'second-rental') return;
     const kit = this.add.graphics().setDepth(4);
-    kit.fillStyle(0x111416, 1).fillRect(HOME_STARTER_KIT.x - 95, HOME_STARTER_KIT.y - 46, 190, 72);
-    kit.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(HOME_STARTER_KIT.x - 95, HOME_STARTER_KIT.y - 46, 190, 72);
-    kit.fillStyle(0x697271, 1).fillRect(HOME_STARTER_KIT.x - 72, HOME_STARTER_KIT.y - 23, 34, 24);
-    kit.lineStyle(2, 0xf6f7f3, 0.9).strokeRect(HOME_STARTER_KIT.x - 72, HOME_STARTER_KIT.y - 23, 34, 24);
-    kit.fillStyle(0x858d8d, 1).fillRect(HOME_STARTER_KIT.x - 10, HOME_STARTER_KIT.y - 23, 42, 24);
-    kit.fillStyle(0xd8dddc, 1).fillRect(HOME_STARTER_KIT.x + 50, HOME_STARTER_KIT.y - 28, 10, 34);
-    this.homeStarterKitObjects.push(kit);
-    const label = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y + 42,
-      this.starterKitClaimed ? 'STARTER KIT CLAIMED' : 'STARTER KIT · TAP TO CLAIM', {
+    kit.fillStyle(0x111416, 1).fillRect(HOME_WELCOME_GIFT.x - 95, HOME_WELCOME_GIFT.y - 46, 190, 72);
+    kit.lineStyle(4, 0xf6f7f3, 0.95).strokeRect(HOME_WELCOME_GIFT.x - 95, HOME_WELCOME_GIFT.y - 46, 190, 72);
+    kit.fillStyle(0x697271, 1).fillRect(HOME_WELCOME_GIFT.x - 72, HOME_WELCOME_GIFT.y - 23, 34, 24);
+    kit.lineStyle(2, 0xf6f7f3, 0.9).strokeRect(HOME_WELCOME_GIFT.x - 72, HOME_WELCOME_GIFT.y - 23, 34, 24);
+    kit.fillStyle(0x858d8d, 1).fillRect(HOME_WELCOME_GIFT.x - 10, HOME_WELCOME_GIFT.y - 23, 42, 24);
+    kit.fillStyle(0xd8dddc, 1).fillRect(HOME_WELCOME_GIFT.x + 50, HOME_WELCOME_GIFT.y - 28, 10, 34);
+    this.homeWelcomeGiftObjects.push(kit);
+    const label = this.add.text(HOME_WELCOME_GIFT.x, HOME_WELCOME_GIFT.y + 42,
+      'POVO WELCOME GIFT · DELIVERED', {
         color: '#f6f7f3', fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold',
         stroke: '#07090a', strokeThickness: 5, backgroundColor: '#111416', padding: { left: 7, right: 7, top: 5, bottom: 5 },
       }).setOrigin(0.5).setDepth(7);
-    this.homeStarterKitObjects.push(label);
-    const contents = this.add.text(HOME_STARTER_KIT.x, HOME_STARTER_KIT.y - 62,
+    this.homeWelcomeGiftObjects.push(label);
+    const contents = this.add.text(HOME_WELCOME_GIFT.x, HOME_WELCOME_GIFT.y - 62,
       'POT · USED MEDIUM\nSEEDS · WATERING CAN\n1 BASIC FERTILISER', {
         color: '#f6f7f3', fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold',
         align: 'center', lineSpacing: 4, stroke: '#07090a', strokeThickness: 4,
         backgroundColor: '#111416', padding: { left: 7, right: 7, top: 5, bottom: 5 },
       }).setOrigin(0.5).setDepth(7);
-    this.homeStarterKitObjects.push(contents);
-    this.homeObjects.push(...this.homeStarterKitObjects);
+    this.homeWelcomeGiftObjects.push(contents);
+    this.homeObjects.push(...this.homeWelcomeGiftObjects);
   }
 
   private createWantedSign(): void {
@@ -5880,16 +5914,12 @@ export class GameScene extends Phaser.Scene {
       this.hud.setAction('EXIT HOME');
       return;
     }
-    if (!this.modalOpen && this.homeInterior && this.isNearStarterKit() && !this.starterKitClaimed) {
-      this.hud.setAction('CLAIM STARTER KIT');
-      return;
-    }
     if (!this.modalOpen && this.homeInterior && this.growingSlotReadyToPlace) {
       this.hud.setAction('ADD POT TO THIS SQUARE');
       return;
     }
     if (!this.modalOpen && this.homeInterior && this.isNearGrowingSpotPlayer()) {
-      if (!this.starterKitClaimed) this.hud.setAction('CLAIM STARTER KIT');
+      if (!this.povoWelcomeGiftClaimed) this.hud.setAction('CLAIM WELCOME GIFT');
       else {
         const selectedPot = this.getSelectedGrowingPot();
         const nearbyPot = this.progress.growingPots.find((pot) => pot.slot !== null && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.getGrowingSpotForPot(pot).x, this.getGrowingSpotForPot(pot).y) <= BASIL_POT_INTERACTION_RADIUS);

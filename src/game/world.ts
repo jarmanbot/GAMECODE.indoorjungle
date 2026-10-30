@@ -224,6 +224,9 @@ export const POT_POSITION = { x: 1080, y: 930 };
 // Post-upgrade ordinary collectible at the far-right edge of the currently
 // accessible starting neighbourhood.
 export const RARE_BEGONIA_POSITION = { x: 2940, y: 930 };
+// Oversized starting-world pot. It is deliberately not collectible until a
+// future trolley or heavy-lift upgrade exists.
+export const HEAVY_POT_POSITION = { x: 3150, y: 920 };
 export const START_POSITION = { x: 560, y: 890 };
 export const BROKEN_POT_PIECES_SCALE = 2.268;
 export const BROKEN_POT_PIECE_COUNT = 4;
@@ -295,7 +298,7 @@ export const HOME_EXIT_ACTIVATION_HALF_WIDTH = 84;
 export const HOME_EXIT_ACTIVATION_TOP = HOME_EXIT_DOOR_TOP - 30;
 export const HOME_EXIT_ACTIVATION_BOTTOM = HOME_EXIT_DOOR_BOTTOM + 18;
 export const HOME_EXIT_MOVEMENT_TRIGGER_Y = HOME_EXIT_DOOR_BOTTOM - 58;
-export const HOME_STARTER_KIT = { x: 250, y: 300 };
+export const HOME_WELCOME_GIFT = { x: 250, y: 300 };
 export const HOME_GROWING_SPOTS = [
   { x: 380, y: 580 },
   { x: 495, y: 580 },
@@ -310,7 +313,7 @@ export const SECOND_HOME_GROWING_SPOTS = [
   { x: 1065, y: 580 },
 ] as const;
 // Backwards-compatible centre reference for callers that do not need slot
-// selection. The active pot uses HOME_GROWING_SPOTS[starterPotSlot].
+// selection. Each placed pot stores its own grow-table slot index.
 export const HOME_GROWING_SPOT = HOME_GROWING_SPOTS[1];
 // Match the HOMES window's 96-world-unit interaction lane so contextual
 // popups use a consistent distance from their target. The approach point is

@@ -57,7 +57,7 @@ export interface BuySellArtwork {
   pulseLayers: Phaser.GameObjects.GameObject[];
 }
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }): BuySellArtwork | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -78,7 +78,7 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
 
   let buySellArtwork: BuySellArtwork | undefined;
   BUILDINGS.forEach((building) => {
-    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics, nurseryProgress);
+    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics, nurseryProgress, realEstateGraphics);
     if (artwork) buySellArtwork = artwork;
   });
   drawStreetDetails(scene);
@@ -125,16 +125,16 @@ function drawOpeningFallSkyline(scene: Phaser.Scene): void {
 function drawOpeningTower(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(-20);
   const { x, y, width, height } = OPENING_TOWER;
-  g.fillStyle(0x151a1c, 1).fillRect(x, y, width, height);
-  g.fillStyle(0x252b2d, 1).fillRect(x + 18, y + 22, width - 36, height - 22);
-  g.lineStyle(8, 0x0d1011, 1).strokeRect(x, y, width, height);
-  g.lineStyle(5, 0x697173, 0.8).lineBetween(x + 28, y + 90, x + width - 28, y + 90);
+  g.fillStyle(0x102f48, 1).fillRect(x, y, width, height);
+  g.fillStyle(0x9b4c32, 1).fillRect(x + 18, y + 22, width - 36, height - 22);
+  g.lineStyle(8, 0x071c2b, 1).strokeRect(x, y, width, height);
+  g.lineStyle(5, 0xeadbb8, 0.9).lineBetween(x + 28, y + 90, x + width - 28, y + 90);
   g.lineBetween(x + 28, y + height - 82, x + width - 28, y + height - 82);
   for (let floorY = y + 150; floorY < y + height - 120; floorY += 150) {
-    g.lineStyle(3, 0x4e5759, 0.65).lineBetween(x + 34, floorY, x + width - 34, floorY);
+    g.lineStyle(3, 0x337d78, 0.8).lineBetween(x + 34, floorY, x + width - 34, floorY);
     for (let windowX = x + 58; windowX < x + width - 70; windowX += 96) {
-      g.fillStyle(0x0b0e0f, 1).fillRect(windowX, floorY - 62, 46, 52);
-      g.lineStyle(3, 0x858d8d, 0.75).strokeRect(windowX, floorY - 62, 46, 52);
+      g.fillStyle(0x08283d, 1).fillRect(windowX, floorY - 62, 46, 52);
+      g.lineStyle(3, 0xeadbb8, 0.8).strokeRect(windowX, floorY - 62, 46, 52);
       g.lineBetween(windowX + 23, floorY - 62, windowX + 23, floorY - 10);
     }
   }
@@ -291,9 +291,9 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'atari-bw', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }): BuySellArtwork | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
   if (building.kind === 'shop') {
-    return drawBuySellBuilding(scene, building, buySellGraphics === 'atari-colour' ? 'green-crt' : buySellGraphics, graphicsUpgradeInstalled);
+    return drawBuySellBuilding(scene, building, buySellGraphics, graphicsUpgradeInstalled);
   }
   if (building.kind === 'plants') {
     drawNurseryBuilding(scene, nurseryProgress);
@@ -302,8 +302,12 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   const g = scene.add.graphics().setDepth(5);
   const { x, y, width, height } = building;
   g.fillStyle(0x0c0e0f, 1).fillRect(x - 14, y - 14, width + 28, height + 14);
-  g.fillStyle(building.kind === 'apartment' ? 0x81898a : 0x4f5759, 1).fillRect(x, y, width, height);
-  g.lineStyle(8, WHITE, 0.95).strokeRect(x, y, width, height);
+  const realEstateGreen = building.kind === 'homes' && realEstateGraphics === 'green-crt';
+  const realEstateColour = building.kind === 'homes' && realEstateGraphics === 'atari-colour';
+  const starterGreen = building.key === 'starter-apartment';
+  const buildingGreen = realEstateGreen || starterGreen;
+  g.fillStyle(buildingGreen ? 0x070b08 : realEstateColour ? 0xb85b38 : building.kind === 'apartment' ? 0x81898a : 0x4f5759, 1).fillRect(x, y, width, height);
+  g.lineStyle(buildingGreen ? 4 : 8, buildingGreen ? 0x39ff5a : realEstateColour ? 0xf2e5c7 : WHITE, 0.95).strokeRect(x, y, width, height);
   g.lineStyle(3, 0x272d2f, 0.9);
   for (let brickY = y + 36; brickY < y + 210; brickY += 34) {
     g.lineBetween(x, brickY, x + width, brickY);
@@ -313,10 +317,10 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   }
   g.fillStyle(INK, 1).fillRect(x + 18, y + 16, width - 36, 64);
   addWorldLabel(scene, x + width / 2, y + 29, building.label,
-    building.kind === 'homes' && graphicsUpgradeInstalled ? 0x39ff5a : WHITE,
+    buildingGreen ? 0x39ff5a : realEstateColour ? 0xf2e5c7 : WHITE,
     building.key === 'starter-apartment' ? 22 : building.kind === 'apartment' ? 17 : 23, true);
 
-  if (building.kind === 'homes') drawHomes(scene, g, building, graphicsUpgradeInstalled);
+  if (building.kind === 'homes') drawHomes(scene, g, building, realEstateGraphics);
   if (building.kind === 'apartment') {
     const secondRental = building.key === 'second-rental';
     const occupied = secondRental ? activeProperty === 'second-rental' : activeProperty === 'starter-apartment' || (activeProperty === 'none' && apartmentRented);
@@ -482,18 +486,19 @@ export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: bool
 
 export function drawStarterApartmentDoor(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
   const door = scene.add.graphics().setDepth(29);
-  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, false);
+  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, false, 'green-crt');
   return door;
 }
 
 export function setStarterApartmentDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
-  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, open);
+  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, open, 'green-crt');
 }
 
-function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, upgraded: boolean): void {
+function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, style: BuildingGraphicsEra): void {
   const x = building.x;
   const y = building.y;
-  const lineColour = upgraded ? 0x39ff5a : WHITE;
+  const upgraded = style === 'green-crt';
+  const lineColour = upgraded ? 0x39ff5a : style === 'atari-colour' ? 0xf2e5c7 : WHITE;
   if (upgraded) {
     g.fillStyle(0x070b08, 1).fillRect(x, y, building.width, building.height);
     g.lineStyle(4, lineColour, 0.95).strokeRect(x, y, building.width, building.height);
@@ -595,27 +600,28 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
   const x = building.x;
   const y = building.y;
   if (!secondRental) {
+    const green = 0x39ff5a;
     g.fillStyle(0x1b2022, 1).fillTriangle(x - 14, y + 10, x + building.width / 2, y - 50, x + building.width + 14, y + 10);
-    g.lineStyle(7, WHITE, 0.95)
+    g.lineStyle(4, green, 0.95)
       .lineBetween(x - 14, y + 10, x + building.width / 2, y - 50)
       .lineBetween(x + building.width / 2, y - 50, x + building.width + 14, y + 10);
-    g.fillStyle(0x242a2c, 1).fillRect(x + 18, y + 80, building.width - 36, building.height - 80);
-    g.lineStyle(5, WHITE, 0.9).strokeRect(x + 18, y + 80, building.width - 36, building.height - 80);
+    g.fillStyle(0x050906, 1).fillRect(x + 18, y + 80, building.width - 36, building.height - 80);
+    g.lineStyle(3, green, 0.9).strokeRect(x + 18, y + 80, building.width - 36, building.height - 80);
 
     const windowX = x + 28;
     const windowY = y + 165;
-    g.fillStyle(0xadb4b3, 1).fillRect(windowX, windowY, 140, 80);
-    g.lineStyle(4, INK, 1).strokeRect(windowX, windowY, 140, 80);
+    g.fillStyle(0x030805, 1).fillRect(windowX, windowY, 140, 80);
+    g.lineStyle(3, green, 1).strokeRect(windowX, windowY, 140, 80);
     g.lineBetween(windowX + 70, windowY, windowX + 70, windowY + 80);
     g.lineBetween(windowX, windowY + 40, windowX + 140, windowY + 40);
 
     g.fillStyle(INK, 1).fillRect(x + 24, y + 90, 190, 64);
-    g.lineStyle(3, WHITE, 0.9).strokeRect(x + 24, y + 90, 190, 64);
-    const rentalLabel = addWorldLabel(scene, x + 119, y + 108, rented ? 'YOUR HOME' : 'SINGLE ROOM TO LET', WHITE, 14, true);
+    g.lineStyle(3, green, 0.9).strokeRect(x + 24, y + 90, 190, 64);
+    const rentalLabel = addWorldLabel(scene, x + 119, y + 108, rented ? 'YOUR HOME' : 'SINGLE ROOM TO LET', green, 14, true);
     rentalLabel.setData('apartment-rental-sign', true);
     rentalLabel.setData('property-id', 'starter-apartment');
     rentalLabel.setData('rental-sign-role', 'title');
-    const rentalPrice = addWorldLabel(scene, x + 119, y + 137, rented ? 'ACCESS UNLOCKED' : '60 COINS', 0xc4ccca, 13, true);
+    const rentalPrice = addWorldLabel(scene, x + 119, y + 137, rented ? 'ACCESS UNLOCKED' : '60 COINS', green, 13, true);
     rentalPrice.setData('apartment-rental-sign', true);
     rentalPrice.setData('property-id', 'starter-apartment');
     rentalPrice.setData('rental-sign-role', 'detail');

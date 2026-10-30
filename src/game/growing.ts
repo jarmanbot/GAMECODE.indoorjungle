@@ -18,6 +18,14 @@ export interface GrowingPotState {
   crop: GrowingCropState | null;
 }
 
+export type GrowSlotState = 'empty' | 'pot' | 'growing' | 'mature';
+
+export function getGrowSlotState(pot: GrowingPotState | null, cropMature = false): GrowSlotState {
+  if (!pot) return 'empty';
+  if (!pot.crop) return 'pot';
+  return cropMature || pot.crop.stage === 'mature' ? 'mature' : 'growing';
+}
+
 export const STARTER_GROWING_POT_ID = 'starter-growing-pot-1';
 export const ADDITIONAL_GROWING_POT_IDS = ['growing-pot-2', 'growing-pot-3', 'growing-pot-4', 'growing-pot-5', 'growing-pot-6'] as const;
 export const MAX_ADDITIONAL_GROWING_POTS = ADDITIONAL_GROWING_POT_IDS.length;

@@ -1,5 +1,5 @@
 import { createEmptyGrowingPot, MAX_ADDITIONAL_GROWING_POTS, STARTER_GROWING_POT_ID, type GrowingPotState } from './growing';
-import { getPlantDefinition, type PlantSpecies } from './plants';
+import { getPlantDefinition, getSeedPackPrice, PLANT_SPECIES, type PlantSpecies } from './plants';
 import {
   BASIL_HARVEST_STOCK_ID,
   MINT_HARVEST_STOCK_ID,
@@ -46,6 +46,9 @@ export interface DevCheckpointSnapshot {
   spawn: { x: number; y: number };
   zoom: ZoomMode;
   progress: ProgressState;
+  shopPanelOpen?: boolean;
+  queuedPresentationCount?: number;
+  showMintThought?: boolean;
 }
 
 interface DevCheckpointDefinition extends Omit<DevCheckpointSnapshot, 'progress'> {
@@ -98,7 +101,7 @@ const goldenPothosCollected = (): ProgressState => withState(goldenPothosReadyTo
   openingGoldenPothosCollected: true,
   buildings: {
     ...cloneBuildings(DEFAULT_PROGRESS.buildings),
-    'buy-sell': { operationalState: 'operational', graphicsEra: 'green-crt' },
+    'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' },
   },
   inventoryPot: 'ordinary', inventoryItem: 'small-golden-pothos', inventoryInstanceId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, task: 'clean',
 });
@@ -122,7 +125,13 @@ const completeWindowCleaningSections = (): Record<string, number> => Object.from
 );
 const windowJobAccepted = (): ProgressState => withState(firstPlantSold(), {
   windowJobAccepted: true, windowCleaningProgress: 0, windowCleaningSections: emptyWindowCleaningSections(),
+  buySellRasterUpgradePending: true,
   cleanerOwned: true, equippedTool: 'cleaner', toolSlots: ['cleaner', null, null], task: 'clean',
+});
+
+const buySellRasterOnline = (): ProgressState => withState(windowJobAccepted(), {
+  buySellRasterUpgradePending: false,
+  buildings: { ...cloneBuildings(windowJobAccepted().buildings), 'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' } },
 });
 
 const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
@@ -130,7 +139,16 @@ const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
   windowCleaningProgress: HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0),
   windowCleaningSections: completeWindowCleaningSections(), windowJobComplete: true,
   cleanerOwned: false, repairToolOwned: true, glueCharges: 1, equippedTool: 'repair', toolSlots: ['repair', null, null], brokenPotAvailable: true, brokenPotOwned: false, brokenPotPiecesRemaining: BROKEN_POT_PIECE_COUNT, brokenPotPiecesOwned: 0, brokenPotPiecesCollected: [], task: 'repair',
+  buySellRasterUpgradePending: false,
+  buildings: { ...cloneBuildings(firstPlantSold().buildings), 'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' }, 'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' } },
 });
+const windowJobOneSprayRemaining = (): ProgressState => {
+  const base = buySellRasterOnline();
+  const sections = completeWindowCleaningSections();
+  const last = HOMES_WINDOW_CLEAN_SECTIONS[HOMES_WINDOW_CLEAN_SECTIONS.length - 1];
+  sections[last.id] = last.spraysRequired - 1;
+  return withState(base, { windowCleaningSections: sections, windowCleaningProgress: HOMES_WINDOW_CLEAN_SECTIONS.reduce((sum, section) => sum + sections[section.id], 0) });
+};
 const brokenPiecesAnyOrder = (): ProgressState => withState(windowJobComplete(), {
   brokenPotPiecesRemaining: 2,
   brokenPotPiecesOwned: 2,
@@ -148,19 +166,20 @@ const repairedSpecialPotCollected = (): ProgressState => withState(specialPotRep
   inventoryPot: 'repaired', inventoryItem: 'special-repair-pot', inventoryInstanceId: SPECIAL_REPAIR_POT_INSTANCE_ID, task: 'sell-repaired',
 });
 const upgradePromptPending = (): ProgressState => withState(repairedSpecialPotCollected(), {
-  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'atari-bw', nurseryConstructionComplete: false,
+  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'green-screen', nurseryConstructionComplete: false,
 });
 const upgradeInstalledAcknowledged = (): ProgressState => withState(repairedSpecialPotCollected(), {
-  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'green-screen', nurseryConstructionComplete: false,
+  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'atari-bw', nurseryConstructionComplete: false,
   buildings: {
     ...cloneBuildings(repairedSpecialPotCollected().buildings),
     'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-colour' },
-    nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' },
+    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-colour' },
+    nursery: { operationalState: 'under-construction', graphicsEra: 'green-crt' },
   },
 });
-const nurseryVacantView = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
+const nurseryVacantView = (): ProgressState => withState(repairedSpecialPotCollected(), {
   nurseryConstructionComplete: false,
-  buildings: { ...cloneBuildings(upgradeInstalledAcknowledged().buildings), nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' } },
+  buildings: { ...cloneBuildings(repairedSpecialPotCollected().buildings), nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' } },
 });
 const nurseryConstructionView = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
   nurseryConstructionComplete: false,
@@ -209,8 +228,8 @@ const rareBegoniaSold = (): ProgressState => {
 };
 
 const upgradedShopItemsReadyToSell = (): ProgressState => withState(repairedPotSold(), {
-  starterKitClaimed: true,
-  starterKitGranted: true,
+  welcomeGiftsClaimed: { 'starter-apartment': true },
+  propertyHandoversAcknowledged: { 'starter-apartment': true },
   wateringCanOwned: true,
   toolSlots: ['repair', 'watering-can', null],
   harvestQuantities: { basil: 2, mint: 2 },
@@ -236,21 +255,39 @@ const multipleMatchingHarvestUnits = (): ProgressState => {
 };
 
 const apartmentRented = (): ProgressState => withState(rareBegoniaSold(), {
-  coins: rareBegoniaSold().coins - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true, starterKitClaimed: false, starterKitGranted: false, growingPots: [], task: 'complete',
+  coins: rareBegoniaSold().coins - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true,
+  welcomeGiftsClaimed: { 'starter-apartment': true }, propertyHandoversAcknowledged: { 'starter-apartment': false },
+  wateringCanOwned: true, toolSlots: ['repair', 'watering-can', null], seedQuantities: { basil: 1, mint: 1 },
+  basicFertilizerCharges: 1, growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID)], task: 'place-pot',
 });
 
-const starterKitClaimed = (): ProgressState => withState(apartmentRented(), {
-  starterKitClaimed: true, starterKitGranted: true, wateringCanOwned: true, toolSlots: ['repair', 'watering-can', null],
-  seedQuantities: { basil: 1, mint: 1 }, basicFertilizerCharges: 1, growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID)], task: 'place-pot',
+const povoWelcomeGiftClaimed = (): ProgressState => withState(apartmentRented(), {
+  propertyHandoversAcknowledged: { 'starter-apartment': true },
 });
 
-const fertilizerBoxReadyToBuy = (): ProgressState => withState(starterKitClaimed(), {
+const beforePovoRental = (): ProgressState => withState(rareBegoniaSold(), { coins: RENTAL_BOND_COST - 1 });
+const enoughCoinsForPovoRental = (): ProgressState => withState(rareBegoniaSold(), { coins: RENTAL_BOND_COST });
+const shopAfterOneSale = (): ProgressState => withState(upgradedShopItemsReadyToSell(), {
+  coins: upgradedShopItemsReadyToSell().coins + getPlantDefinition('basil').harvestPrice,
+  harvestQuantities: { basil: 1 },
+  shopStock: [...upgradedShopItemsReadyToSell().shopStock, {
+    stockId: BASIL_HARVEST_STOCK_ID, item: 'fresh-basil-leaves', quality: DEFAULT_SHOP_STOCK_QUALITY,
+    condition: 'fresh', quantity: 1, instanceIds: [],
+  }],
+});
+const shopAfterMultipleTransactions = (): ProgressState => withState(shopAfterOneSale(), {
+  coins: shopAfterOneSale().coins - getPlantDefinition('mint').seedPrice * getPlantDefinition('mint').seedPackQuantity,
+  seedQuantities: { mint: getPlantDefinition('mint').seedPackQuantity },
+});
+const mintLowSuppliesAcknowledged = (): ProgressState => withState(mintGrowing(), { mintLowSuppliesAcknowledged: true });
+
+const fertilizerBoxReadyToBuy = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
   coins: BASIC_FERTILIZER_BOX_PRICE,
   basicFertilizerCharges: 0,
 });
 
 const starterPotWithCrop = (species: 'basil' | 'mint', stage: 'planted' | 'seedling' | 'mature', startedAt: number | null): ProgressState => {
-  const base = starterKitClaimed();
+  const base = povoWelcomeGiftClaimed();
   const pot = createEmptyGrowingPot(STARTER_GROWING_POT_ID, 1);
   pot.crop = { species, stage, wateredAt: startedAt, growthStartedAt: startedAt };
   return withState(base, {
@@ -271,7 +308,7 @@ const firstBasilSaleComplete = (): ProgressState => withState(basilHarvested(), 
   basilHarvestSaleRecorded: true, basilDeliveryComplete: true,
 });
 
-const secondRentalEligibleBase = (): ProgressState => withState(starterKitClaimed(), {
+const secondRentalEligibleBase = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
   coins: SECOND_RENTAL_MOVE_COST,
   basilHarvestSaleRecorded: true,
   basilDeliveryComplete: true,
@@ -310,11 +347,28 @@ const sixGrowingPositionsMixed = (): ProgressState => withState(secondRentalOccu
   ],
 });
 
-const threePotsReady = (): ProgressState => withState(starterKitClaimed(), {
+const threePotsReady = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
   coins: apartmentRented().coins, additionalGrowingPotsPurchased: MAX_ADDITIONAL_GROWING_POTS,
   growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID, 0), createEmptyGrowingPot('growing-pot-2', 1), createEmptyGrowingPot('growing-pot-3', 2)],
   seedQuantities: { basil: 1, mint: 2 }, task: 'plant-basil',
 });
+
+const emptyGrowTablePotsInInventory = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
+  additionalGrowingPotsPurchased: 2,
+  growingPots: [
+    createEmptyGrowingPot(STARTER_GROWING_POT_ID),
+    createEmptyGrowingPot('growing-pot-2'),
+    createEmptyGrowingPot('growing-pot-3'),
+  ],
+  task: 'place-pot',
+});
+
+const basilGrowingOthersUsable = (): ProgressState => {
+  const base = threePotsReady();
+  const pot = base.growingPots[0];
+  pot.crop = { species: 'basil', stage: 'seedling', wateredAt: Date.now(), growthStartedAt: Date.now() };
+  return withState(base, { growingPots: base.growingPots, seedQuantities: { basil: 0 }, growingEvents: { basil: 1 }, task: 'grow-basil' });
+};
 
 const mintGrowing = (): ProgressState => {
   const base = threePotsReady();
@@ -349,6 +403,15 @@ const wholePlantWithCrop = (species: 'dwarf-marigold' | 'peace-lily', stage: 'se
 
 const dwarfMarigoldMature = (): ProgressState => wholePlantWithCrop('dwarf-marigold', 'mature');
 const peaceLilyMature = (): ProgressState => wholePlantWithCrop('peace-lily', 'mature');
+const peaceLilyGrowingOthersUsable = (): ProgressState => {
+  const base = wholePlantWithCrop('peace-lily', 'seedling');
+  return withState(base, {
+    growingPots: [
+      ...base.growingPots,
+      createEmptyGrowingPot('whole-plant-third-pot', 2),
+    ],
+  });
+};
 const wholePlantLifted = (species: 'dwarf-marigold' | 'peace-lily'): ProgressState => withState(wholePlantWithCrop(species, 'mature'), {
   growingPots: [createEmptyGrowingPot('whole-plant-spare-pot', 1)],
   harvestQuantities: { [species]: 1 },
@@ -356,6 +419,20 @@ const wholePlantLifted = (species: 'dwarf-marigold' | 'peace-lily'): ProgressSta
 });
 const dwarfMarigoldLifted = (): ProgressState => wholePlantLifted('dwarf-marigold');
 const peaceLilyLifted = (): ProgressState => wholePlantLifted('peace-lily');
+const mintHarvestedReadyToSell = (): ProgressState => withState(mintMature(), {
+  growingPots: [
+    createEmptyGrowingPot(STARTER_GROWING_POT_ID, 0),
+    createEmptyGrowingPot('growing-pot-2', 1),
+    createEmptyGrowingPot('growing-pot-3', 2),
+  ],
+  harvestQuantities: { mint: 1 },
+  task: 'sell-mint',
+});
+const seedPacksReadyToBuy = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
+  coins: PLANT_SPECIES.reduce((total, species) => total + getSeedPackPrice(species), 0),
+  seedQuantities: { basil: 0, mint: 0, 'dwarf-marigold': 0, 'peace-lily': 0 },
+  task: 'buy-seeds',
+});
 const fertilizerThirtySecondTest = (): ProgressState => withState(wholePlantWithCrop('peace-lily', 'seedling'), {
   basicFertilizerCharges: 1,
 });
@@ -364,10 +441,13 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'fresh-start', label: 'Fresh start · opening intro', order: 10, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: freshStart },
   { id: 'golden-pothos-ready-to-collect', label: 'Golden Pothos · ready to collect', order: 15, scene: 'street', spawn: { x: POT_POSITION.x - 90, y: POT_POSITION.y }, zoom: 'close', crop: 'none', build: goldenPothosReadyToCollect },
   { id: 'golden-pothos-collected', label: 'Golden Pothos collected', order: 20, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: goldenPothosCollected },
-  { id: 'green-crt-shop-sale-before-repaired-upgrade', label: 'Green CRT shop sale before repaired-pot upgrade', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: greenCrtShopSaleBeforeRepairedUpgrade },
+  { id: 'green-crt-shop-sale-before-repaired-upgrade', label: 'Green CRT shop before cleaning-job acceptance', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: greenCrtShopSaleBeforeRepairedUpgrade },
   { id: 'first-plant-sold', label: 'First plant sold', order: 30, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold },
   { id: 'buyback-stock-ready', label: 'Buyback stock ready', order: 35, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buybackStockReady },
-  { id: 'window-job-accepted', label: 'Window-cleaning job accepted', order: 40, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobAccepted },
+  { id: 'window-job-accepted', label: 'Cleaning job accepted · raster pending in Green CRT shop', order: 40, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: windowJobAccepted },
+  { id: 'buy-sell-raster-online', label: 'First exit · Buy/Sell Atari B&W', order: 42, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: buySellRasterOnline },
+  { id: 'buy-sell-bw-reentered', label: 'Re-entered Atari B&W Buy/Sell', order: 43, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buySellRasterOnline },
+  { id: 'window-job-one-spray-remaining', label: 'Window cleaning · one spray before completion', order: 45, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobOneSprayRemaining },
   { id: 'window-job-complete', label: 'Window-cleaning job complete', order: 50, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobComplete },
   { id: 'broken-pieces-any-order', label: 'Broken pot pieces · arbitrary-order pickup', order: 55, scene: 'street', spawn: { x: 2400, y: 910 }, zoom: 'normal', crop: 'none', build: brokenPiecesAnyOrder },
   { id: 'broken-special-pot-collected', label: 'Broken special pot collected', order: 60, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: brokenSpecialPotCollected },
@@ -383,15 +463,27 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'upgraded-shop-items-ready-to-sell', label: 'Upgraded shop · items ready to sell', order: 92, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopItemsReadyToSell },
   { id: 'upgraded-shop-stock-ready-to-buy', label: 'Upgraded shop stock ready to buy back', order: 93, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopStockReadyToBuy },
   { id: 'multiple-matching-harvest-units', label: 'Multiple matching harvest units', order: 94, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: multipleMatchingHarvestUnits },
-  { id: 'rare-begonia-ready', label: 'Rare Spotted Begonia · ready to find', order: 95, scene: 'street', spawn: { x: RARE_BEGONIA_POSITION.x - 100, y: RARE_BEGONIA_POSITION.y }, zoom: 'close', crop: 'none', build: rareBegoniaReady },
+  { id: 'rare-begonia-ready', label: 'Rare Spotted Begonia · starting-world pickup', order: 95, scene: 'street', spawn: { x: RARE_BEGONIA_POSITION.x - 100, y: RARE_BEGONIA_POSITION.y }, zoom: 'close', crop: 'none', build: rareBegoniaReady },
   { id: 'rare-begonia-collected', label: 'Rare Spotted Begonia collected · ready to sell', order: 96, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: rareBegoniaCollected },
   { id: 'rare-begonia-sold', label: 'Rare Spotted Begonia sold', order: 97, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: rareBegoniaSold },
-  { id: 'apartment-rented', label: 'Apartment rented · starter kit unclaimed', order: 100, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: apartmentRented },
-  { id: 'starter-kit-claimed', label: 'Starter kit claimed', order: 110, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: starterKitClaimed },
+  { id: 'before-povo-rental', label: 'Immediately before renting POVO · one coin short', order: 98, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: beforePovoRental },
+  { id: 'povo-rental-coins-ready', label: 'POVO rental · enough coins', order: 99, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: enoughCoinsForPovoRental },
+  { id: 'apartment-rented', label: 'POVO rented · handover awaiting OK', order: 100, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: apartmentRented },
+  { id: 'welcome-gift-claimed', label: 'POVO handover acknowledged · Welcome Gift claimed', order: 110, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: povoWelcomeGiftClaimed },
+  { id: 'shop-item-ready-to-sell', label: 'Buy/Sell open · item ready to sell', order: 111, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopItemsReadyToSell, shopPanelOpen: true },
+  { id: 'shop-one-sale-queued', label: 'Buy/Sell open · one completed sale queued', order: 111.1, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: shopAfterOneSale, shopPanelOpen: true, queuedPresentationCount: 1 },
+  { id: 'shop-multiple-transactions-queued', label: 'Buy/Sell open · multiple transactions queued', order: 111.2, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: shopAfterMultipleTransactions, shopPanelOpen: true, queuedPresentationCount: 2 },
+  { id: 'wanted-job-available-shop-open', label: 'Wanted job available · shop open', order: 111.3, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold, shopPanelOpen: true },
+  { id: 'wanted-job-accepted-shop-open', label: 'Wanted job accepted · shop remains open', order: 111.4, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: windowJobAccepted, shopPanelOpen: true },
   { id: 'fertilizer-box-ready-to-buy', label: 'Basic Fertiliser box · ready to buy', order: 112, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: fertilizerBoxReadyToBuy },
+  { id: 'empty-grow-table-pots-in-inventory', label: 'Empty grow table · three pots in inventory', order: 113, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: emptyGrowTablePotsInInventory },
   { id: 'three-growing-pots-ready', label: 'Three growing pots ready', order: 115, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: threePotsReady },
+  { id: 'basil-growing-other-slots-usable', label: 'Basil growing · other slots usable', order: 126, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: basilGrowingOthersUsable },
   { id: 'mint-growing', label: 'Mint growing in the second pot', order: 125, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: mintGrowing },
+  { id: 'mint-low-supplies-before', label: 'Mint thought · low-supplies popup next', order: 125.1, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: mintGrowing, showMintThought: true },
+  { id: 'mint-low-supplies-acknowledged', label: 'Mint low-supplies popup acknowledged', order: 125.2, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: mintLowSuppliesAcknowledged },
   { id: 'mint-mature', label: 'Mint mature', order: 135, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'mature', build: mintMature },
+  { id: 'mint-harvested-ready-to-sell', label: 'Mint harvested · ready to sell', order: 136, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: mintHarvestedReadyToSell },
   { id: 'basil-planted', label: 'Basil planted · needs water', order: 120, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: basilPlanted },
   { id: 'basil-growing', label: 'Basil growing', order: 130, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: basilGrowing },
   { id: 'basil-mature', label: 'Basil mature', order: 140, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'mature', build: basilMature },
@@ -405,15 +497,18 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'dwarf-marigold-mature', label: 'Dwarf Marigold mature · ready to lift', order: 180, scene: 'home', spawn: SECOND_HOME_PLAYER_START, zoom: 'normal', crop: 'mature', build: dwarfMarigoldMature },
   { id: 'dwarf-marigold-lifted', label: 'Potted Dwarf Marigold · ready to sell', order: 181, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: dwarfMarigoldLifted },
   { id: 'peace-lily-mature', label: 'Peace Lily mature · ready to lift', order: 182, scene: 'home', spawn: SECOND_HOME_PLAYER_START, zoom: 'normal', crop: 'mature', build: peaceLilyMature },
+  { id: 'peace-lily-growing-other-slots-usable', label: 'Peace Lily growing · other slots usable', order: 181.5, scene: 'home', spawn: SECOND_HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: peaceLilyGrowingOthersUsable },
   { id: 'peace-lily-lifted', label: 'Potted Peace Lily · ready to sell', order: 183, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: peaceLilyLifted },
   { id: 'fertilizer-thirty-second-test', label: 'Peace Lily growing · test 30-second fertiliser', order: 184, scene: 'home', spawn: SECOND_HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: fertilizerThirtySecondTest },
+  { id: 'seed-packs-ready-to-buy', label: 'Seed packs · exact starting coins', order: 185, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: seedPacksReadyToBuy },
 ];
 
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {
   const result = sanitizeProgress(progress);
-  if (result.openingGoldenPothosCollected && result.buildings['buy-sell'].graphicsEra === 'atari-bw') throw new Error(`Developer checkpoint ${id} collected the opening Pothos without upgrading Buy/Sell.`);
+  if (id === 'golden-pothos-collected' && result.buildings['buy-sell'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Green CRT after collection.`);
   if (result.graphicsUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} installed the repaired-pot upgrade without advancing Buy/Sell to Atari Colour.`);
-  if (result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} installed the graphics upgrade without advancing Real Estate to Green CRT.`);
+  if (!result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} changed Real Estate before the main colour upgrade.`);
+  if (result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Real Estate to Atari Colour.`);
   const nursery = result.buildings.nursery;
   const validNurseryState = (nursery.operationalState === 'vacant' && nursery.graphicsEra === 'atari-bw')
     || (nursery.operationalState === 'under-construction' && nursery.graphicsEra === 'green-crt')
@@ -434,7 +529,13 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
   if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);
   if (result.rentalBondPaid && (!result.openingGoldenPothosCollected || !result.brokenPotOwned || !result.rareBegoniaCollected || result.repairStep < 10)) throw new Error(`Developer checkpoint ${id} rents the starter apartment without completing the housing item requirements.`);
   if (result.activeProperty === 'second-rental' && result.rentalBondTotal !== SECOND_RENTAL_TOTAL_BOND) throw new Error(`Developer checkpoint ${id} has an invalid second-rental bond.`);
-  if (result.starterKitGranted && !result.starterKitClaimed) throw new Error(`Developer checkpoint ${id} grants an unclaimed kit.`);
+  if (result.rentalBondPaid && !result.welcomeGiftsClaimed['starter-apartment']) throw new Error(`Developer checkpoint ${id} rents POVO without its Welcome Gift.`);
+  if (id === 'before-povo-rental' && (result.rentalBondPaid || result.coins !== RENTAL_BOND_COST - 1)) throw new Error(`Developer checkpoint ${id} must be one coin short before acquisition.`);
+  if (id === 'povo-rental-coins-ready' && (result.rentalBondPaid || result.coins !== RENTAL_BOND_COST)) throw new Error(`Developer checkpoint ${id} must have the exact POVO bond available.`);
+  if (id === 'apartment-rented' && (!result.rentalKeyOwned || !result.welcomeGiftsClaimed['starter-apartment'] || result.propertyHandoversAcknowledged['starter-apartment'])) throw new Error(`Developer checkpoint ${id} must await only the POVO handover acknowledgement.`);
+  if (id === 'welcome-gift-claimed' && !result.propertyHandoversAcknowledged['starter-apartment']) throw new Error(`Developer checkpoint ${id} must have acknowledged the POVO handover.`);
+  if (id === 'mint-low-supplies-before' && result.mintLowSuppliesAcknowledged) throw new Error(`Developer checkpoint ${id} must leave the supplies popup pending.`);
+  if (id === 'mint-low-supplies-acknowledged' && !result.mintLowSuppliesAcknowledged) throw new Error(`Developer checkpoint ${id} must persist the supplies acknowledgement.`);
   if (id === 'fertilizer-box-ready-to-buy' && (result.coins !== BASIC_FERTILIZER_BOX_PRICE || result.basicFertilizerCharges !== 0)) throw new Error(`Developer checkpoint ${id} cannot test the configured fertiliser box purchase.`);
   if (id === 'fertilizer-thirty-second-test' && result.basicFertilizerCharges !== 1) throw new Error(`Developer checkpoint ${id} must provide exactly one test pellet.`);
   const ids = new Set<string>(); const slots = new Set<number>();
@@ -446,6 +547,11 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
     if (pot.crop && pot.crop.stage !== 'planted' && pot.crop.growthStartedAt === null) throw new Error(`Developer checkpoint ${id} has an unwatered growing crop.`);
     if (pot.type === 'special-repair-pot' && pot.crop && getPlantDefinition(pot.crop.species).yieldMode === 'whole-plant') throw new Error(`Developer checkpoint ${id} uses the repaired special pot for a whole-plant crop.`);
   }
+  if (id === 'empty-grow-table-pots-in-inventory' && result.growingPots.some((pot) => pot.slot !== null)) throw new Error(`Developer checkpoint ${id} must leave every grow-table slot empty.`);
+  if ((id === 'basil-growing-other-slots-usable' || id === 'peace-lily-growing-other-slots-usable')
+    && result.growingPots.filter((pot) => pot.slot !== null && pot.crop === null).length < 2) throw new Error(`Developer checkpoint ${id} must retain at least two independently usable pots.`);
+  if (id === 'peace-lily-lifted' && (result.growingPots.some((pot) => pot.id === 'whole-plant-test-pot') || result.harvestQuantities['peace-lily'] !== 1)) throw new Error(`Developer checkpoint ${id} must remove the source pot and own one complete potted Peace Lily.`);
+  if (id === 'seed-packs-ready-to-buy' && result.coins !== PLANT_SPECIES.reduce((total, species) => total + getSeedPackPrice(species), 0)) throw new Error(`Developer checkpoint ${id} must use configured seed-pack prices.`);
   if (result.equippedTool === 'cleaner' && !result.cleanerOwned) throw new Error(`Developer checkpoint ${id} equips an unavailable cleaner.`);
   if (result.equippedTool === 'repair' && !result.repairToolOwned) throw new Error(`Developer checkpoint ${id} equips an unavailable repair tool.`);
   if (result.equippedTool === 'watering-can' && !result.wateringCanOwned) throw new Error(`Developer checkpoint ${id} equips an unavailable watering can.`);
@@ -464,7 +570,7 @@ export function createDevCheckpoint(id: string): DevCheckpointSnapshot | null {
   const crop = progress.growingPots.find((pot) => pot.crop?.growthStartedAt !== null)?.crop;
   if (crop && definition.crop === 'growing') crop.growthStartedAt = Date.now() - Math.max(1, getPlantDefinition(crop.species).growthDurationMs / 2);
   if (crop && definition.crop === 'mature') crop.growthStartedAt = Date.now() - getPlantDefinition(crop.species).growthDurationMs - 1;
-  return { id: definition.id, label: definition.label, order: definition.order, scene: definition.scene, spawn: { ...definition.spawn }, zoom: definition.zoom, progress: validateCheckpoint(id, progress) };
+  return { id: definition.id, label: definition.label, order: definition.order, scene: definition.scene, spawn: { ...definition.spawn }, zoom: definition.zoom, progress: validateCheckpoint(id, progress), shopPanelOpen: definition.shopPanelOpen, queuedPresentationCount: definition.queuedPresentationCount, showMintThought: definition.showMintThought };
 }
 
 export function getDevCheckpointOptions(): readonly Pick<DevCheckpointSnapshot, 'id' | 'label' | 'order'>[] { return definitions.map(({ id, label, order }) => ({ id, label, order })); }

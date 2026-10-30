@@ -16,6 +16,7 @@ export interface PlantDefinition {
   yieldMode: PlantYieldMode;
   growthDurationMs: number;
   seedPrice: number;
+  seedPackQuantity: number;
   harvestPrice: number;
 }
 
@@ -30,6 +31,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     yieldMode: 'harvest',
     growthDurationMs: 30_000,
     seedPrice: 2,
+    seedPackQuantity: 10,
     harvestPrice: 5,
   },
   mint: {
@@ -42,6 +44,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     yieldMode: 'harvest',
     growthDurationMs: 60_000,
     seedPrice: 2,
+    seedPackQuantity: 5,
     harvestPrice: 8,
   },
   'dwarf-marigold': {
@@ -54,6 +57,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     yieldMode: 'whole-plant',
     growthDurationMs: 90_000,
     seedPrice: 8,
+    seedPackQuantity: 2,
     harvestPrice: 35,
   },
   'peace-lily': {
@@ -66,6 +70,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     yieldMode: 'whole-plant',
     growthDurationMs: 150_000,
     seedPrice: 15,
+    seedPackQuantity: 2,
     harvestPrice: 60,
   },
 };
@@ -81,6 +86,11 @@ export const emptyPlantQuantities = (): Record<PlantSpecies, number> => ({
 
 export function getPlantDefinition(species: PlantSpecies): PlantDefinition {
   return PLANT_DEFINITIONS[species];
+}
+
+export function getSeedPackPrice(species: PlantSpecies): number {
+  const definition = getPlantDefinition(species);
+  return definition.seedPrice * definition.seedPackQuantity;
 }
 
 export function getPlantDefinitionByProduct(item: PlantProductItem): PlantDefinition {

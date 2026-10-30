@@ -33,7 +33,7 @@ import {
   type ZoomMode,
 } from '../game/world';
 import { DEFAULT_SHOP_STOCK_QUALITY } from '../game/progress';
-import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool } from '../game/progress';
+import type { BasilStage, InventoryItem, PotCondition, ShopStockEntry, TaskState, EquippedTool, InterfaceTheme } from '../game/progress';
 import type { AlexGraphics } from '../game/progress';
 import type { PropertyId } from '../game/world';
 import { emptyPlantQuantities, getPlantDefinition, getPlantDefinitionByProduct, isPlantProductItem, isPlantSpecies, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
@@ -80,8 +80,7 @@ export class HudController {
   private readonly startContinue = document.querySelector<HTMLButtonElement>('#start-continue')!;
   private readonly startNew = document.querySelector<HTMLButtonElement>('#start-new')!;
   private readonly startConfirm = document.querySelector<HTMLElement>('#start-confirm')!;
-  private readonly startConfirmNew = document.querySelector<HTMLButtonElement>('#start-confirm-new')!;
-  private readonly startCancelNew = document.querySelector<HTMLButtonElement>('#start-cancel-new')!;
+  private readonly startTerminalStatus = document.querySelector<HTMLElement>('#start-terminal-status')!;
   private readonly graphicsUpgradeOverlay = document.querySelector<HTMLElement>('#graphics-upgrade-overlay')!;
   private readonly graphicsUpgradeCard = document.querySelector<HTMLElement>('#graphics-upgrade-card')!;
   private readonly graphicsUpgradeContent = document.querySelector<HTMLElement>('#graphics-upgrade-content')!;
@@ -89,6 +88,8 @@ export class HudController {
   private readonly playtestCompleteOverlay = document.querySelector<HTMLElement>('#playtest-complete-overlay')!;
   private readonly playtestCompleteActions = document.querySelector<HTMLElement>('#playtest-complete-actions')!;
   private readonly playtestRestartConfirm = document.querySelector<HTMLElement>('#playtest-restart-confirm')!;
+  private readonly restartTerminalStatus = document.querySelector<HTMLElement>('#restart-terminal-status')!;
+  private bootTransitionActive = false;
   private activeTask: TaskState = 'find';
   private activePanelKind: string | null = null;
   private shopTab: 'sell' | 'buy' | 'wanted' = 'wanted';
@@ -108,7 +109,7 @@ export class HudController {
   private brokenPotPieceSelected = false;
   private brokenPotPiecesOwned = 0;
   private canPlaceItem = false;
-  private starterKitClaimed = false;
+  private povoWelcomeGiftClaimed = false;
   private rentalBondPaid = false;
   private rentalKeyOwned = false;
   private activeProperty: PropertyId = 'none';
@@ -121,13 +122,10 @@ export class HudController {
   private paidWorkComplete = false;
   private repairComplete = false;
   private foundPotCount = 0;
-  private starterPotPlaced = false;
-  private basilSeeds = 0;
-  private basilHarvests = 0;
-  private basilCycleCount = 0;
   private basicFertilizerCharges = 0;
   private seedQuantities: Record<PlantSpecies, number> = emptyPlantQuantities();
   private harvestQuantities: Record<PlantSpecies, number> = emptyPlantQuantities();
+  private growingEvents: Record<PlantSpecies, number> = emptyPlantQuantities();
   private growingPots: GrowingPotState[] = [];
   private ownedPremiumPlants: PremiumPlantId[] = [];
   private mapPositionRatio = START_POSITION.x / WORLD_WIDTH;
@@ -151,6 +149,7 @@ export class HudController {
   private graphicsUpgradeAction: (() => void) | null = null;
   private graphicsUpgradeInstalled = false;
   private alexGraphics: AlexGraphics = 'atari-bw';
+  private interfaceTheme: InterfaceTheme = 'auto';
 
   constructor(audio: AudioController) {
     this.audio = audio;
@@ -172,7 +171,7 @@ export class HudController {
     this.bindButtonActivation(this.mapCentreButton, () => this.centreCityMap());
     this.panelBackdrop.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (event.target === this.panelBackdrop) this.closePanel();
+      if (event.target === this.panelBackdrop && this.activePanelKind !== 'shop') this.closePanel();
     });
     this.bindButtonActivation(this.zoomToggleButton, () => this.toggleZoom());
     this.bindButtonActivation(this.toolSelector, () => this.toggleToolPopup());
@@ -188,10 +187,8 @@ export class HudController {
       if (event.target === this.toolPopupBackdrop) this.closeToolPopup();
     });
     this.bindButtonActivation(this.interactButton, () => this.scene?.tryInteract());
-    this.bindButtonActivation(this.startContinue, () => this.startContinueAction?.());
-    this.bindButtonActivation(this.startNew, () => { this.startConfirm.hidden = false; this.startNew.hidden = true; });
-    this.bindButtonActivation(this.startConfirmNew, () => this.startNewAction?.());
-    this.bindButtonActivation(this.startCancelNew, () => { this.startConfirm.hidden = true; this.startNew.hidden = false; });
+    this.bindButtonActivation(this.startContinue, () => this.runBootTransition(this.startTerminalStatus, 'RESTORING SESSION...', () => this.startContinueAction?.()));
+    this.bindButtonActivation(this.startNew, () => this.runBootTransition(this.startTerminalStatus, 'INITIALISING NEW SESSION...', () => this.startNewAction?.()));
     this.bindButtonActivation(this.graphicsUpgradeOk, () => this.graphicsUpgradeAction?.());
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-continue')!, () => this.hidePlaytestComplete());
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-close')!, () => this.hidePlaytestComplete());
@@ -204,8 +201,10 @@ export class HudController {
       this.playtestCompleteActions.hidden = false;
     });
     this.bindButtonActivation(document.querySelector<HTMLButtonElement>('#playtest-restart-confirm-button')!, () => {
-      this.hidePlaytestComplete();
-      this.scene?.restartPlaytest();
+      this.runBootTransition(this.restartTerminalStatus, 'INITIALISING NEW SESSION...', () => {
+        this.hidePlaytestComplete();
+        this.scene?.restartPlaytest();
+      });
     });
     this.bindJoystickControls();
     this.bindArcadeControls();
@@ -234,12 +233,29 @@ export class HudController {
   }
 
   showStartScreen(hasContinue: boolean, continueAction: () => void, newGameAction: () => void): void {
+    this.bootTransitionActive = false;
+    this.startTerminalStatus.hidden = true;
     this.startContinueAction = continueAction;
     this.startNewAction = newGameAction;
     this.startContinue.hidden = !hasContinue;
     this.startNew.hidden = false;
-    this.startConfirm.hidden = true;
+    this.startConfirm.hidden = !hasContinue;
     this.startScreen.hidden = false;
+  }
+
+  private runBootTransition(status: HTMLElement, message: string, action: () => void): void {
+    if (this.bootTransitionActive) return;
+    this.bootTransitionActive = true;
+    const controls = Array.from(status.closest('section')?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+    controls.forEach((button) => { button.disabled = true; });
+    status.textContent = `> ${message}`;
+    status.hidden = false;
+    window.setTimeout(() => {
+      controls.forEach((button) => { button.disabled = false; });
+      action();
+      this.bootTransitionActive = false;
+      status.hidden = true;
+    }, 450);
   }
 
   hideStartScreen(): void {
@@ -249,6 +265,8 @@ export class HudController {
   }
 
   showPlaytestComplete(): void {
+    this.bootTransitionActive = false;
+    this.restartTerminalStatus.hidden = true;
     this.resetHeldInputs();
     this.closeToolPopup();
     this.playtestRestartConfirm.hidden = true;
@@ -267,7 +285,7 @@ export class HudController {
   showGraphicsUpgradePrompt(action: () => void): void {
     this.graphicsUpgradeAction = action;
     this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
-    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS UPGRADE DETECTED</h2><p>Install?</p>';
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS MODULE PACKAGE DETECTED</h2><p>INSTALL?</p>';
     this.graphicsUpgradeOk.hidden = false;
     this.graphicsUpgradeOk.textContent = 'OK';
     this.graphicsUpgradeOverlay.hidden = false;
@@ -277,7 +295,7 @@ export class HudController {
     this.graphicsUpgradeAction = null;
     this.graphicsUpgradeCard.classList.remove('is-complete');
     this.graphicsUpgradeCard.classList.add('is-installing');
-    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><div class="graphics-module-list"><span>ALEX MONOCHROME RASTER ........ LOADED</span><span>GAMEJOY MONOCHROME RASTER ..... LOADED</span><span>BUY/SELL COLOUR PALETTE ....... LOADED</span><span>NURSERY CONSTRUCTION PLAN ..... ONLINE</span></div><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
     this.graphicsUpgradeOk.hidden = true;
     this.graphicsUpgradeOverlay.hidden = false;
   }
@@ -292,14 +310,14 @@ export class HudController {
     const status = this.graphicsUpgradeContent.querySelector<HTMLElement>('#graphics-upgrade-status');
     if (progressText) progressText.textContent = indicator;
     if (bar) bar.style.width = `${percent}%`;
-    if (status) status.innerHTML = complete ? 'GREEN SCREEN MODULES LOADED' : `LOADING MODULES<span class="graphics-upgrade-dots">${'.'.repeat((Math.floor(value * 12) % 3) + 1)}</span>`;
+    if (status) status.innerHTML = complete ? 'GRAPHICS MODULES LOADED' : `LOADING MODULES<span class="graphics-upgrade-dots">${'.'.repeat((Math.floor(value * 12) % 3) + 1)}</span>`;
   }
 
   showGraphicsAcknowledgement(action: () => void): void {
     this.graphicsUpgradeAction = action;
     this.graphicsUpgradeCard.classList.remove('is-installing');
     this.graphicsUpgradeCard.classList.add('is-complete');
-    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GREEN SCREEN MODULES LOADED</h2><p>Installation complete.</p>';
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS MODULES LOADED</h2><p>Installation complete.</p>';
     this.graphicsUpgradeOk.hidden = false;
     this.graphicsUpgradeOk.textContent = 'OK';
     this.graphicsUpgradeOverlay.hidden = false;
@@ -362,7 +380,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; starterKitClaimed?: boolean; starterPotPlaced?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; windowJobAccepted?: boolean; paidWorkComplete?: boolean; repairComplete?: boolean; foundPotCount?: number; basilSeeds?: number; basilHarvests?: number; basilCycleCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; ownedPremiumPlants?: PremiumPlantId[] }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; povoWelcomeGiftClaimed?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; windowJobAccepted?: boolean; paidWorkComplete?: boolean; repairComplete?: boolean; foundPotCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingEvents?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; interfaceTheme?: InterfaceTheme; ownedPremiumPlants?: PremiumPlantId[] }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -378,7 +396,7 @@ export class HudController {
     this.assignedToolSlots = state.toolSlots?.slice(0, 3) ?? this.assignedToolSlots;
     this.glueCharges = state.glueCharges ?? this.glueCharges;
     this.activeTask = state.task;
-    this.starterKitClaimed = state.starterKitClaimed ?? this.starterKitClaimed;
+    this.povoWelcomeGiftClaimed = state.povoWelcomeGiftClaimed ?? this.povoWelcomeGiftClaimed;
     this.rentalBondPaid = state.rentalBondPaid ?? this.rentalBondPaid;
     this.rentalKeyOwned = state.rentalKeyOwned ?? this.rentalKeyOwned;
     this.activeProperty = state.activeProperty ?? this.activeProperty;
@@ -391,17 +409,17 @@ export class HudController {
     this.paidWorkComplete = state.paidWorkComplete ?? this.paidWorkComplete;
     this.repairComplete = state.repairComplete ?? this.repairComplete;
     this.foundPotCount = state.foundPotCount ?? this.foundPotCount;
-    this.starterPotPlaced = state.starterPotPlaced ?? this.starterPotPlaced;
-    this.basilSeeds = state.basilSeeds ?? this.basilSeeds;
-    this.basilHarvests = state.basilHarvests ?? this.basilHarvests;
-    this.basilCycleCount = state.basilCycleCount ?? this.basilCycleCount;
     this.basicFertilizerCharges = state.basicFertilizerCharges ?? this.basicFertilizerCharges;
-    this.seedQuantities = state.seedQuantities ? { ...this.seedQuantities, ...state.seedQuantities } : { ...this.seedQuantities, basil: this.basilSeeds };
-    this.harvestQuantities = state.harvestQuantities ? { ...this.harvestQuantities, ...state.harvestQuantities } : { ...this.harvestQuantities, basil: this.basilHarvests };
+    this.seedQuantities = state.seedQuantities ? { ...this.seedQuantities, ...state.seedQuantities } : this.seedQuantities;
+    this.harvestQuantities = state.harvestQuantities ? { ...this.harvestQuantities, ...state.harvestQuantities } : this.harvestQuantities;
+    this.growingEvents = state.growingEvents ? { ...this.growingEvents, ...state.growingEvents } : this.growingEvents;
     this.growingPots = state.growingPots?.map((pot) => ({ ...pot, crop: pot.crop ? { ...pot.crop } : null })) ?? this.growingPots;
     this.ownedPremiumPlants = state.ownedPremiumPlants ? [...state.ownedPremiumPlants] : this.ownedPremiumPlants;
     this.graphicsUpgradeInstalled = state.graphicsUpgradeInstalled ?? this.graphicsUpgradeInstalled;
     this.alexGraphics = state.alexGraphics ?? this.alexGraphics;
+    this.interfaceTheme = state.interfaceTheme ?? this.interfaceTheme;
+    const greenInterface = this.interfaceTheme === 'green-crt' || (this.interfaceTheme === 'auto' && !this.graphicsUpgradeInstalled);
+    document.documentElement.classList.toggle('interface-green-crt', greenInterface);
     document.documentElement.classList.toggle('graphics-upgrade-installed', this.graphicsUpgradeInstalled);
     this.refreshToolPopup();
     const labels: Record<TaskState, string> = {
@@ -413,9 +431,9 @@ export class HudController {
         : 'Find the broken pot pieces',
       'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`,
       complete: 'Prototype task complete',
-      'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit',
+      'place-pot': this.povoWelcomeGiftClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the welcome gift',
       'plant-basil': 'Plant basil in your starter pot',
-      'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
+      'water-basil': this.growingEvents.basil > 1 ? 'Water and grow basil' : 'Water the planted basil',
       'grow-basil': 'Wait for the basil to grow',
       'harvest-basil': 'Harvest the mature basil',
       'sell-basil': `Sell the basil harvest at ${BUY_SELL_NAME}`,
@@ -437,7 +455,7 @@ export class HudController {
       'sell-peace-lily': `Sell the potted Peace Lily at ${BUY_SELL_NAME}`,
       'move-rental': 'Move into a bigger rental',
     };
-    this.objectiveText.textContent = this.rentalBondPaid ? (this.starterKitClaimed ? labels[state.task] : 'Enter the apartment and claim the starter kit') : 'Find a place to live';
+    this.objectiveText.textContent = this.rentalBondPaid ? (this.povoWelcomeGiftClaimed ? labels[state.task] : 'Enter the apartment and claim the welcome gift') : 'Find a place to live';
     this.objectiveButton.classList.toggle('is-housing-objective', !this.rentalBondPaid);
     this.objectiveButton.setAttribute('aria-expanded', String(!this.housingObjectiveDropdown.hidden && !this.rentalBondPaid));
     this.renderHousingObjective();
@@ -600,7 +618,7 @@ export class HudController {
   showToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-dismissible', 'is-opening-intro', 'is-starter-kit', 'is-completion');
+    this.toast.classList.remove('is-dismissible', 'is-opening-intro', 'is-welcome-gift', 'is-property-handover', 'is-completion');
     this.toastOk.hidden = true;
     this.toastClose.hidden = true;
     this.toast.classList.toggle('is-visible', Boolean(message));
@@ -609,7 +627,7 @@ export class HudController {
   showDismissibleToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-opening-intro', 'is-starter-kit', 'is-completion');
+    this.toast.classList.remove('is-opening-intro', 'is-welcome-gift', 'is-property-handover', 'is-completion');
     this.toast.classList.add('is-dismissible');
     this.toastOk.hidden = true;
     this.toastClose.hidden = false;
@@ -619,7 +637,7 @@ export class HudController {
   showOpeningIntro(message: string, action: () => void): void {
     this.toastDismissAction = action;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-starter-kit');
+    this.toast.classList.remove('is-welcome-gift', 'is-property-handover');
     this.toast.classList.add('is-dismissible', 'is-opening-intro');
     this.toastOk.hidden = false;
     this.toastClose.hidden = true;
@@ -629,18 +647,28 @@ export class HudController {
   showConfirmationToast(message: string): void {
     this.toastDismissAction = null;
     this.toastMessage.textContent = message;
-    this.toast.classList.remove('is-opening-intro', 'is-starter-kit');
+    this.toast.classList.remove('is-opening-intro', 'is-welcome-gift', 'is-property-handover');
     this.toast.classList.add('is-dismissible', 'is-completion');
     this.toastOk.hidden = false;
     this.toastClose.hidden = true;
     this.toast.classList.add('is-visible');
   }
 
-  showStarterKitClaimed(): void {
-    this.toastDismissAction = null;
-    this.toastMessage.innerHTML = '<strong>STARTER KIT CLAIMED</strong><span>Small basic pot ×1</span><span>Watering can ×1</span><span>Basil seeds ×1</span><span>Mint seeds ×1</span><span>Basic fertiliser pellet ×1</span>';
+  showPropertyHandover(message: string, action: () => void): void {
+    this.toastDismissAction = action;
+    this.toastMessage.textContent = message;
     this.toast.classList.remove('is-opening-intro', 'is-completion');
-    this.toast.classList.add('is-dismissible', 'is-starter-kit');
+    this.toast.classList.add('is-dismissible', 'is-welcome-gift', 'is-property-handover');
+    this.toastOk.hidden = false;
+    this.toastClose.hidden = true;
+    this.toast.classList.add('is-visible');
+  }
+
+  showAcknowledgement(message: string, action: () => void): void {
+    this.toastDismissAction = action;
+    this.toastMessage.textContent = message;
+    this.toast.classList.remove('is-opening-intro', 'is-welcome-gift', 'is-property-handover');
+    this.toast.classList.add('is-dismissible', 'is-completion');
     this.toastOk.hidden = false;
     this.toastClose.hidden = true;
     this.toast.classList.add('is-visible');
@@ -951,8 +979,15 @@ export class HudController {
     }
     this.panelBackdrop.classList.toggle('is-city-map', kind === 'map');
     this.panelBackdrop.classList.toggle('is-shop', kind === 'shop');
-    this.panelBackdrop.classList.toggle('is-green-crt-property',
-      (kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'green-crt');
+    this.panelBackdrop.classList.toggle('is-global-panel', ['bag', 'map', 'tasks', 'home', 'more', 'settings'].includes(kind));
+    const shopEra = kind === 'shop' ? this.scene?.getShopPanelState().buySellGraphicsEra : null;
+    this.panelBackdrop.classList.toggle('is-green-crt-shop', shopEra === 'green-crt');
+    this.panelBackdrop.classList.toggle('is-colour-shop', shopEra === 'atari-colour');
+    const povoPanel = kind === 'property-cheap-rental';
+    this.panelBackdrop.classList.toggle('is-green-crt-property', povoPanel
+      || ((kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'green-crt'));
+    this.panelBackdrop.classList.toggle('is-colour-property', !povoPanel
+      && (kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'atari-colour');
     this.mapCentreButton.hidden = kind !== 'map';
     this.panelBackdrop.hidden = false;
     requestAnimationFrame(() => this.panelBackdrop.classList.add('is-open'));
@@ -1202,7 +1237,7 @@ export class HudController {
       const itemBlocks = [
         this.hasPot ? `<div class="inventory-item"><span class="inventory-art">${this.potCondition === 'broken' ? '◈' : '▱'}</span><div><strong>${potLabel}</strong><small>${potNote}</small></div>${repairButton}${putDownButton}</div>` : '',
         this.brokenPotPiecesOwned > 0 ? `<div class="inventory-item"><span class="inventory-art">◈</span><div><strong>Broken pot pieces ×${this.brokenPotPiecesOwned}</strong><small>Collected piece${this.brokenPotPiecesOwned === 1 ? '' : 's'} added to the Bag. Find the remaining pieces.</small></div></div>` : '',
-        this.starterKitClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
+        this.povoWelcomeGiftClaimed && this.growingPots.filter((pot) => pot.slot === null).length > 0 ? `<div class="inventory-item"><span class="inventory-art">▱</span><div><strong>Small basic plastic pots ×${this.growingPots.filter((pot) => pot.slot === null).length}</strong><small>Usable medium. Place each on an empty grow-table slot.</small></div></div>` : '',
         ...PLANT_SPECIES.map((species) => this.seedQuantities[species] > 0 ? `<div class="inventory-item"><span class="inventory-art">·</span><div><strong>${getPlantDefinition(species).seedLabel} ×${this.seedQuantities[species]}</strong><small>Plant one in any empty placed pot.</small></div></div>` : ''),
         this.rentalKeyOwned ? `<div class="inventory-item"><span class="inventory-art">⚿</span><div><strong>${this.activeProperty === 'second-rental' ? 'Two-room rental key' : 'Starter apartment key'}</strong><small>Permanent access key. Not for sale or consumption.</small></div></div>` : '',
         this.basicFertilizerCharges > 0 ? `<div class="inventory-item"><span class="inventory-art">✚</span><div><strong>Basic fertiliser pellets ×${this.basicFertilizerCharges}</strong><small>Each pellet removes ${BASIC_FERTILIZER_GROWTH_REDUCTION_MS / 1000} seconds from a growing crop.</small></div></div>` : '',
@@ -1245,8 +1280,8 @@ export class HudController {
         repair: this.potCondition === 'broken'
           ? 'Head to Bag and put down the broken pieces to repair the pot'
           : 'Find the broken pot pieces', 'sell-repaired': `Sell the repaired pot at ${BUY_SELL_NAME}`, complete: 'Prototype jobs complete',
-        'place-pot': this.starterKitClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the starter kit', 'plant-basil': 'Plant basil in a grow-table pot',
-        'water-basil': this.basilCycleCount > 1 ? 'Water and grow basil' : 'Water the planted basil',
+        'place-pot': this.povoWelcomeGiftClaimed ? 'Place an owned pot on an empty grow-table slot' : 'Enter the apartment and claim the welcome gift', 'plant-basil': 'Plant basil in a grow-table pot',
+        'water-basil': this.growingEvents.basil > 1 ? 'Water and grow basil' : 'Water the planted basil',
         'grow-basil': 'Wait for the basil to grow', 'harvest-basil': 'Harvest the mature basil',
         'sell-basil': `Sell the basil harvest at ${BUY_SELL_NAME}`, 'buy-seeds': 'Buy seeds for another grow-table crop',
         'plant-mint': 'Plant mint in an empty grow-table pot', 'water-mint': 'Water the planted mint',
@@ -1272,11 +1307,11 @@ export class HudController {
       };
     }
     if (kind === 'home') {
-    const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, rentalKeyOwned: false, starterKitClaimed: false, activeProperty: 'none' as PropertyId, rentalBondTotal: 0 };
+    const rental = this.scene?.getRentalState() ?? { rentalBondPaid: false, rentalKeyOwned: false, povoWelcomeGiftClaimed: false, activeProperty: 'none' as PropertyId, rentalBondTotal: 0 };
       return {
         title: 'Home',
         body: rental.rentalBondPaid
-          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>${rental.activeProperty === 'second-rental' ? 'YOUR TWO-ROOM RENTAL' : 'YOUR STARTER RENTAL'}</strong><small>Key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Bond recorded: ${rental.rentalBondTotal} coins.</small><small>Access: use the ${rental.activeProperty === 'second-rental' ? 'TWO-ROOM RENTAL' : 'STARTER APARTMENT'} door on the street.</small><small>${rental.activeProperty === 'second-rental' ? 'Two rooms · six growing positions. Rental space does not include six free pots.' : rental.starterKitClaimed ? 'Starter kit claimed: pot, used medium, basil seeds, watering can and one basic fertiliser pellet.' : 'Starter kit ready inside: pot, used medium, basil seeds, watering can and one basic fertiliser pellet.'}</small></div>`
+          ? `<div class="home-card"><span class="home-outline">⌂</span><strong>${rental.activeProperty === 'second-rental' ? 'YOUR TWO-ROOM RENTAL' : 'YOUR STARTER RENTAL'}</strong><small>Key: ${rental.rentalKeyOwned ? 'received and stored in Bag.' : 'not received yet.'}</small><small>Bond recorded: ${rental.rentalBondTotal} coins.</small><small>Access: use the ${rental.activeProperty === 'second-rental' ? 'TWO-ROOM RENTAL' : 'STARTER APARTMENT'} door on the street.</small><small>${rental.activeProperty === 'second-rental' ? 'Two rooms · six growing positions. Rental space does not include six free pots.' : rental.povoWelcomeGiftClaimed ? 'Welcome Gift claimed: pot, used medium, basil seeds, watering can and one basic fertiliser pellet.' : 'Welcome Gift ready inside: pot, used medium, basil seeds, watering can and one basic fertiliser pellet.'}</small></div>`
           : `<div class="empty-state"><span class="home-outline">⌂</span><strong>Alex has not rented a home yet</strong><small>Tap the cheap TO RENT listing at the REAL ESTATE AGENT to review the ${RENTAL_BOND_COST}-coin bond and access details.</small></div>`,
       };
     }
@@ -1295,9 +1330,13 @@ export class HudController {
     if (kind === 'settings') {
       const musicOn = this.audio.musicEnabled;
       const sfxOn = this.audio.sfxEnabled;
+      const alexChoices = this.graphicsUpgradeInstalled
+        ? `<div class="settings-choice"><strong>Alex graphics</strong><small>Choose an unlocked Alex appearance.</small><div class="settings-choice-row"><button type="button" data-alex-graphics="green-screen" class="${this.alexGraphics === 'green-screen' ? 'is-selected' : ''}">GREEN CRT</button><button type="button" data-alex-graphics="atari-bw" class="${this.alexGraphics === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button></div></div>`
+        : '<div class="settings-choice"><strong>Alex graphics</strong><small>GREEN CRT · initial appearance</small></div>';
+      const interfaceChoices = `<div class="settings-choice"><strong>Interface graphics</strong><small>Auto uses the highest progression-approved style.</small><div class="settings-choice-row"><button type="button" data-interface-theme="auto" class="${this.interfaceTheme === 'auto' ? 'is-selected' : ''}">AUTO</button><button type="button" data-interface-theme="green-crt" class="${this.interfaceTheme === 'green-crt' ? 'is-selected' : ''}">GREEN CRT</button>${this.graphicsUpgradeInstalled ? `<button type="button" data-interface-theme="atari-bw" class="${this.interfaceTheme === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button>` : ''}</div></div>`;
       return {
         title: 'Settings',
-        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${this.graphicsUpgradeInstalled ? `<div class="settings-choice"><strong>Alex graphics</strong><small>Choose an unlocked Alex appearance.</small><div class="settings-choice-row"><button type="button" data-alex-graphics="atari-bw" class="${this.alexGraphics === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button><button type="button" data-alex-graphics="green-screen" class="${this.alexGraphics === 'green-screen' ? 'is-selected' : ''}">GREEN SCREEN</button></div></div>` : ''}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Black and white Atari prototype · crisp pixel edges · responsive viewport</small></div><div class="build-information"><strong>${PLAYTEST_CANDIDATE}</strong><small>Build ${BUILD_DATE} · commit ${BUILD_COMMIT} · save data v${SAVE_DATA_VERSION}</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${alexChoices}${interfaceChoices}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Explicit Green CRT and Atari raster progression · crisp pixel edges · responsive viewport</small></div><div class="build-information"><strong>${PLAYTEST_CANDIDATE}</strong><small>Build ${BUILD_DATE} · commit ${BUILD_COMMIT} · save data v${SAVE_DATA_VERSION}</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
       };
     }
     return {
@@ -1427,6 +1466,12 @@ export class HudController {
         if (style === 'atari-bw' || style === 'green-screen') this.scene?.setAlexGraphics(style);
       });
     });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-interface-theme]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        const theme = button.dataset.interfaceTheme;
+        if (theme === 'auto' || theme === 'green-crt' || theme === 'atari-bw') this.scene?.setInterfaceTheme(theme);
+      });
+    });
     if (!DEV_BUILD) return;
     const checkpointSelect = this.panelBody.querySelector<HTMLSelectElement>('[data-dev-checkpoint]');
     const rememberCheckpoint = (): void => {
@@ -1476,13 +1521,11 @@ export class HudController {
       windowJobAccepted: false,
       windowCleaningProgress: 0,
       windowJobComplete: false,
-      basilHarvests: this.basilHarvests,
-      basilSeeds: this.basilSeeds,
       seedQuantities: { ...this.seedQuantities },
       harvestQuantities: { ...this.harvestQuantities },
       additionalGrowingPotsAvailable: 0,
       basicFertilizerCharges: this.basicFertilizerCharges,
-      starterKitClaimed: this.starterKitClaimed,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
       shopStock: [] as ShopStockEntry[],
       ownedPremiumPlants: [...this.ownedPremiumPlants],
     };
@@ -1509,7 +1552,7 @@ export class HudController {
       shop.inventoryPot === 'repaired' ? `<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Sell for ${REPAIRED_POT_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(REPAIRED_POT_SALE_PRICE)} coins</small></div>${quantityControl(1, REPAIRED_POT_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR ${REPAIRED_POT_SALE_PRICE} COINS</button></div>` : '',
       ...PLANT_SPECIES.map((species) => {
         const definition = getPlantDefinition(species);
-        const amount = shop.harvestQuantities[species] ?? (species === 'basil' ? shop.basilHarvests : 0);
+        const amount = shop.harvestQuantities[species] ?? 0;
         return amount > 0 ? `<div class="shop-offer"><div class="inventory-art">${definition.yieldMode === 'whole-plant' ? '♣' : '✦'}</div><div class="shop-offer-copy"><strong>${definition.harvestLabel} ×${amount}</strong><small>${definition.yieldMode === 'whole-plant' ? 'Whole plant with basic pot' : 'Fresh stack'} · Sell for ${definition.harvestPrice} coins each · Buy back for ${getShopBuybackPrice(definition.harvestPrice)} coins each</small></div>${quantityControl(amount, definition.harvestPrice, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="${species}">SELL SELECTED</button></div>` : '';
       }),
     ].filter(Boolean).join('');
@@ -1529,11 +1572,11 @@ export class HudController {
       `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>${plant.label}</strong><small>Premium potted plant · one available · ${plant.price} coins</small></div>${quantityControl(1, plant.price, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-premium="${plant.id}">BUY FOR ${plant.price} COINS</button></div>`,
     ).join('');
     const premiumContent = `<div class="shop-section-label">PREMIUM PLANTS</div>${premiumOffers || '<div class="empty-state"><span class="empty-mark">✓</span><strong>Premium shelf purchased</strong><small>All current premium plants are in your Bag.</small></div>'}`;
-    const seedContent = shop.starterKitClaimed
-      ? `<div class="shop-section-label">SEEDS</div>${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); return `<div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>${definition.seedLabel}</strong><small>Independent stock · ${definition.seedPrice} coins each</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, definition.seedPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="seed-${species}">BUY SELECTED</button></div>`; }).join('')}`
-      : '<div class="shop-section-label">SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the starter kit before buying seeds.</small></div>';
-    const potContent = shop.starterKitClaimed && shop.additionalGrowingPotsAvailable > 0 ? `<div class="shop-section-label">GROWING POTS</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small basic plastic pot</strong><small>Usable medium · ${shop.additionalGrowingPotsAvailable} available · ${SMALL_BASIC_PLASTIC_POT_PRICE} coins each</small></div>${quantityControl(shop.additionalGrowingPotsAvailable, SMALL_BASIC_PLASTIC_POT_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-growing-pot>BUY SELECTED</button></div>` : '';
-    const fertilizerContent = shop.starterKitClaimed
+    const seedContent = shop.povoWelcomeGiftClaimed
+      ? `<div class="shop-section-label">SEED PACKS</div>${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); const packPrice = definition.seedPrice * definition.seedPackQuantity; return `<div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>${definition.seedLabel} ×${definition.seedPackQuantity}</strong><small>One pack · ${packPrice} coins</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, packPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="seed-${species}">BUY PACK</button></div>`; }).join('')}`
+      : '<div class="shop-section-label">SEEDS</div><div class="empty-state"><span class="empty-mark">—</span><strong>No stock available yet</strong><small>Claim the welcome gift before buying seeds.</small></div>';
+    const potContent = shop.povoWelcomeGiftClaimed && shop.additionalGrowingPotsAvailable > 0 ? `<div class="shop-section-label">GROWING POTS</div><div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small basic plastic pot</strong><small>Usable medium · ${shop.additionalGrowingPotsAvailable} available · ${SMALL_BASIC_PLASTIC_POT_PRICE} coins each</small></div>${quantityControl(shop.additionalGrowingPotsAvailable, SMALL_BASIC_PLASTIC_POT_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-growing-pot>BUY SELECTED</button></div>` : '';
+    const fertilizerContent = shop.povoWelcomeGiftClaimed
       ? `<div class="shop-section-label">GROWING SUPPLIES</div><div class="shop-offer"><div class="inventory-art">✚</div><div class="shop-offer-copy"><strong>Basic Fertiliser · box of ${BASIC_FERTILIZER_PELLETS_PER_BOX} pellets</strong><small>Owned: ${shop.basicFertilizerCharges} · Each pellet shortens active growth by ${BASIC_FERTILIZER_GROWTH_REDUCTION_MS / 1000} seconds</small></div>${quantityControl(1, BASIC_FERTILIZER_BOX_PRICE, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-fertilizer>BUY BOX FOR ${BASIC_FERTILIZER_BOX_PRICE} COINS</button></div>`
       : '';
     const buyContent = `<div class="shop-content-heading">BUY</div>${premiumContent}<div class="shop-section-label">PLAYER-SOLD STOCK</div>${stockOffers || '<div class="empty-state"><span class="empty-mark">—</span><strong>No player-sold stock available</strong><small>Sell an eligible item before it appears here.</small></div>'}${seedContent}${fertilizerContent}${potContent}`;
@@ -1562,7 +1605,7 @@ export class HudController {
       coins: this.coins,
       rentalBondPaid: false,
       rentalKeyOwned: false,
-      starterKitClaimed: false,
+      povoWelcomeGiftClaimed: false,
       activeProperty: 'none' as PropertyId,
       rentalBondTotal: 0,
       basilHarvestSaleRecorded: false,
@@ -1591,21 +1634,18 @@ export class HudController {
     const openingChecklistComplete = state.repairComplete && state.foundPotCount >= 3;
     const openingChecklist = `<div class="property-details-list"><span>POTS FOUND <b>${Math.min(3, state.foundPotCount)} / 3</b></span><span>ITEM REPAIRED <b>${state.repairComplete ? 'COMPLETE' : 'REQUIRED'}</b></span></div>`;
     const rentalContent = state.rentalBondPaid
-      ? `<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Apartment key ${state.rentalKeyOwned ? 'received and stored in the Bag.' : 'will be restored from this rental.'} Use the STARTER APARTMENT door on the street to enter.</p><div class="property-kit-note">STARTER KIT<br><small>Pot · used medium · basil seeds · basic watering can · 1 basic fertiliser pellet</small></div>`
-      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${!openingChecklistComplete ? '<p class="property-warning">Complete the found-pot and repair requirements before renting.</p>' : shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time starter kit together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
-    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small rundown B&amp;W apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${openingChecklist}${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
+      ? `<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Apartment key ${state.rentalKeyOwned ? 'received and stored in the Bag.' : 'will be restored from this rental.'} Use the STARTER APARTMENT door on the street to enter.</p><div class="property-kit-note">WELCOME GIFT<br><small>Pot · used medium · basil seeds · basic watering can · 1 basic fertiliser pellet</small></div>`
+      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${!openingChecklistComplete ? '<p class="property-warning">Complete the found-pot and repair requirements before renting.</p>' : shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time welcome gift together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
+    return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small Green CRT apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${openingChecklist}${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
   }
 
   private basilPanelMarkup(): string {
     const state = this.scene?.getBasilPanelState() ?? {
-      starterKitClaimed: this.starterKitClaimed,
-      starterPotPlaced: this.starterPotPlaced,
+      povoWelcomeGiftClaimed: this.povoWelcomeGiftClaimed,
+      slotState: 'empty' as const,
       stage: 'empty' as BasilStage,
-      seeds: this.basilSeeds,
-      harvests: this.basilHarvests,
       timeRemainingMs: 0,
       wateringCanOwned: this.wateringCanOwned,
-      basilCycleCount: this.basilCycleCount,
       basicFertilizerCharges: this.basicFertilizerCharges,
       selectedPotId: null,
       growingPots: this.growingPots,
@@ -1615,7 +1655,7 @@ export class HudController {
     const selectedPot = state.growingPots.find((pot) => pot.id === state.selectedPotId) ?? null;
     const selectedDefinition = selectedPot?.crop ? getPlantDefinition(selectedPot.crop.species) : null;
     const stageLabels: Record<BasilStage, string> = {
-      empty: 'EMPTY', planted: 'NEEDS WATER', seedling: 'GROWING', mature: selectedDefinition?.yieldMode === 'whole-plant' ? 'READY TO LIFT' : 'READY TO HARVEST',
+      empty: state.slotState === 'pot' ? 'POT READY' : 'EMPTY SLOT', planted: 'NEEDS WATER', seedling: 'GROWING', mature: selectedDefinition?.yieldMode === 'whole-plant' ? 'READY TO LIFT' : 'READY TO HARVEST',
     };
     const minutes = Math.floor(state.timeRemainingMs / 60000);
     const seconds = Math.ceil((state.timeRemainingMs % 60000) / 1000);
@@ -1624,8 +1664,8 @@ export class HudController {
     const speciesLabel = selectedPot?.crop ? getPlantDefinition(selectedPot.crop.species).label : '';
     let status = '';
     let action = '';
-    if (!state.starterKitClaimed) {
-      status = 'Claim the starter kit inside your rental first.';
+    if (!state.povoWelcomeGiftClaimed) {
+      status = 'Claim the welcome gift inside your rental first.';
     } else if (!selectedPot) {
       status = 'No pot selected.';
     } else if (state.stage === 'empty') {
