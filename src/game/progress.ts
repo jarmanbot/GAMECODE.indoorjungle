@@ -29,7 +29,7 @@ export type GraphicsUpgradeStage = 'none' | 'prompt' | 'installing' | 'acknowled
 export type BasilStage = 'empty' | 'planted' | 'seedling' | 'mature';
 export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | PlantProductItem;
 export type ShopStockCondition = PotCondition | 'fresh' | 'living';
-export const SAVE_DATA_VERSION = 3;
+export const SAVE_DATA_VERSION = 5;
 
 export interface PlacedWorldItem {
   item: InventoryItem;
@@ -73,9 +73,10 @@ export interface ProgressState {
   graphicsUpgradeUnlocked: boolean;
   graphicsUpgradeInstalled: boolean;
   graphicsUpgradeStage: GraphicsUpgradeStage;
+  colourUpgradeInstalled: boolean;
+  colourUpgradeStage: GraphicsUpgradeStage;
   alexGraphics: AlexGraphics;
   interfaceTheme: InterfaceTheme;
-  nurseryConstructionComplete: boolean;
   coins: number;
   inventoryPot: PotCondition | null;
   inventoryItem: InventoryItem | null;
@@ -87,7 +88,7 @@ export interface ProgressState {
   shopStock: ShopStockEntry[];
   ownedPremiumPlants: PremiumPlantId[];
   windowJobAccepted: boolean;
-  buySellRasterUpgradePending: boolean;
+  buySellBwUpgradePending: boolean;
   windowCleaningProgress: number;
   windowCleaningSections: Record<string, number>;
   windowJobComplete: boolean;
@@ -141,9 +142,10 @@ export const DEFAULT_PROGRESS: ProgressState = {
   graphicsUpgradeUnlocked: false,
   graphicsUpgradeInstalled: false,
   graphicsUpgradeStage: 'none',
+  colourUpgradeInstalled: false,
+  colourUpgradeStage: 'none',
   alexGraphics: 'green-screen',
   interfaceTheme: 'auto',
-  nurseryConstructionComplete: false,
   coins: 0,
   inventoryPot: null,
   inventoryItem: null,
@@ -155,7 +157,7 @@ export const DEFAULT_PROGRESS: ProgressState = {
   shopStock: [],
   ownedPremiumPlants: [],
   windowJobAccepted: false,
-  buySellRasterUpgradePending: false,
+  buySellBwUpgradePending: false,
   windowCleaningProgress: 0,
   windowCleaningSections: Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0])),
   windowJobComplete: false,
@@ -230,11 +232,19 @@ function sanitizeGrowingPots(input: Partial<ProgressState>): GrowingPotState[] {
 
 export function sanitizeProgress(value: unknown): ProgressState {
   const input = value && typeof value === 'object'
-    ? value as Partial<ProgressState> & { buildingGraphics?: Record<string, unknown> }
+    ? value as Partial<ProgressState> & {
+      buildingGraphics?: Record<string, unknown>;
+      buySellRasterUpgradePending?: boolean;
+      nurseryConstructionComplete?: boolean;
+    }
     : {};
   const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
   const interfaceTheme: InterfaceTheme = input.interfaceTheme === 'green-crt' || input.interfaceTheme === 'atari-bw' ? input.interfaceTheme : 'auto';
   const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
+  const starterHandoverWasAcknowledged = input.propertyHandoversAcknowledged?.['starter-apartment'] === true
+    || input.welcomeGiftsClaimed?.['starter-apartment'] === true;
+  const colourUpgradeInstalled = Boolean(input.colourUpgradeInstalled)
+    || Boolean(input.graphicsUpgradeInstalled && input.rentalKeyOwned && starterHandoverWasAcknowledged);
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
   const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
   const tool = validTool(input.equippedTool) ? input.equippedTool : null;
@@ -265,15 +275,12 @@ export function sanitizeProgress(value: unknown): ProgressState {
   // current inventory alone is never used after this migration is persisted.
   const savedBuildings = input.buildings && typeof input.buildings === 'object'
     ? input.buildings as Partial<BuildingProgressState> : {};
-  const legacyBuildingGraphics = input.buildingGraphics && typeof input.buildingGraphics === 'object'
-    ? input.buildingGraphics as Record<string, unknown> : {};
   const savedBuySellEra = savedBuildings['buy-sell']?.graphicsEra;
   const durableOpeningPothosEvidence = inventoryItem === 'small-golden-pothos'
     || placedItem?.item === 'small-golden-pothos'
     || saleComplete
     || shopStock.some((entry) => entry.item === 'small-golden-pothos')
     || savedBuySellEra === 'atari-colour'
-    || legacyBuildingGraphics.buySell === 'atari-colour'
     || graphicsUpgradeInstalled;
   // A previous migration accidentally treated the initial Green CRT facade
   // as collection evidence. Repair only untouched `find` saves with no
@@ -286,42 +293,34 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const operationalState = (value: unknown, fallback: BuildingOperationalState): BuildingOperationalState =>
     value === 'operational' || value === 'vacant' || value === 'locked' || value === 'under-construction' ? value : fallback;
   const savedNurseryState = savedBuildings.nursery?.operationalState;
-  // `locked` was the legacy name for the initial empty lot. Nursery visuals
-  // now follow this saved state exclusively; the global graphics upgrade no
-  // longer advances or selects Nursery artwork.
+  // Building progress is authoritative. The global Alex/interface upgrade
+  // must never silently select artwork for an unrelated building.
   const nurseryOperationalState: BuildingOperationalState = savedNurseryState === 'operational'
     ? 'operational'
-    : graphicsUpgradeInstalled ? 'under-construction'
     : savedNurseryState === 'under-construction'
       ? 'under-construction'
-      : savedNurseryState === 'vacant' || savedNurseryState === 'locked'
-        ? 'vacant'
-        : Boolean(input.nurseryConstructionComplete) ? 'operational' : 'vacant';
+      : 'vacant';
   const nurseryGraphicsEra: BuildingGraphicsEra = nurseryOperationalState === 'operational'
     ? 'atari-colour'
     : nurseryOperationalState === 'under-construction' ? 'green-crt' : 'atari-bw';
-  const buySellRasterUpgradePending = Boolean(input.buySellRasterUpgradePending);
-  const acceptedCleaningMilestone = Boolean(input.windowJobAccepted) || Boolean(input.windowJobComplete);
-  const migratedBuySellEra: BuildingGraphicsEra = graphicsUpgradeInstalled
-    || savedBuySellEra === 'atari-colour' || legacyBuildingGraphics.buySell === 'atari-colour'
+  const buySellBwUpgradePending = Boolean(input.buySellBwUpgradePending ?? input.buySellRasterUpgradePending);
+  const buySellEra: BuildingGraphicsEra = colourUpgradeInstalled
     ? 'atari-colour'
-    : savedBuySellEra === 'atari-bw' && acceptedCleaningMilestone && !buySellRasterUpgradePending ? 'atari-bw' : 'green-crt';
-  const savedRealEstateEra = savedBuildings['real-estate']?.graphicsEra ?? legacyBuildingGraphics.realEstate;
-  const migratedRealEstateEra: BuildingGraphicsEra = graphicsUpgradeInstalled || savedRealEstateEra === 'atari-colour'
-    ? 'atari-colour'
-    : 'green-crt';
+    : graphicsUpgradeInstalled || Boolean(input.windowJobAccepted) && !buySellBwUpgradePending ? 'atari-bw' : 'green-crt';
+  const starterApartmentEra: BuildingGraphicsEra = colourUpgradeInstalled ? 'atari-colour' : 'green-crt';
+  const realEstateEra: BuildingGraphicsEra = graphicsUpgradeInstalled ? 'atari-bw' : 'green-crt';
   const buildings: BuildingProgressState = {
     'buy-sell': {
       operationalState: operationalState(savedBuildings['buy-sell']?.operationalState, DEFAULT_BUILDING_PROGRESS['buy-sell'].operationalState),
-      graphicsEra: migratedBuySellEra,
+      graphicsEra: buySellEra,
     },
     'starter-apartment': {
       operationalState: operationalState(savedBuildings['starter-apartment']?.operationalState, DEFAULT_BUILDING_PROGRESS['starter-apartment'].operationalState),
-      graphicsEra: 'green-crt',
+      graphicsEra: starterApartmentEra,
     },
     'real-estate': {
       operationalState: operationalState(savedBuildings['real-estate']?.operationalState, DEFAULT_BUILDING_PROGRESS['real-estate'].operationalState),
-      graphicsEra: migratedRealEstateEra,
+      graphicsEra: realEstateEra,
     },
     nursery: {
       operationalState: nurseryOperationalState,
@@ -344,6 +343,9 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const graphicsUpgradeStage: GraphicsUpgradeStage = input.graphicsUpgradeStage === 'installing' || input.graphicsUpgradeStage === 'acknowledgement' || input.graphicsUpgradeStage === 'prompt'
     ? input.graphicsUpgradeStage
     : graphicsUpgradeUnlocked && !graphicsUpgradeInstalled ? 'prompt' : 'none';
+  const colourUpgradeStage: GraphicsUpgradeStage = input.colourUpgradeStage === 'installing' || input.colourUpgradeStage === 'acknowledgement' || input.colourUpgradeStage === 'prompt'
+    ? input.colourUpgradeStage
+    : 'none';
   const rawTask = input.task;
   const task: TaskState = rawTask === 'sell' || rawTask === 'clean' || rawTask === 'repair' || rawTask === 'sell-repaired' || rawTask === 'complete'
     || rawTask === 'place-pot' || rawTask === 'plant-basil' || rawTask === 'water-basil' || rawTask === 'grow-basil' || rawTask === 'harvest-basil' || rawTask === 'sell-basil'
@@ -447,13 +449,14 @@ export function sanitizeProgress(value: unknown): ProgressState {
     graphicsUpgradeUnlocked,
     graphicsUpgradeInstalled,
     graphicsUpgradeStage: graphicsUpgradeInstalled ? (graphicsUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : graphicsUpgradeStage,
+    colourUpgradeInstalled,
+    colourUpgradeStage: colourUpgradeInstalled ? (colourUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : colourUpgradeStage,
     alexGraphics: graphicsUpgradeInstalled ? alexGraphics : 'green-screen',
     interfaceTheme,
-    nurseryConstructionComplete: buildings.nursery.operationalState === 'operational',
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock, ownedPremiumPlants,
-    windowJobAccepted: Boolean(input.windowJobAccepted), buySellRasterUpgradePending, windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
+    windowJobAccepted: Boolean(input.windowJobAccepted), buySellBwUpgradePending, windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
     brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned, brokenPotPiecesCollected,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,

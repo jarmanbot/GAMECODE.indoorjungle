@@ -101,7 +101,7 @@ const goldenPothosCollected = (): ProgressState => withState(goldenPothosReadyTo
   openingGoldenPothosCollected: true,
   buildings: {
     ...cloneBuildings(DEFAULT_PROGRESS.buildings),
-    'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' },
+    'buy-sell': { operationalState: 'operational', graphicsEra: 'green-crt' },
   },
   inventoryPot: 'ordinary', inventoryItem: 'small-golden-pothos', inventoryInstanceId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, task: 'clean',
 });
@@ -125,12 +125,12 @@ const completeWindowCleaningSections = (): Record<string, number> => Object.from
 );
 const windowJobAccepted = (): ProgressState => withState(firstPlantSold(), {
   windowJobAccepted: true, windowCleaningProgress: 0, windowCleaningSections: emptyWindowCleaningSections(),
-  buySellRasterUpgradePending: true,
+  buySellBwUpgradePending: true,
   cleanerOwned: true, equippedTool: 'cleaner', toolSlots: ['cleaner', null, null], task: 'clean',
 });
 
-const buySellRasterOnline = (): ProgressState => withState(windowJobAccepted(), {
-  buySellRasterUpgradePending: false,
+const buySellBwOnline = (): ProgressState => withState(windowJobAccepted(), {
+  buySellBwUpgradePending: false,
   buildings: { ...cloneBuildings(windowJobAccepted().buildings), 'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' } },
 });
 
@@ -139,11 +139,11 @@ const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
   windowCleaningProgress: HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0),
   windowCleaningSections: completeWindowCleaningSections(), windowJobComplete: true,
   cleanerOwned: false, repairToolOwned: true, glueCharges: 1, equippedTool: 'repair', toolSlots: ['repair', null, null], brokenPotAvailable: true, brokenPotOwned: false, brokenPotPiecesRemaining: BROKEN_POT_PIECE_COUNT, brokenPotPiecesOwned: 0, brokenPotPiecesCollected: [], task: 'repair',
-  buySellRasterUpgradePending: false,
+  buySellBwUpgradePending: false,
   buildings: { ...cloneBuildings(firstPlantSold().buildings), 'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' }, 'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' } },
 });
 const windowJobOneSprayRemaining = (): ProgressState => {
-  const base = buySellRasterOnline();
+  const base = buySellBwOnline();
   const sections = completeWindowCleaningSections();
   const last = HOMES_WINDOW_CLEAN_SECTIONS[HOMES_WINDOW_CLEAN_SECTIONS.length - 1];
   sections[last.id] = last.spraysRequired - 1;
@@ -166,27 +166,28 @@ const repairedSpecialPotCollected = (): ProgressState => withState(specialPotRep
   inventoryPot: 'repaired', inventoryItem: 'special-repair-pot', inventoryInstanceId: SPECIAL_REPAIR_POT_INSTANCE_ID, task: 'sell-repaired',
 });
 const upgradePromptPending = (): ProgressState => withState(repairedSpecialPotCollected(), {
-  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'green-screen', nurseryConstructionComplete: false,
+  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: false, graphicsUpgradeStage: 'prompt', alexGraphics: 'green-screen',
 });
 const upgradeInstalledAcknowledged = (): ProgressState => withState(repairedSpecialPotCollected(), {
-  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'atari-bw', nurseryConstructionComplete: false,
+  graphicsUpgradeUnlocked: true, graphicsUpgradeInstalled: true, graphicsUpgradeStage: 'none', alexGraphics: 'atari-bw',
   buildings: {
     ...cloneBuildings(repairedSpecialPotCollected().buildings),
-    'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-colour' },
-    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-colour' },
+    'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' },
+    'starter-apartment': { operationalState: 'operational', graphicsEra: 'green-crt' },
+    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-bw' },
     nursery: { operationalState: 'under-construction', graphicsEra: 'green-crt' },
   },
 });
+const upgradeAcknowledgementAwaitingOk = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
+  graphicsUpgradeStage: 'acknowledgement',
+});
 const nurseryVacantView = (): ProgressState => withState(repairedSpecialPotCollected(), {
-  nurseryConstructionComplete: false,
   buildings: { ...cloneBuildings(repairedSpecialPotCollected().buildings), nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' } },
 });
 const nurseryConstructionView = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
-  nurseryConstructionComplete: false,
   buildings: { ...cloneBuildings(upgradeInstalledAcknowledged().buildings), nursery: { operationalState: 'under-construction', graphicsEra: 'green-crt' } },
 });
 const nurseryOpenView = (): ProgressState => withState(upgradeInstalledAcknowledged(), {
-  nurseryConstructionComplete: true,
   buildings: { ...cloneBuildings(upgradeInstalledAcknowledged().buildings), nursery: { operationalState: 'operational', graphicsEra: 'atari-colour' } },
 });
 
@@ -227,7 +228,7 @@ const rareBegoniaSold = (): ProgressState => {
   });
 };
 
-const upgradedShopItemsReadyToSell = (): ProgressState => withState(repairedPotSold(), {
+const upgradedShopItemsReadyToSell = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
   welcomeGiftsClaimed: { 'starter-apartment': true },
   propertyHandoversAcknowledged: { 'starter-apartment': true },
   wateringCanOwned: true,
@@ -236,7 +237,7 @@ const upgradedShopItemsReadyToSell = (): ProgressState => withState(repairedPotS
   task: 'sell-basil',
 });
 
-const upgradedShopStockReadyToBuy = (): ProgressState => withState(repairedPotSold(), {
+const upgradedShopStockReadyToBuy = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
   coins: getShopBuybackPrice(REPAIRED_POT_SALE_PRICE) + getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE),
   task: 'buy-seeds',
 });
@@ -263,6 +264,22 @@ const apartmentRented = (): ProgressState => withState(rareBegoniaSold(), {
 
 const povoWelcomeGiftClaimed = (): ProgressState => withState(apartmentRented(), {
   propertyHandoversAcknowledged: { 'starter-apartment': true },
+  colourUpgradeInstalled: true,
+  colourUpgradeStage: 'none',
+  buildings: {
+    ...cloneBuildings(apartmentRented().buildings),
+    'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-colour' },
+    'starter-apartment': { operationalState: 'operational', graphicsEra: 'atari-colour' },
+    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-bw' },
+  },
+});
+const keyColourUpgradePrompt = (): ProgressState => withState(apartmentRented(), {
+  propertyHandoversAcknowledged: { 'starter-apartment': true },
+  colourUpgradeInstalled: false,
+  colourUpgradeStage: 'prompt',
+});
+const keyColourUpgradeAcknowledgement = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
+  colourUpgradeStage: 'acknowledgement',
 });
 
 const beforePovoRental = (): ProgressState => withState(rareBegoniaSold(), { coins: RENTAL_BOND_COST - 1 });
@@ -443,10 +460,12 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'golden-pothos-collected', label: 'Golden Pothos collected', order: 20, scene: 'street', spawn: START_POSITION, zoom: 'close', crop: 'none', build: goldenPothosCollected },
   { id: 'green-crt-shop-sale-before-repaired-upgrade', label: 'Green CRT shop before cleaning-job acceptance', order: 25, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: greenCrtShopSaleBeforeRepairedUpgrade },
   { id: 'first-plant-sold', label: 'First plant sold', order: 30, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold },
+  { id: 'first-cleaning-job-available', label: 'Cleaning job available · not accepted', order: 38, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstPlantSold },
   { id: 'buyback-stock-ready', label: 'Buyback stock ready', order: 35, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buybackStockReady },
   { id: 'window-job-accepted', label: 'Cleaning job accepted · raster pending in Green CRT shop', order: 40, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: windowJobAccepted },
-  { id: 'buy-sell-raster-online', label: 'First exit · Buy/Sell Atari B&W', order: 42, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: buySellRasterOnline },
-  { id: 'buy-sell-bw-reentered', label: 'Re-entered Atari B&W Buy/Sell', order: 43, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buySellRasterOnline },
+  { id: 'buy-sell-bw-pending-reload', label: 'Reloaded inside shop · B&W exit pending', order: 41, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: windowJobAccepted },
+  { id: 'buy-sell-bw-online', label: 'First exit · Buy/Sell Atari B&W', order: 42, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: buySellBwOnline },
+  { id: 'buy-sell-bw-reentered', label: 'Re-entered Atari B&W Buy/Sell', order: 43, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buySellBwOnline },
   { id: 'window-job-one-spray-remaining', label: 'Window cleaning · one spray before completion', order: 45, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobOneSprayRemaining },
   { id: 'window-job-complete', label: 'Window-cleaning job complete', order: 50, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobComplete },
   { id: 'broken-pieces-any-order', label: 'Broken pot pieces · arbitrary-order pickup', order: 55, scene: 'street', spawn: { x: 2400, y: 910 }, zoom: 'normal', crop: 'none', build: brokenPiecesAnyOrder },
@@ -455,6 +474,7 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'repair-one-action-before-completion', label: 'Repair one action before completion', order: 75, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: repairOneActionBeforeCompletion },
   { id: 'special-pot-repaired', label: 'Special pot repaired', order: 80, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: specialPotRepaired },
   { id: 'graphics-upgrade-prompt-pending', label: 'Graphics upgrade prompt pending', order: 85, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradePromptPending },
+  { id: 'graphics-upgrade-acknowledgement', label: 'Graphics modules loaded · B&W OK pending', order: 86, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradeAcknowledgementAwaitingOk },
   { id: 'graphics-upgrade-installed', label: 'Graphics upgrade installed and acknowledged', order: 87, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: upgradeInstalledAcknowledged },
   { id: 'nursery-vacant-view', label: 'Nursery artwork · vacant Atari B&W', order: 88, scene: 'street', spawn: { x: 2050, y: 875 }, zoom: 'normal', crop: 'none', build: nurseryVacantView },
   { id: 'nursery-construction-view', label: 'Nursery artwork · Green CRT construction', order: 89, scene: 'street', spawn: { x: 2050, y: 875 }, zoom: 'normal', crop: 'none', build: nurseryConstructionView },
@@ -469,6 +489,8 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'before-povo-rental', label: 'Immediately before renting POVO · one coin short', order: 98, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: beforePovoRental },
   { id: 'povo-rental-coins-ready', label: 'POVO rental · enough coins', order: 99, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: enoughCoinsForPovoRental },
   { id: 'apartment-rented', label: 'POVO rented · handover awaiting OK', order: 100, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: apartmentRented },
+  { id: 'key-colour-upgrade-prompt', label: 'Room key received · colour upgrade prompt', order: 101, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: keyColourUpgradePrompt },
+  { id: 'key-colour-upgrade-acknowledgement', label: 'Colour graphics loaded · OK pending', order: 102, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: keyColourUpgradeAcknowledgement },
   { id: 'welcome-gift-claimed', label: 'POVO handover acknowledged · Welcome Gift claimed', order: 110, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: povoWelcomeGiftClaimed },
   { id: 'shop-item-ready-to-sell', label: 'Buy/Sell open · item ready to sell', order: 111, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopItemsReadyToSell, shopPanelOpen: true },
   { id: 'shop-one-sale-queued', label: 'Buy/Sell open · one completed sale queued', order: 111.1, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: shopAfterOneSale, shopPanelOpen: true, queuedPresentationCount: 1 },
@@ -506,9 +528,15 @@ const definitions: DevCheckpointDefinition[] = [
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {
   const result = sanitizeProgress(progress);
   if (id === 'golden-pothos-collected' && result.buildings['buy-sell'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Green CRT after collection.`);
-  if (result.graphicsUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} installed the repaired-pot upgrade without advancing Buy/Sell to Atari Colour.`);
-  if (!result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} changed Real Estate before the main colour upgrade.`);
-  if (result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Real Estate to Atari Colour.`);
+  if (result.graphicsUpgradeInstalled && !result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-bw') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Atari B&W before the key colour upgrade.`);
+  if (!result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} changed POVO before the key colour upgrade.`);
+  if (result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance POVO to Atari Colour.`);
+  if (result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'atari-bw') throw new Error(`Developer checkpoint ${id} must keep Real Estate Atari B&W after the raster upgrade.`);
+  if (result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Buy/Sell to Atari Colour.`);
+  if ((id === 'window-job-accepted' || id === 'buy-sell-bw-pending-reload')
+    && (!result.buySellBwUpgradePending || result.buildings['buy-sell'].graphicsEra !== 'green-crt')) {
+    throw new Error(`Developer checkpoint ${id} must preserve the pending B&W exit while Buy/Sell remains Green CRT.`);
+  }
   const nursery = result.buildings.nursery;
   const validNurseryState = (nursery.operationalState === 'vacant' && nursery.graphicsEra === 'atari-bw')
     || (nursery.operationalState === 'under-construction' && nursery.graphicsEra === 'green-crt')

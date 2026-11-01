@@ -57,7 +57,7 @@ export interface BuySellArtwork {
   pulseLayers: Phaser.GameObjects.GameObject[];
 }
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt', starterApartmentGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -78,7 +78,7 @@ export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, g
 
   let buySellArtwork: BuySellArtwork | undefined;
   BUILDINGS.forEach((building) => {
-    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics, nurseryProgress, realEstateGraphics);
+    const artwork = drawBuilding(scene, building, apartmentRented, graphicsUpgradeInstalled, activeProperty, buySellGraphics, nurseryProgress, realEstateGraphics, starterApartmentGraphics);
     if (artwork) buySellArtwork = artwork;
   });
   drawStreetDetails(scene);
@@ -291,7 +291,7 @@ function drawFuturePlot(
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt', starterApartmentGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
   if (building.kind === 'shop') {
     return drawBuySellBuilding(scene, building, buySellGraphics, graphicsUpgradeInstalled);
   }
@@ -304,10 +304,11 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   g.fillStyle(0x0c0e0f, 1).fillRect(x - 14, y - 14, width + 28, height + 14);
   const realEstateGreen = building.kind === 'homes' && realEstateGraphics === 'green-crt';
   const realEstateColour = building.kind === 'homes' && realEstateGraphics === 'atari-colour';
-  const starterGreen = building.key === 'starter-apartment';
+  const starterGreen = building.key === 'starter-apartment' && starterApartmentGraphics === 'green-crt';
+  const starterColour = building.key === 'starter-apartment' && starterApartmentGraphics === 'atari-colour';
   const buildingGreen = realEstateGreen || starterGreen;
-  g.fillStyle(buildingGreen ? 0x070b08 : realEstateColour ? 0xb85b38 : building.kind === 'apartment' ? 0x81898a : 0x4f5759, 1).fillRect(x, y, width, height);
-  g.lineStyle(buildingGreen ? 4 : 8, buildingGreen ? 0x39ff5a : realEstateColour ? 0xf2e5c7 : WHITE, 0.95).strokeRect(x, y, width, height);
+  g.fillStyle(buildingGreen ? 0x070b08 : realEstateColour ? 0xb85b38 : starterColour ? 0x4c7778 : building.kind === 'apartment' ? 0x81898a : 0x4f5759, 1).fillRect(x, y, width, height);
+  g.lineStyle(buildingGreen ? 4 : 8, buildingGreen ? 0x39ff5a : realEstateColour || starterColour ? 0xf2e5c7 : WHITE, 0.95).strokeRect(x, y, width, height);
   g.lineStyle(3, 0x272d2f, 0.9);
   for (let brickY = y + 36; brickY < y + 210; brickY += 34) {
     g.lineBetween(x, brickY, x + width, brickY);
@@ -317,14 +318,14 @@ function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented =
   }
   g.fillStyle(INK, 1).fillRect(x + 18, y + 16, width - 36, 64);
   addWorldLabel(scene, x + width / 2, y + 29, building.label,
-    buildingGreen ? 0x39ff5a : realEstateColour ? 0xf2e5c7 : WHITE,
+    buildingGreen ? 0x39ff5a : realEstateColour || starterColour ? 0xf2e5c7 : WHITE,
     building.key === 'starter-apartment' ? 22 : building.kind === 'apartment' ? 17 : 23, true);
 
   if (building.kind === 'homes') drawHomes(scene, g, building, realEstateGraphics);
   if (building.kind === 'apartment') {
     const secondRental = building.key === 'second-rental';
     const occupied = secondRental ? activeProperty === 'second-rental' : activeProperty === 'starter-apartment' || (activeProperty === 'none' && apartmentRented);
-    drawApartment(scene, g, building, occupied, secondRental);
+    drawApartment(scene, g, building, occupied, secondRental, starterApartmentGraphics);
   }
 }
 
@@ -484,14 +485,14 @@ export function setBuySellDoorOpen(door: Phaser.GameObjects.Graphics, open: bool
   drawBuySellDoor(door, open, style);
 }
 
-export function drawStarterApartmentDoor(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
+export function drawStarterApartmentDoor(scene: Phaser.Scene, style: BuildingGraphicsEra = 'green-crt'): Phaser.GameObjects.Graphics {
   const door = scene.add.graphics().setDepth(29);
-  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, false, 'green-crt');
+  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, false, style);
   return door;
 }
 
-export function setStarterApartmentDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean): void {
-  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, open, 'green-crt');
+export function setStarterApartmentDoorOpen(door: Phaser.GameObjects.Graphics, open: boolean, style: BuildingGraphicsEra = 'green-crt'): void {
+  drawMatchingDoor(door, APARTMENT_ENTRANCE.x, APARTMENT_DOOR_TOP, APARTMENT_DOOR_WIDTH, APARTMENT_DOOR_HEIGHT, open, style);
 }
 
 function drawHomes(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, style: BuildingGraphicsEra): void {
@@ -596,32 +597,33 @@ function drawNurseryBuilding(scene: Phaser.Scene, progress: BuildingProgress): v
   }
 }
 
-function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean, secondRental = false): void {
+function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, building: Building, rented: boolean, secondRental = false, style: BuildingGraphicsEra = 'green-crt'): void {
   const x = building.x;
   const y = building.y;
   if (!secondRental) {
-    const green = 0x39ff5a;
-    g.fillStyle(0x1b2022, 1).fillTriangle(x - 14, y + 10, x + building.width / 2, y - 50, x + building.width + 14, y + 10);
-    g.lineStyle(4, green, 0.95)
+    const green = style === 'green-crt';
+    const line = green ? 0x39ff5a : 0xf2e5c7;
+    g.fillStyle(green ? 0x1b2022 : 0x315f63, 1).fillTriangle(x - 14, y + 10, x + building.width / 2, y - 50, x + building.width + 14, y + 10);
+    g.lineStyle(green ? 4 : 6, line, 0.95)
       .lineBetween(x - 14, y + 10, x + building.width / 2, y - 50)
       .lineBetween(x + building.width / 2, y - 50, x + building.width + 14, y + 10);
-    g.fillStyle(0x050906, 1).fillRect(x + 18, y + 80, building.width - 36, building.height - 80);
-    g.lineStyle(3, green, 0.9).strokeRect(x + 18, y + 80, building.width - 36, building.height - 80);
+    g.fillStyle(green ? 0x050906 : 0x4c7778, 1).fillRect(x + 18, y + 80, building.width - 36, building.height - 80);
+    g.lineStyle(3, line, 0.9).strokeRect(x + 18, y + 80, building.width - 36, building.height - 80);
 
     const windowX = x + 28;
     const windowY = y + 165;
     g.fillStyle(0x030805, 1).fillRect(windowX, windowY, 140, 80);
-    g.lineStyle(3, green, 1).strokeRect(windowX, windowY, 140, 80);
+    g.lineStyle(3, line, 1).strokeRect(windowX, windowY, 140, 80);
     g.lineBetween(windowX + 70, windowY, windowX + 70, windowY + 80);
     g.lineBetween(windowX, windowY + 40, windowX + 140, windowY + 40);
 
     g.fillStyle(INK, 1).fillRect(x + 24, y + 90, 190, 64);
-    g.lineStyle(3, green, 0.9).strokeRect(x + 24, y + 90, 190, 64);
-    const rentalLabel = addWorldLabel(scene, x + 119, y + 108, rented ? 'YOUR HOME' : 'SINGLE ROOM TO LET', green, 14, true);
+    g.lineStyle(3, line, 0.9).strokeRect(x + 24, y + 90, 190, 64);
+    const rentalLabel = addWorldLabel(scene, x + 119, y + 108, rented ? 'YOUR HOME' : 'SINGLE ROOM TO LET', line, 14, true);
     rentalLabel.setData('apartment-rental-sign', true);
     rentalLabel.setData('property-id', 'starter-apartment');
     rentalLabel.setData('rental-sign-role', 'title');
-    const rentalPrice = addWorldLabel(scene, x + 119, y + 137, rented ? 'ACCESS UNLOCKED' : '60 COINS', green, 13, true);
+    const rentalPrice = addWorldLabel(scene, x + 119, y + 137, rented ? 'ACCESS UNLOCKED' : '60 COINS', line, 13, true);
     rentalPrice.setData('apartment-rental-sign', true);
     rentalPrice.setData('property-id', 'starter-apartment');
     rentalPrice.setData('rental-sign-role', 'detail');
@@ -745,7 +747,25 @@ export function drawPot(g: Phaser.GameObjects.Graphics, x: number, y: number, sc
   g.fillStyle(colour ? 0x6bb566 : 0x697173, 1).fillRect(x - 14 * scale, y - 58 * scale, 28 * scale, 7 * scale);
 }
 
-export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour = false): void {
+type SpecialItemVisualStyle = boolean | 'green-crt';
+
+export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour: SpecialItemVisualStyle = false): void {
+  if (colour === 'green-crt') {
+    const green = 0x39ff5a;
+    g.fillStyle(0x030805, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 49 * scale);
+    g.lineStyle(Math.max(2, 3 * scale), green, 1)
+      .strokeRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale)
+      .lineBetween(x - 16 * scale, y - 25 * scale, x - 11 * scale, y + 15 * scale)
+      .lineBetween(x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale)
+      .lineBetween(x - 11 * scale, y + 15 * scale, x + 11 * scale, y + 15 * scale)
+      .lineBetween(x, y - 25 * scale, x - 14 * scale, y - 70 * scale)
+      .lineBetween(x, y - 25 * scale, x + 14 * scale, y - 70 * scale)
+      .lineBetween(x, y - 25 * scale, x + 4 * scale, y - 82 * scale)
+      .strokeTriangle(x - 2 * scale, y - 53 * scale, x - 31 * scale, y - 68 * scale, x - 11 * scale, y - 79 * scale)
+      .strokeTriangle(x + 2 * scale, y - 54 * scale, x + 30 * scale, y - 68 * scale, x + 11 * scale, y - 79 * scale)
+      .strokeTriangle(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale, x + 19 * scale, y - 72 * scale);
+    return;
+  }
   drawPot(g, x, y, scale, colour);
 
   // Keep the existing pot silhouette and footprint, adding only three chunky
@@ -873,7 +893,20 @@ export function drawGrowingCrop(
   }
 }
 
-export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0, colour = false): void {
+export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, repairStage = 0, colour: SpecialItemVisualStyle = false): void {
+  if (colour === 'green-crt') {
+    const green = 0x39ff5a;
+    g.fillStyle(0x030805, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 49 * scale);
+    g.lineStyle(Math.max(2, 3 * scale), green, 1)
+      .strokeRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale)
+      .lineBetween(x - 16 * scale, y - 25 * scale, x - 11 * scale, y + 15 * scale)
+      .lineBetween(x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale)
+      .lineBetween(x - 11 * scale, y + 15 * scale, x + 11 * scale, y + 15 * scale)
+      .strokeRect(x - 7 * scale, y - 18 * scale, 14 * scale, 22 * scale);
+    if (repairStage < 10) g.lineStyle(Math.max(2, 2 * scale), green, 0.75).lineBetween(x - 2 * scale, y - 23 * scale, x + 4 * scale, y + 12 * scale);
+    if (repairStage >= 1) g.lineStyle(Math.max(2, 2 * scale), 0x1a8f35, 1).lineBetween(x, y - 21 * scale, x, y + 12 * scale);
+    return;
+  }
   g.fillStyle(0x222729, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale);
   g.fillStyle(colour ? 0xc98a55 : 0xdfe3df, 1)
     .fillTriangle(x - 16 * scale, y - 25 * scale, x + 2 * scale, y - 25 * scale, x - 3 * scale, y + 15 * scale)
@@ -896,13 +929,20 @@ export function drawBrokenPot(g: Phaser.GameObjects.Graphics, x: number, y: numb
   if (repairStage >= 8) g.lineStyle(2, 0xbfc5c3, 1).lineBetween(x - 12 * scale, y + 8 * scale, x + 12 * scale, y + 8 * scale);
 }
 
-export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, piecesRemaining = 4, offsets: readonly number[] = [-75, -25, 25, 75], collectedIndices?: readonly number[]): void {
+export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, piecesRemaining = 4, offsets: readonly number[] = [-75, -25, 25, 75], collectedIndices?: readonly number[], style: SpecialItemVisualStyle = false): void {
   const collected = collectedIndices
     ? new Set(collectedIndices)
     : new Set(Array.from({ length: Math.max(0, 4 - piecesRemaining) }, (_, index) => index));
   for (let index = 0; index < 4; index += 1) {
     if (collected.has(index)) continue;
     const pieceX = x + offsets[index] * scale;
+    if (style === 'green-crt') {
+      const green = 0x39ff5a;
+      g.fillStyle(0x030805, 1).fillTriangle(pieceX - 19 * scale, y - 20 * scale, pieceX + 18 * scale, y - 14 * scale, pieceX - 2 * scale, y + 15 * scale);
+      g.lineStyle(Math.max(3, 4 * scale), green, 1).strokeTriangle(pieceX - 19 * scale, y - 20 * scale, pieceX + 18 * scale, y - 14 * scale, pieceX - 2 * scale, y + 15 * scale);
+      g.lineStyle(Math.max(2, 2 * scale), 0x1a8f35, 1).lineBetween(pieceX - 8 * scale, y - 12 * scale, pieceX + 7 * scale, y + 8 * scale);
+      continue;
+    }
     g.fillStyle(0x111416, 0.28).fillEllipse(pieceX, y + 18 * scale, 38 * scale, 10 * scale);
     if (index === 0) {
       g.fillStyle(0xdfe3df, 1).fillTriangle(pieceX - 19 * scale, y - 20 * scale, pieceX + 18 * scale, y - 17 * scale, pieceX - 6 * scale, y + 15 * scale);

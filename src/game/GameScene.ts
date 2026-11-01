@@ -224,8 +224,8 @@ export class GameScene extends Phaser.Scene {
   private saleComplete = false;
   private coins = 0;
   private progress: ProgressState = sanitizeProgress(DEFAULT_PROGRESS);
-  private readonly normalProgressKey = 'indoor-jungle-progress-v3';
-  private readonly devProgressKey = 'indoor-jungle-progress-dev-test-v3';
+  private readonly normalProgressKey = 'indoor-jungle-progress-v5';
+  private readonly devProgressKey = 'indoor-jungle-progress-dev-test-v5';
   private readonly devModeKey = 'indoor-jungle-dev-test-mode-v1';
   private readonly devSessionKey = 'indoor-jungle-dev-test-session-v1';
   private readonly displayPreferencesKey = 'indoor-jungle-display-preferences';
@@ -360,9 +360,9 @@ export class GameScene extends Phaser.Scene {
     this.textures.get('nursery-open-atari-colour').setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.testSaveMode = this.readDevTestMode();
     this.loadProgress();
-    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery, this.progress.buildings['real-estate'].graphicsEra);
+    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.colourUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery, this.progress.buildings['real-estate'].graphicsEra, this.progress.buildings['starter-apartment'].graphicsEra);
     this.setBuySellArtwork(buySellArtwork);
-    this.starterApartmentDoor = drawStarterApartmentDoor(this);
+    this.starterApartmentDoor = drawStarterApartmentDoor(this, this.progress.buildings['starter-apartment'].graphicsEra);
     this.realEstateDoor = drawRealEstateDoor(this, this.progress.buildings['real-estate'].graphicsEra);
     this.streetArtworkObjects = [...this.children.list];
     this.createWantedSign();
@@ -455,11 +455,14 @@ export class GameScene extends Phaser.Scene {
     this.updateWindowSpray(delta);
     this.updateThoughtBubble(delta);
 
-    if (this.graphicsUpgradePresentationActive && this.progress.graphicsUpgradeStage === 'installing') {
+    if (this.graphicsUpgradePresentationActive && (this.progress.graphicsUpgradeStage === 'installing' || this.progress.colourUpgradeStage === 'installing')) {
       this.graphicsUpgradeInstallElapsed += delta;
       const installProgress = Math.min(1, this.graphicsUpgradeInstallElapsed / this.graphicsUpgradeInstallDuration);
       this.hud.updateGraphicsInstallation(installProgress, installProgress >= 1);
-      if (installProgress >= 1) this.finishGraphicsUpgradeInstallation();
+      if (installProgress >= 1) {
+        if (this.progress.colourUpgradeStage === 'installing') this.finishColourUpgradeInstallation();
+        else this.finishGraphicsUpgradeInstallation();
+      }
     }
 
     if (this.openingSequenceActive || this.openingZoomDemoActive || this.graphicsUpgradePresentationActive) {
@@ -923,6 +926,10 @@ export class GameScene extends Phaser.Scene {
     return this.progress.buildings['real-estate'].graphicsEra;
   }
 
+  getPovoGraphicsEra(): 'atari-bw' | 'green-crt' | 'atari-colour' {
+    return this.progress.buildings['starter-apartment'].graphicsEra;
+  }
+
   private syncHudState(): void {
     this.hud.setGameState({
       coins: this.coins,
@@ -990,14 +997,22 @@ export class GameScene extends Phaser.Scene {
     let rentalKeyWasSaved = false;
     let buildingProgressWasSaved = false;
     let hadSavedProgress = false;
+    let migratedNormalSave = false;
     try {
-      // Save schema v2 intentionally starts progression fresh. Preferences use
-      // separate keys and are not removed here.
+      // Development fixtures can be regenerated, but compatible normal saves
+      // are migrated through sanitizeProgress and copied into the current key.
       localStorage.removeItem('indoor-jungle-progress-v1');
       localStorage.removeItem('indoor-jungle-progress-dev-test-v1');
       localStorage.removeItem('indoor-jungle-progress-v2');
       localStorage.removeItem('indoor-jungle-progress-dev-test-v2');
-      const raw = localStorage.getItem(this.getProgressStorageKey());
+      localStorage.removeItem('indoor-jungle-progress-dev-test-v3');
+      localStorage.removeItem('indoor-jungle-progress-dev-test-v4');
+      let raw = localStorage.getItem(this.getProgressStorageKey());
+      if (!this.testSaveMode && !raw) {
+        raw = localStorage.getItem('indoor-jungle-progress-v4')
+          ?? localStorage.getItem('indoor-jungle-progress-v3');
+        migratedNormalSave = raw !== null;
+      }
       const saved = raw ? JSON.parse(raw) as Partial<ProgressState> : null;
       hadSavedProgress = saved !== null;
       rentalKeyWasSaved = saved?.rentalKeyOwned === true;
@@ -1023,7 +1038,7 @@ export class GameScene extends Phaser.Scene {
     this.rentalKeyOwned = this.progress.rentalKeyOwned;
     this.activeProperty = this.progress.activeProperty;
     this.rentalBondTotal = this.progress.rentalBondTotal;
-    if ((this.rentalBondPaid && !rentalKeyWasSaved) || (hadSavedProgress && !buildingProgressWasSaved)) this.saveProgress();
+    if (migratedNormalSave || (this.rentalBondPaid && !rentalKeyWasSaved) || (hadSavedProgress && !buildingProgressWasSaved)) this.saveProgress();
     this.updateSecondRentalObjective();
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     // Older saves can retain the repair objective without the newer ground
@@ -1073,7 +1088,7 @@ export class GameScene extends Phaser.Scene {
     if (this.rentalBondPaid && !this.progress.propertyHandoversAcknowledged['starter-apartment']) {
       this.time.delayedCall(0, () => this.presentPovoHandover());
     }
-    if (this.progress.buySellRasterUpgradePending && this.progress.windowJobAccepted) {
+    if (this.progress.buySellBwUpgradePending && this.progress.windowJobAccepted) {
       this.enterShopNow();
       return;
     }
@@ -1442,7 +1457,10 @@ export class GameScene extends Phaser.Scene {
     this.basilStageCache = this.getBasilStage();
     this.graphicsUpgradePresentationActive = this.progress.graphicsUpgradeStage === 'prompt'
       || this.progress.graphicsUpgradeStage === 'installing'
-      || this.progress.graphicsUpgradeStage === 'acknowledgement';
+      || this.progress.graphicsUpgradeStage === 'acknowledgement'
+      || this.progress.colourUpgradeStage === 'prompt'
+      || this.progress.colourUpgradeStage === 'installing'
+      || this.progress.colourUpgradeStage === 'acknowledgement';
   }
 
   private clearSceneForDevLoad(): void {
@@ -1499,7 +1517,7 @@ export class GameScene extends Phaser.Scene {
     this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
     if (this.buySellDoor) setBuySellDoorOpen(this.buySellDoor, false, this.progress.buildings['buy-sell'].graphicsEra);
-    if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false);
+    if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false, this.progress.buildings['starter-apartment'].graphicsEra);
     if (this.realEstateDoor) setRealEstateDoorOpen(this.realEstateDoor, false, this.progress.buildings['real-estate'].graphicsEra);
     this.player.setAlpha(1).setVisible(true);
     this.cameras.main.stopFollow().resetFX();
@@ -1607,7 +1625,7 @@ export class GameScene extends Phaser.Scene {
     if (this.pot) this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
     if (this.rareBegonia) {
       this.rareBegonia.clear();
-      drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.graphicsUpgradeInstalled);
+      drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled);
       this.rareBegonia.setVisible(!this.progress.rareBegoniaCollected);
     }
     // The broken pieces remain visible even while the opening pot is still in
@@ -1619,7 +1637,7 @@ export class GameScene extends Phaser.Scene {
         if (this.progress.brokenPotPiecesRemaining <= 0) this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT;
         const piecesRemaining = this.progress.brokenPotPiecesRemaining;
         this.brokenPot.clear();
-        drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices());
+        drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices(), this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
       }
       this.brokenPot.setVisible(shouldShowBrokenPot);
     }
@@ -1981,7 +1999,7 @@ export class GameScene extends Phaser.Scene {
     // ordinary tappable world item rather than an active repair station.
     display.fillStyle(0x111416, 0.55).fillEllipse(0, 25, 116, 22);
     if (!completed) display.lineStyle(3, 0xf6f7f3, 0.9).strokeEllipse(0, 22, 142, 38);
-    drawBrokenPot(display, 0, 0, 2.415, stage, this.progress.graphicsUpgradeInstalled);
+    drawBrokenPot(display, 0, 0, 2.415, stage, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
 
     if (!completed) {
       // Ten chunky segments make the required taps visible at a glance.
@@ -2060,7 +2078,11 @@ export class GameScene extends Phaser.Scene {
       this.hud.showGraphicsAcknowledgement(() => this.acknowledgeGraphicsUpgrade());
       return;
     }
-    if (!this.progress.graphicsUpgradeUnlocked || this.progress.graphicsUpgradeInstalled) return;
+    if (this.progress.graphicsUpgradeInstalled) {
+      this.presentColourUpgradeIfNeeded();
+      return;
+    }
+    if (!this.progress.graphicsUpgradeUnlocked) return;
     this.graphicsUpgradePresentationActive = true;
     this.hud.resetHeldInputs();
     this.cancelTapWalk();
@@ -2105,8 +2127,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.graphicsUpgradePresentationActive || this.progress.graphicsUpgradeStage !== 'installing') return;
     this.progress.graphicsUpgradeInstalled = true;
     this.progress.graphicsUpgradeStage = 'acknowledgement';
-    this.progress.buildings['buy-sell'].graphicsEra = 'atari-colour';
-    this.progress.buildings['real-estate'].graphicsEra = 'atari-colour';
+    this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw';
+    this.progress.buildings['starter-apartment'].graphicsEra = 'green-crt';
+    this.progress.buildings['real-estate'].graphicsEra = 'atari-bw';
     if (this.progress.buildings.nursery.operationalState !== 'operational') {
       this.progress.buildings.nursery = { operationalState: 'under-construction', graphicsEra: 'green-crt' };
     }
@@ -2128,11 +2151,58 @@ export class GameScene extends Phaser.Scene {
     this.startHousingThoughtReminder();
   }
 
+  private presentColourUpgradeIfNeeded(): void {
+    if (this.progress.colourUpgradeInstalled || this.progress.colourUpgradeStage === 'none') return;
+    this.graphicsUpgradePresentationActive = true;
+    this.hud.resetHeldInputs();
+    this.cancelTapWalk();
+    if (this.progress.colourUpgradeStage === 'acknowledgement') {
+      this.hud.showColourAcknowledgement(() => this.acknowledgeColourUpgrade());
+    } else if (this.progress.colourUpgradeStage === 'installing') {
+      this.graphicsUpgradeInstallElapsed = 0;
+      this.hud.showColourInstallation();
+    } else {
+      this.hud.showColourUpgradePrompt(() => this.beginColourUpgradeInstallation());
+    }
+  }
+
+  private beginColourUpgradeInstallation(): void {
+    if (this.progress.colourUpgradeStage !== 'prompt') return;
+    this.progress.colourUpgradeStage = 'installing';
+    this.graphicsUpgradeInstallElapsed = 0;
+    this.saveProgress();
+    this.hud.showColourInstallation();
+  }
+
+  private finishColourUpgradeInstallation(): void {
+    if (this.progress.colourUpgradeStage !== 'installing') return;
+    this.progress.colourUpgradeInstalled = true;
+    this.progress.colourUpgradeStage = 'acknowledgement';
+    this.progress.buildings['buy-sell'].graphicsEra = 'atari-colour';
+    this.progress.buildings['starter-apartment'].graphicsEra = 'atari-colour';
+    this.progress.buildings['real-estate'].graphicsEra = 'atari-bw';
+    this.saveProgress();
+    this.applyInstalledGraphics();
+    this.hud.updateGraphicsInstallation(1, true);
+    this.hud.showColourAcknowledgement(() => this.acknowledgeColourUpgrade());
+  }
+
+  private acknowledgeColourUpgrade(): void {
+    if (this.progress.colourUpgradeStage !== 'acknowledgement') return;
+    this.progress.colourUpgradeStage = 'none';
+    this.graphicsUpgradePresentationActive = false;
+    this.hud.hideGraphicsUpgrade();
+    this.saveProgress();
+    this.syncHudState();
+    this.updateInteraction();
+  }
+
   private applyInstalledGraphics(): void {
     if (!this.progress.graphicsUpgradeInstalled) return;
-    // Rebuild only to refresh merchandise that belongs to the global
-    // pot/plant upgrade; the facade style remains independently persisted.
-    if (!this.shopInterior && !this.homeInterior) this.rebuildBuySellArtwork();
+    // Rebuild the street from each building's authoritative era. This applies
+    // the approved simultaneous colour event without reintroducing a global
+    // renderer switch.
+    if (!this.shopInterior && !this.homeInterior) this.rebuildStreetArtwork();
     this.drawPlayer();
     this.refreshWantedSign();
     this.refreshRealEstateStatusSign();
@@ -2493,7 +2563,7 @@ export class GameScene extends Phaser.Scene {
   acceptWindowJob(): void {
     if (!this.shopInterior || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
-    this.progress.buySellRasterUpgradePending = this.progress.buildings['buy-sell'].graphicsEra === 'green-crt';
+    this.progress.buySellBwUpgradePending = this.progress.buildings['buy-sell'].graphicsEra === 'green-crt';
     this.progress.windowCleaningProgress = 0;
     this.progress.windowCleaningSections = Object.fromEntries(
       HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0]),
@@ -2570,9 +2640,13 @@ export class GameScene extends Phaser.Scene {
     this.setModalOpen(true);
     this.hud.showPropertyHandover(message, () => {
       this.progress.propertyHandoversAcknowledged['starter-apartment'] = true;
+      if (!this.progress.colourUpgradeInstalled && this.progress.colourUpgradeStage === 'none') {
+        this.progress.colourUpgradeStage = 'prompt';
+      }
       this.saveProgress();
       this.setModalOpen(false);
       this.syncHudState();
+      this.time.delayedCall(0, () => this.presentColourUpgradeIfNeeded());
     });
   }
 
@@ -2654,7 +2728,7 @@ export class GameScene extends Phaser.Scene {
       this,
       building,
       this.progress.buildings['buy-sell'].graphicsEra,
-      this.progress.graphicsUpgradeInstalled,
+      this.progress.colourUpgradeInstalled,
     );
     this.setBuySellArtwork(artwork);
     this.streetArtworkObjects = this.streetArtworkObjects.filter((object) => !oldObjects.has(object));
@@ -2668,9 +2742,9 @@ export class GameScene extends Phaser.Scene {
     const oldArtwork = new Set(this.streetArtworkObjects);
     this.streetArtworkObjects.forEach((object) => object.destroy());
     const before = new Set(this.children.list);
-    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.graphicsUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery, this.progress.buildings['real-estate'].graphicsEra);
+    const buySellArtwork = drawNeighborhood(this, this.progress.rentalBondPaid, this.progress.colourUpgradeInstalled, this.activeProperty, this.progress.buildings['buy-sell'].graphicsEra, this.progress.buildings.nursery, this.progress.buildings['real-estate'].graphicsEra, this.progress.buildings['starter-apartment'].graphicsEra);
     this.setBuySellArtwork(buySellArtwork);
-    this.starterApartmentDoor = drawStarterApartmentDoor(this);
+    this.starterApartmentDoor = drawStarterApartmentDoor(this, this.progress.buildings['starter-apartment'].graphicsEra);
     this.realEstateDoor = drawRealEstateDoor(this, this.progress.buildings['real-estate'].graphicsEra);
     const added = this.children.list.filter((object) => !before.has(object));
     this.streetArtworkObjects = added;
@@ -3205,7 +3279,7 @@ export class GameScene extends Phaser.Scene {
       if (!spot) { display.setVisible(false); continue; }
       display.setPosition(spot.x, spot.y).clear().setVisible(this.povoWelcomeGiftClaimed);
       const stage = this.getCropStage(pot);
-      drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9, this.progress.graphicsUpgradeInstalled);
+      drawGrowingCrop(display, 0, 0, pot.crop?.species ?? 'basil', stage as BasilVisualStage, 0.9, this.progress.colourUpgradeInstalled);
       display.setAlpha(this.selectedGrowingPotId === pot.id ? 1 : 0.94);
     }
   }
@@ -3595,13 +3669,13 @@ export class GameScene extends Phaser.Scene {
   private createPot(): void {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
-    drawGoldenPothos(this.pot, 0, 0, 0.9, this.progress.graphicsUpgradeInstalled);
+    drawGoldenPothos(this.pot, 0, 0, 0.9, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
   }
 
   private createRareBegonia(): void {
     this.rareBegonia = this.add.graphics().setDepth(22).setPosition(RARE_BEGONIA_POSITION.x, RARE_BEGONIA_POSITION.y);
-    drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.graphicsUpgradeInstalled);
+    drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled);
     this.rareBegonia.setVisible(!this.progress.rareBegoniaCollected);
   }
 
@@ -3616,7 +3690,7 @@ export class GameScene extends Phaser.Scene {
     const piecesRemaining = this.progress.brokenPotAvailable && !this.progress.brokenPotOwned
       ? Math.max(1, this.progress.brokenPotPiecesRemaining)
       : this.progress.brokenPotPiecesRemaining;
-    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices());
+    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, piecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices(), this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     this.brokenPot.setVisible(this.progress.brokenPotAvailable && !this.progress.brokenPotOwned);
   }
 
@@ -3634,19 +3708,19 @@ export class GameScene extends Phaser.Scene {
     }
     this.placedItemDisplay.setPosition(placed.x, placed.y).clear();
     if (placed.item === 'small-golden-pothos') {
-      drawGoldenPothos(this.placedItemDisplay, 0, 0, 0.9, this.progress.graphicsUpgradeInstalled);
+      drawGoldenPothos(this.placedItemDisplay, 0, 0, 0.9, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     } else if (placed.item === 'rare-spotted-begonia') {
-      drawRareSpottedBegonia(this.placedItemDisplay, 0, 0, 0.82, this.progress.graphicsUpgradeInstalled);
+      drawRareSpottedBegonia(this.placedItemDisplay, 0, 0, 0.82, this.progress.colourUpgradeInstalled);
     } else if (placed.condition === 'broken') {
       // A broken pot is represented as four loose pieces on the ground.
       // The global piece counter is for the separate street pickup and is 0
       // after the pot has been assembled into the Bag, so it must not control
       // the appearance of a deliberately placed broken pot.
-      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, BROKEN_POT_PIECES_SCALE, BROKEN_POT_PIECE_COUNT);
+      drawBrokenPotPieces(this.placedItemDisplay, 0, 0, BROKEN_POT_PIECES_SCALE, BROKEN_POT_PIECE_COUNT, undefined, undefined, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     } else {
       // A repaired pot keeps its empty, seamed silhouette when placed back
       // on the street; it never regresses to loose pieces or gains foliage.
-      drawBrokenPot(this.placedItemDisplay, 0, 0, 1.89, 10, this.progress.graphicsUpgradeInstalled);
+      drawBrokenPot(this.placedItemDisplay, 0, 0, 1.89, 10, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     }
     this.placedItemDisplay.setVisible(true);
   }
@@ -4541,7 +4615,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.brokenPotPiecesOwned = this.progress.brokenPotPiecesCollected.length;
     this.progress.brokenPotPiecesRemaining = BROKEN_POT_PIECE_COUNT - this.progress.brokenPotPiecesOwned;
     this.brokenPot.clear();
-    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, this.progress.brokenPotPiecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices());
+    drawBrokenPotPieces(this.brokenPot, 0, 0, BROKEN_POT_PIECES_SCALE, this.progress.brokenPotPiecesRemaining, BROKEN_POT_PIECE_OFFSETS, this.getCollectedBrokenPotPieceIndices(), this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
 
     if (this.progress.brokenPotPiecesRemaining > 0) {
       this.saveProgress();
@@ -4704,7 +4778,7 @@ export class GameScene extends Phaser.Scene {
     const entrance = this.getActiveHomeEntrance();
     const doorBottom = this.activeProperty === 'second-rental' ? SECOND_RENTAL_DOOR_BOTTOM : APARTMENT_DOOR_BOTTOM;
     if (this.activeProperty === 'starter-apartment' && this.starterApartmentDoor) {
-      setStarterApartmentDoorOpen(this.starterApartmentDoor, true);
+      setStarterApartmentDoorOpen(this.starterApartmentDoor, true, this.progress.buildings['starter-apartment'].graphicsEra);
     }
     this.tweens.add({
       targets: this.player,
@@ -4784,7 +4858,7 @@ export class GameScene extends Phaser.Scene {
     this.shopGoldenPothosDisplay = [];
     this.shopPremiumPlantDisplay = [];
     this.shopInterior = false;
-    const completeRasterUpgrade = this.progress.buySellRasterUpgradePending
+    const completeRasterUpgrade = this.progress.buySellBwUpgradePending
       && this.progress.windowJobAccepted
       && this.progress.buildings['buy-sell'].graphicsEra === 'green-crt';
     setBuySellDoorOpen(this.buySellDoor!, false, this.progress.buildings['buy-sell'].graphicsEra);
@@ -4801,15 +4875,15 @@ export class GameScene extends Phaser.Scene {
     this.shopTransitioning = false;
     this.cameras.main.fadeIn(160, 7, 9, 10);
     if (completeRasterUpgrade) {
+      // Consume the one-shot transition at the successful doorway exit, not
+      // when the delayed visual flash happens. A refresh during the approved
+      // 1200 ms pause must reopen on the street in Atari B&W rather than
+      // restoring stale pending state inside the shop.
+      this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw';
+      this.progress.buySellBwUpgradePending = false;
+      this.saveProgress();
       this.buySellUpgradeAnimating = true;
       this.time.delayedCall(1200, () => {
-        if (!this.progress.buySellRasterUpgradePending) {
-          this.buySellUpgradeAnimating = false;
-          return;
-        }
-        this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw';
-        this.progress.buySellRasterUpgradePending = false;
-        this.saveProgress();
         this.rebuildBuySellArtwork();
         this.presentBuySellRasterUpgrade();
       });
@@ -4887,7 +4961,7 @@ export class GameScene extends Phaser.Scene {
     this.basilPotSelected = false;
     this.selectedGrowingPotId = null;
     this.setObjectsVisible(this.streetObjects, true);
-    if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false);
+    if (this.starterApartmentDoor) setStarterApartmentDoorOpen(this.starterApartmentDoor, false, this.progress.buildings['starter-apartment'].graphicsEra);
     const entrance = this.getActiveHomeEntrance();
     this.player.setPosition(entrance.x, FRONT_PAVEMENT_MAX_Y - 18).setAlpha(1).setVisible(true);
     this.setRepairPickupPresentationVisible(this.repairPickupReady);
@@ -5105,7 +5179,7 @@ export class GameScene extends Phaser.Scene {
     const leaf = species === 'mint' ? 0xbfc5c3 : 0xd8dddc;
     g.clear();
     if (definition.yieldMode === 'whole-plant') {
-      drawGrowingCrop(g, 0, 12, species, 'mature', 0.68, this.progress.graphicsUpgradeInstalled);
+      drawGrowingCrop(g, 0, 12, species, 'mature', 0.68, this.progress.colourUpgradeInstalled);
       return;
     }
     g.fillStyle(0x111416, 1).fillRect(-26, 8, 52, 8);
@@ -5124,9 +5198,9 @@ export class GameScene extends Phaser.Scene {
     this.shopkeeperCarryLabel?.destroy();
     this.shopkeeperCarry = this.add.graphics().setDepth(8);
     if (item === 'snake-plant' || item === 'monstera' || item === 'variegated-pothos') this.drawPremiumPlant(this.shopkeeperCarry, item, 0, 12, 0.52);
-    else if (item === 'small-golden-pothos') drawGoldenPothos(this.shopkeeperCarry, 0, 12, 0.34, this.progress.graphicsUpgradeInstalled);
-    else if (item === 'rare-spotted-begonia') drawRareSpottedBegonia(this.shopkeeperCarry, 0, 12, 0.34, this.progress.graphicsUpgradeInstalled);
-    else if (item === 'special-repair-pot') drawBrokenPot(this.shopkeeperCarry, 0, 12, 0.72, 10, this.progress.graphicsUpgradeInstalled);
+    else if (item === 'small-golden-pothos') drawGoldenPothos(this.shopkeeperCarry, 0, 12, 0.34, this.progress.colourUpgradeInstalled);
+    else if (item === 'rare-spotted-begonia') drawRareSpottedBegonia(this.shopkeeperCarry, 0, 12, 0.34, this.progress.colourUpgradeInstalled);
+    else if (item === 'special-repair-pot') drawBrokenPot(this.shopkeeperCarry, 0, 12, 0.72, 10, this.progress.colourUpgradeInstalled);
     else if (isPlantProductItem(item)) this.drawHarvestCarry(this.shopkeeperCarry, getPlantDefinitionByProduct(item).species);
     else if (item === 'small-basic-plastic-pot') drawPot(this.shopkeeperCarry, 0, 12, 0.62, this.progress.graphicsUpgradeInstalled);
     else if (item === 'basic-fertilizer-box') {
@@ -5309,10 +5383,12 @@ export class GameScene extends Phaser.Scene {
   private drawHomeInterior(): void {
     const growingSpots = this.getActiveGrowingSpots();
     const secondRental = this.activeProperty === 'second-rental';
-    const starterGreen = !secondRental;
-    const roomBackground = starterGreen ? 0x030805 : 0x314246;
-    const roomSurface = starterGreen ? 0x050d07 : 0x454c4e;
-    const roomLine = starterGreen ? 0x39ff5a : 0xf6f7f3;
+    const starterEra = this.progress.buildings['starter-apartment'].graphicsEra;
+    const starterGreen = !secondRental && starterEra === 'green-crt';
+    const starterColour = !secondRental && starterEra === 'atari-colour';
+    const roomBackground = starterGreen ? 0x030805 : starterColour ? 0x27393c : 0x314246;
+    const roomSurface = starterGreen ? 0x050d07 : starterColour ? 0x49676a : 0x454c4e;
+    const roomLine = starterGreen ? 0x39ff5a : starterColour ? 0xf0dfb7 : 0xf6f7f3;
     const worldWidth = this.getActiveHomeWorldWidth();
     const worldHeight = this.getActiveHomeWorldHeight();
     const room = this.add.graphics().setDepth(-100);
@@ -5373,7 +5449,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBasilVisual();
 
     this.homeExitDoor = this.add.graphics().setDepth(4);
-    drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, false, starterGreen ? 'green-crt' : 'atari-bw');
+    drawMatchingDoor(this.homeExitDoor, HOME_EXIT.x, HOME_EXIT_DOOR_TOP, HOME_EXIT_DOOR_WIDTH, HOME_EXIT_DOOR_HEIGHT, false, secondRental ? 'atari-bw' : starterEra);
     this.homeObjects.push(this.homeExitDoor);
 
     const labels = [
@@ -5559,11 +5635,11 @@ export class GameScene extends Phaser.Scene {
       const itemOffsetY = entry.item === 'special-repair-pot' ? 20 : entry.item === 'small-golden-pothos' ? 8 : 16;
       const item = this.add.graphics().setDepth(4).setPosition(slot.x, slot.y - itemOffsetY);
       if (entry.item === 'small-golden-pothos') {
-        drawGoldenPothos(item, 0, 0, 0.55, this.progress.graphicsUpgradeInstalled);
+        drawGoldenPothos(item, 0, 0, 0.55, this.progress.colourUpgradeInstalled);
       } else if (entry.item === 'rare-spotted-begonia') {
-        drawRareSpottedBegonia(item, 0, 0, 0.5, this.progress.graphicsUpgradeInstalled);
+        drawRareSpottedBegonia(item, 0, 0, 0.5, this.progress.colourUpgradeInstalled);
       } else if (entry.item === 'special-repair-pot') {
-        drawBrokenPot(item, 0, 0, 1.302, 10, this.progress.graphicsUpgradeInstalled);
+        drawBrokenPot(item, 0, 0, 1.302, 10, this.progress.colourUpgradeInstalled);
       } else if (isPlantProductItem(entry.item)) {
         this.drawHarvestCarry(item, getPlantDefinitionByProduct(entry.item).species);
       }

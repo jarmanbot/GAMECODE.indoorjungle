@@ -284,7 +284,8 @@ export class HudController {
 
   showGraphicsUpgradePrompt(action: () => void): void {
     this.graphicsUpgradeAction = action;
-    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
+    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete', 'is-colour-upgrade');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS MODULE PACKAGE DETECTED</h2><p>INSTALL?</p>';
     this.graphicsUpgradeOk.hidden = false;
     this.graphicsUpgradeOk.textContent = 'OK';
@@ -293,10 +294,43 @@ export class HudController {
 
   showGraphicsInstallation(): void {
     this.graphicsUpgradeAction = null;
-    this.graphicsUpgradeCard.classList.remove('is-complete');
+    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-complete', 'is-colour-upgrade');
     this.graphicsUpgradeCard.classList.add('is-installing');
-    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><div class="graphics-module-list"><span>ALEX MONOCHROME RASTER ........ LOADED</span><span>GAMEJOY MONOCHROME RASTER ..... LOADED</span><span>BUY/SELL COLOUR PALETTE ....... LOADED</span><span>NURSERY CONSTRUCTION PLAN ..... ONLINE</span></div><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><div class="graphics-module-list"><span>ALEX MONOCHROME RASTER ........ LOADED</span><span>GAMEJOY MONOCHROME RASTER ..... LOADED</span><span>BUY/SELL B&amp;W RASTER ........ LOADED</span><span>REAL ESTATE B&amp;W RASTER ..... LOADED</span><span>NURSERY CONSTRUCTION PLAN ..... ONLINE</span></div><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
     this.graphicsUpgradeOk.hidden = true;
+    this.graphicsUpgradeOverlay.hidden = false;
+  }
+
+  showColourUpgradePrompt(action: () => void): void {
+    this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
+    this.graphicsUpgradeCard.classList.add('is-colour-upgrade');
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">COLOUR GRAPHICS MODULE DETECTED</h2><p>INSTALL?</p>';
+    this.graphicsUpgradeOk.hidden = false;
+    this.graphicsUpgradeOk.textContent = 'OK';
+    this.graphicsUpgradeOverlay.hidden = false;
+  }
+
+  showColourInstallation(): void {
+    this.graphicsUpgradeAction = null;
+    this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-complete');
+    this.graphicsUpgradeCard.classList.add('is-installing', 'is-colour-upgrade');
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">COLOUR GRAPHICS INSTALLATION</h2><div class="graphics-module-list"><span>BUY/SELL COLOUR PALETTE ....... LOADED</span><span>POVO COLOUR PALETTE ........... LOADED</span></div><p id="graphics-upgrade-status">LOADING MODULES...</p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
+    this.graphicsUpgradeOk.hidden = true;
+    this.graphicsUpgradeOverlay.hidden = false;
+  }
+
+  showColourAcknowledgement(action: () => void): void {
+    this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-installing');
+    this.graphicsUpgradeCard.classList.add('is-complete', 'is-colour-upgrade');
+    this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">COLOUR GRAPHICS LOADED</h2><p>Installation complete.</p>';
+    this.graphicsUpgradeOk.hidden = false;
+    this.graphicsUpgradeOk.textContent = 'OK';
     this.graphicsUpgradeOverlay.hidden = false;
   }
 
@@ -315,6 +349,7 @@ export class HudController {
 
   showGraphicsAcknowledgement(action: () => void): void {
     this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
     this.graphicsUpgradeCard.classList.remove('is-installing');
     this.graphicsUpgradeCard.classList.add('is-complete');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS MODULES LOADED</h2><p>Installation complete.</p>';
@@ -325,7 +360,8 @@ export class HudController {
 
   hideGraphicsUpgrade(): void {
     this.graphicsUpgradeAction = null;
-    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
+    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete', 'is-colour-upgrade');
     this.graphicsUpgradeOverlay.hidden = true;
   }
 
@@ -984,10 +1020,11 @@ export class HudController {
     this.panelBackdrop.classList.toggle('is-green-crt-shop', shopEra === 'green-crt');
     this.panelBackdrop.classList.toggle('is-colour-shop', shopEra === 'atari-colour');
     const povoPanel = kind === 'property-cheap-rental';
-    this.panelBackdrop.classList.toggle('is-green-crt-property', povoPanel
+    const povoEra = povoPanel ? this.scene?.getPovoGraphicsEra() : null;
+    this.panelBackdrop.classList.toggle('is-green-crt-property', (povoPanel && povoEra === 'green-crt')
       || ((kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'green-crt'));
-    this.panelBackdrop.classList.toggle('is-colour-property', !povoPanel
-      && (kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'atari-colour');
+    this.panelBackdrop.classList.toggle('is-colour-property', (povoPanel && povoEra === 'atari-colour')
+      || (!povoPanel && (kind === 'real-estate' || kind.startsWith('property-')) && this.scene?.getRealEstateGraphicsEra() === 'atari-colour'));
     this.mapCentreButton.hidden = kind !== 'map';
     this.panelBackdrop.hidden = false;
     requestAnimationFrame(() => this.panelBackdrop.classList.add('is-open'));
