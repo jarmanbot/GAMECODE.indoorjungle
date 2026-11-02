@@ -225,8 +225,9 @@ export const POT_POSITION = { x: 1080, y: 930 };
 // accessible starting neighbourhood.
 export const RARE_BEGONIA_POSITION = { x: 2940, y: 930 };
 // Oversized starting-world pot. It is deliberately not collectible until a
-// future trolley or heavy-lift upgrade exists.
-export const HEAVY_POT_POSITION = { x: 2110, y: 920 };
+// future trolley or heavy-lift upgrade exists. It trades places with the first
+// repair fragment so that the fragment begins at the Nursery-side position.
+export const HEAVY_POT_POSITION = { x: 1951, y: 910 };
 export const START_POSITION = { x: 560, y: 890 };
 export const BROKEN_POT_PIECES_SCALE = 2.268;
 export const BROKEN_POT_PIECE_COUNT = 4;
@@ -234,10 +235,16 @@ export const BROKEN_POT_PIECE_IDS = ['broken-pot-piece-1', 'broken-pot-piece-2',
 // Four large fragments form one horizontal trail across the Nursery frontage.
 // Collection advances left-to-right, so the next piece sits just beyond the
 // previous one without changing the established street geometry.
-// At the current 2.268 drawing scale these centres land near x1951, 2250,
-// 2550 and 2849: from the Nursery's left edge to the second rental's far side.
-export const BROKEN_POT_PIECE_OFFSETS = [-198, -66, 66, 198] as const;
 export const BROKEN_POT_PIECES_CENTRE = { x: 2400, y: 910 };
+// At the current drawing scale these centres land near x2110, 2250, 2550 and
+// 2849. The first fragment now occupies the heavy pot's former position; the
+// remaining fragment positions and stable pickup identities are unchanged.
+export const BROKEN_POT_PIECE_OFFSETS = [
+  (2110 - BROKEN_POT_PIECES_CENTRE.x) / BROKEN_POT_PIECES_SCALE,
+  -66,
+  66,
+  198,
+] as const;
 
 export const SHOP_WORLD_WIDTH = 900;
 export const SHOP_WORLD_HEIGHT = 900;
@@ -320,7 +327,6 @@ export const HOME_GROWING_SPOT = HOME_GROWING_SPOTS[1];
 // placed at the edge of this ring beside the pot.
 export const BASIL_POT_INTERACTION_RADIUS = 96;
 export const BASIL_GROWTH_DURATION_MS = 30_000;
-export const BASIL_HARVEST_PRICE = 5;
 export const BASIL_SEED_PRICE = 2;
 export const SMALL_BASIC_PLASTIC_POT_PRICE = 10;
 export const BASIC_FERTILIZER_BOX_PRICE = 20;
@@ -328,10 +334,10 @@ export const BASIC_FERTILIZER_PELLETS_PER_BOX = 10;
 export const BASIC_FERTILIZER_GROWTH_REDUCTION_MS = 30_000;
 export const OPENING_POTHOS_SALE_PRICE = 5;
 export const OPENING_POTHOS_DELIVERY_REWARD = 15;
-export const BASIL_DELIVERY_REWARD = 9;
-export const WINDOW_JOB_REWARD = 4;
+export const BASIL_DELIVERY_REWARD = 10;
+export const WINDOW_JOB_REWARD = 10;
 export const REPAIRED_POT_SALE_PRICE = 75;
-export const RARE_BEGONIA_SALE_PRICE = 300;
+export const RARE_BEGONIA_SALE_PRICE = 150;
 export const RENTAL_BOND_COST = 60;
 // Pass 5 prototype values. These are intentionally provisional and are not
 // a rent/bills system: the starter bond transfers and only the difference is

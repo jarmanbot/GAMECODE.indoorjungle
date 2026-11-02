@@ -10,7 +10,6 @@ import {
   START_POSITION,
   STARTING_WALKABLE_MAX_X,
   STARTING_WALKABLE_MIN_X,
-  BASIL_HARVEST_PRICE,
   BASIL_DELIVERY_REWARD,
   BASIL_SEED_PRICE,
   BASIC_FERTILIZER_BOX_PRICE,
@@ -39,9 +38,9 @@ import type { PropertyId } from '../game/world';
 import { emptyPlantQuantities, getPlantDefinition, getPlantDefinitionByProduct, isPlantProductItem, isPlantSpecies, PLANT_SPECIES, type PlantSpecies } from '../game/plants';
 import { PREMIUM_PLANT_CATALOG, isPremiumPlantId, type PremiumPlantId } from '../game/shopCatalog';
 import type { GrowingPotState } from '../game/growing';
-import { BUILD_COMMIT, BUILD_DATE, PLAYTEST_CANDIDATE, SAVE_DATA_VERSION } from '../game/buildInfo';
-
-const DEV_BUILD = import.meta.env.DEV;
+import { APP_VERSION, BUILD_DATE, BUILD_ID, SAVE_DATA_VERSION } from '../game/buildInfo';
+import { areDevToolsUnlocked, DEV_TOOLS_ENABLED, lockDevTools, unlockDevTools } from '../game/config';
+import { DevUnlockTapTracker } from '../game/devAccess';
 
 export class HudController {
   private scene: GameScene | null = null;
@@ -141,6 +140,10 @@ export class HudController {
   private devTestMode = false;
   private devCheckpointId = getDevCheckpointOptions()[0]?.id ?? '';
   private devFeedback = '';
+  private devToolsUnlocked = areDevToolsUnlocked();
+  private readonly devUnlockTapTracker = new DevUnlockTapTracker();
+  private devCheckpointConfirmPending = false;
+  private premiumPurchasePending: PremiumPlantId | null = null;
   private activeActionLabel: string | null = null;
   private actionHideTimer: number | null = null;
   private startContinueAction: (() => void) | null = null;
@@ -285,7 +288,9 @@ export class HudController {
   showGraphicsUpgradePrompt(action: () => void): void {
     this.graphicsUpgradeAction = action;
     this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
+    this.graphicsUpgradeOverlay.classList.add('is-green-crt-upgrade');
     this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete', 'is-colour-upgrade');
+    this.graphicsUpgradeCard.classList.add('is-green-crt-upgrade');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS MODULE PACKAGE DETECTED</h2><p>INSTALL?</p>';
     this.graphicsUpgradeOk.hidden = false;
     this.graphicsUpgradeOk.textContent = 'OK';
@@ -295,8 +300,9 @@ export class HudController {
   showGraphicsInstallation(): void {
     this.graphicsUpgradeAction = null;
     this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
+    this.graphicsUpgradeOverlay.classList.add('is-green-crt-upgrade');
     this.graphicsUpgradeCard.classList.remove('is-complete', 'is-colour-upgrade');
-    this.graphicsUpgradeCard.classList.add('is-installing');
+    this.graphicsUpgradeCard.classList.add('is-installing', 'is-green-crt-upgrade');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS INSTALLATION</h2><div class="graphics-module-list"><span>ALEX MONOCHROME RASTER ........ LOADED</span><span>GAMEJOY MONOCHROME RASTER ..... LOADED</span><span>BUY/SELL B&amp;W RASTER ........ LOADED</span><span>REAL ESTATE B&amp;W RASTER ..... LOADED</span><span>NURSERY CONSTRUCTION PLAN ..... ONLINE</span></div><p id="graphics-upgrade-status">LOADING MODULES<span class="graphics-upgrade-dots">...</span></p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
     this.graphicsUpgradeOk.hidden = true;
     this.graphicsUpgradeOverlay.hidden = false;
@@ -304,8 +310,9 @@ export class HudController {
 
   showColourUpgradePrompt(action: () => void): void {
     this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeOverlay.classList.remove('is-green-crt-upgrade');
     this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
-    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete', 'is-green-crt-upgrade');
     this.graphicsUpgradeCard.classList.add('is-colour-upgrade');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">COLOUR GRAPHICS MODULE DETECTED</h2><p>INSTALL?</p>';
     this.graphicsUpgradeOk.hidden = false;
@@ -315,8 +322,9 @@ export class HudController {
 
   showColourInstallation(): void {
     this.graphicsUpgradeAction = null;
+    this.graphicsUpgradeOverlay.classList.remove('is-green-crt-upgrade');
     this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
-    this.graphicsUpgradeCard.classList.remove('is-complete');
+    this.graphicsUpgradeCard.classList.remove('is-complete', 'is-green-crt-upgrade');
     this.graphicsUpgradeCard.classList.add('is-installing', 'is-colour-upgrade');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">COLOUR GRAPHICS INSTALLATION</h2><div class="graphics-module-list"><span>BUY/SELL COLOUR PALETTE ....... LOADED</span><span>POVO COLOUR PALETTE ........... LOADED</span></div><p id="graphics-upgrade-status">LOADING MODULES...</p><div class="graphics-upgrade-progress" id="graphics-upgrade-progress">[..........] 0%</div><div class="graphics-upgrade-bar" aria-hidden="true"><span id="graphics-upgrade-bar-fill"></span></div>';
     this.graphicsUpgradeOk.hidden = true;
@@ -325,8 +333,9 @@ export class HudController {
 
   showColourAcknowledgement(action: () => void): void {
     this.graphicsUpgradeAction = action;
+    this.graphicsUpgradeOverlay.classList.remove('is-green-crt-upgrade');
     this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
-    this.graphicsUpgradeCard.classList.remove('is-installing');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-green-crt-upgrade');
     this.graphicsUpgradeCard.classList.add('is-complete', 'is-colour-upgrade');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">COLOUR GRAPHICS LOADED</h2><p>Installation complete.</p>';
     this.graphicsUpgradeOk.hidden = false;
@@ -349,8 +358,9 @@ export class HudController {
 
   showGraphicsAcknowledgement(action: () => void): void {
     this.graphicsUpgradeAction = action;
-    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
-    this.graphicsUpgradeCard.classList.remove('is-installing');
+    this.graphicsUpgradeOverlay.classList.remove('is-green-crt-upgrade');
+    this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-green-crt-upgrade');
     this.graphicsUpgradeCard.classList.add('is-complete');
     this.graphicsUpgradeContent.innerHTML = '<h2 id="graphics-upgrade-title">GRAPHICS MODULES LOADED</h2><p>Installation complete.</p>';
     this.graphicsUpgradeOk.hidden = false;
@@ -360,8 +370,8 @@ export class HudController {
 
   hideGraphicsUpgrade(): void {
     this.graphicsUpgradeAction = null;
-    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade');
-    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete', 'is-colour-upgrade');
+    this.graphicsUpgradeOverlay.classList.remove('is-bw-upgrade', 'is-green-crt-upgrade');
+    this.graphicsUpgradeCard.classList.remove('is-installing', 'is-complete', 'is-colour-upgrade', 'is-green-crt-upgrade');
     this.graphicsUpgradeOverlay.hidden = true;
   }
 
@@ -399,7 +409,7 @@ export class HudController {
   }
 
   setDevTestMode(active: boolean, checkpointId: string | null): void {
-    this.devTestMode = DEV_BUILD && active;
+    this.devTestMode = DEV_TOOLS_ENABLED && this.devToolsUnlocked && active;
     if (checkpointId) this.devCheckpointId = checkpointId;
   }
 
@@ -734,6 +744,16 @@ export class HudController {
     button.addEventListener('click', activate);
   }
 
+  private bindRapidTapActivation(button: HTMLButtonElement, action: () => void): void {
+    button.addEventListener('pointerdown', (event) => event.stopPropagation());
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.audio.unlock();
+      action();
+    });
+  }
+
   private toggleZoom(): void {
     if (this.zoomMode === 'normal') this.zoomInHandler?.();
     else this.zoomOutHandler?.();
@@ -1036,6 +1056,7 @@ export class HudController {
   }
 
   closePanel(): void {
+    if (this.activePanelKind === 'shop') this.premiumPurchasePending = null;
     this.cityMapPanCleanup?.();
     this.cityMapPanCleanup = null;
     this.panelBackdrop.classList.remove('is-city-map');
@@ -1373,7 +1394,7 @@ export class HudController {
       const interfaceChoices = `<div class="settings-choice"><strong>Interface graphics</strong><small>Auto uses the highest progression-approved style.</small><div class="settings-choice-row"><button type="button" data-interface-theme="auto" class="${this.interfaceTheme === 'auto' ? 'is-selected' : ''}">AUTO</button><button type="button" data-interface-theme="green-crt" class="${this.interfaceTheme === 'green-crt' ? 'is-selected' : ''}">GREEN CRT</button>${this.graphicsUpgradeInstalled ? `<button type="button" data-interface-theme="atari-bw" class="${this.interfaceTheme === 'atari-bw' ? 'is-selected' : ''}">ATARI B&amp;W</button>` : ''}</div></div>`;
       return {
         title: 'Settings',
-        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${alexChoices}${interfaceChoices}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Explicit Green CRT and Atari raster progression · crisp pixel edges · responsive viewport</small></div><div class="build-information"><strong>${PLAYTEST_CANDIDATE}</strong><small>Build ${BUILD_DATE} · commit ${BUILD_COMMIT} · save data v${SAVE_DATA_VERSION}</small></div>${DEV_BUILD ? this.devToolsMarkup() : ''}</div>`,
+        body: `<div class="settings-list"><div class="settings-choice"><strong>Joystick position</strong><small>Choose which side holds the joystick. Switching sides clears held input.</small><div class="settings-choice-row"><button type="button" data-joystick-side="left" class="${this.joystickSide === 'left' ? 'is-selected' : ''}">LEFT</button><button type="button" data-joystick-side="right" class="${this.joystickSide === 'right' ? 'is-selected' : ''}">RIGHT</button></div></div><div class="settings-choice"><strong>Music</strong><small>Toggle the looping arcade soundtrack.</small><div class="settings-choice-row"><button type="button" data-audio="music-on" class="${musicOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="music-off" class="${!musicOn ? 'is-selected' : ''}">OFF</button></div></div><div class="settings-choice"><strong>Sound effects</strong><small>Toggle jump and tool-use sounds.</small><div class="settings-choice-row"><button type="button" data-audio="sfx-on" class="${sfxOn ? 'is-selected' : ''}">ON</button><button type="button" data-audio="sfx-off" class="${!sfxOn ? 'is-selected' : ''}">OFF</button></div></div>${alexChoices}${interfaceChoices}<div><strong>Controls</strong><small>WASD / arrows to walk · A / Space to hop · B / Q to use the equipped tool · tap or click pavement to walk · mouse wheel, −/+, comma, or period to zoom</small></div><div><strong>Display</strong><small>Explicit Green CRT and Atari raster progression · crisp pixel edges · responsive viewport</small></div><button class="build-information" type="button" data-build-information><strong>Indoor Jungle v${APP_VERSION}</strong><small>Build ${BUILD_ID}</small><small>${BUILD_DATE} · save data v${SAVE_DATA_VERSION}</small></button>${DEV_TOOLS_ENABLED && this.devToolsUnlocked ? this.devToolsMarkup() : ''}</div>`,
       };
     }
     return {
@@ -1415,7 +1436,24 @@ export class HudController {
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy-premium]').forEach((buyButton) => {
       this.bindButtonActivation(buyButton, () => {
         const id = buyButton.dataset.shopBuyPremium;
-        if (isPremiumPlantId(id)) this.scene?.buyPremiumPlant(id);
+        if (isPremiumPlantId(id)) {
+          this.premiumPurchasePending = id;
+          this.refreshShopPanel();
+        }
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-confirm-premium]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        const id = button.dataset.shopConfirmPremium;
+        if (!isPremiumPlantId(id) || this.premiumPurchasePending !== id) return;
+        this.premiumPurchasePending = null;
+        this.scene?.buyPremiumPlant(id);
+      });
+    });
+    this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-cancel-premium]').forEach((button) => {
+      this.bindButtonActivation(button, () => {
+        this.premiumPurchasePending = null;
+        this.refreshShopPanel();
       });
     });
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-shop-buy]').forEach((buyButton) => {
@@ -1486,6 +1524,8 @@ export class HudController {
   }
 
   private bindSettingsPanel(): void {
+    const buildInformation = this.panelBody.querySelector<HTMLButtonElement>('[data-build-information]');
+    if (buildInformation) this.bindRapidTapActivation(buildInformation, () => this.handleBuildInformationTap());
     this.panelBody.querySelectorAll<HTMLButtonElement>('[data-joystick-side]').forEach((button) => {
       this.bindButtonActivation(button, () => this.setJoystickSide(button.dataset.joystickSide === 'right' ? 'right' : 'left'));
     });
@@ -1509,7 +1549,7 @@ export class HudController {
         if (theme === 'auto' || theme === 'green-crt' || theme === 'atari-bw') this.scene?.setInterfaceTheme(theme);
       });
     });
-    if (!DEV_BUILD) return;
+    if (!DEV_TOOLS_ENABLED || !this.devToolsUnlocked) return;
     const checkpointSelect = this.panelBody.querySelector<HTMLSelectElement>('[data-dev-checkpoint]');
     const rememberCheckpoint = (): void => {
       if (!checkpointSelect) return;
@@ -1527,13 +1567,69 @@ export class HudController {
       // This covers native mobile selects that commit their value immediately
       // before the click reaches the Load button.
       rememberCheckpoint();
+      this.devCheckpointConfirmPending = true;
+      this.refreshSettingsPanel();
+    });
+    bindDev('[data-dev-confirm-load]', () => {
+      if (!this.devCheckpointConfirmPending) return;
+      this.devCheckpointConfirmPending = false;
       this.scene?.loadDevCheckpoint(this.devCheckpointId);
+    });
+    bindDev('[data-dev-cancel-load]', () => {
+      this.devCheckpointConfirmPending = false;
+      this.refreshSettingsPanel();
     });
     bindDev('[data-dev-reset-save]', () => this.scene?.resetDevTestSave());
     bindDev('[data-dev-return-normal]', () => this.scene?.returnToNormalSave());
     bindDev('[data-dev-add-coins="10"]', () => this.scene?.addDevCoins(10));
     bindDev('[data-dev-add-coins="100"]', () => this.scene?.addDevCoins(100));
     bindDev('[data-dev-finish-crop]', () => this.scene?.finishCurrentCrop());
+    bindDev('[data-dev-lock]', () => {
+      if (this.scene?.isDevTestSaveActive()) this.scene.returnToNormalSave();
+      lockDevTools();
+      this.devToolsUnlocked = false;
+      this.devCheckpointConfirmPending = false;
+      this.refreshSettingsPanel();
+    });
+  }
+
+  private refreshSettingsPanel(): void {
+    if (this.activePanelKind !== 'settings') return;
+    const content = this.panelContent('settings');
+    this.panelBody.innerHTML = content.body;
+    this.bindSettingsPanel();
+  }
+
+  private handleBuildInformationTap(): void {
+    if (!DEV_TOOLS_ENABLED || this.devToolsUnlocked) return;
+    if (!this.devUnlockTapTracker.tap(Date.now())) return;
+    this.showDevAccessModal();
+  }
+
+  private showDevAccessModal(): void {
+    if (!DEV_TOOLS_ENABLED || this.devToolsUnlocked || this.panelBody.querySelector('[data-dev-access-modal]')) return;
+    const modal = document.createElement('div');
+    modal.className = 'dev-access-modal';
+    modal.dataset.devAccessModal = 'true';
+    modal.innerHTML = '<section role="dialog" aria-modal="true" aria-labelledby="dev-access-title"><strong id="dev-access-title">DEVELOPER ACCESS</strong><label>ACCESS CODE<input type="password" autocomplete="off" data-dev-access-code></label><p data-dev-access-feedback aria-live="polite"></p><div><button type="button" data-dev-access-cancel>CANCEL</button><button type="button" data-dev-access-unlock>UNLOCK</button></div></section>';
+    this.panelBody.append(modal);
+    const input = modal.querySelector<HTMLInputElement>('[data-dev-access-code]')!;
+    const feedback = modal.querySelector<HTMLElement>('[data-dev-access-feedback]')!;
+    const close = (): void => { modal.remove(); };
+    this.bindButtonActivation(modal.querySelector<HTMLButtonElement>('[data-dev-access-cancel]')!, close);
+    this.bindButtonActivation(modal.querySelector<HTMLButtonElement>('[data-dev-access-unlock]')!, () => {
+      if (!unlockDevTools(input.value)) {
+        input.value = '';
+        feedback.textContent = 'Incorrect code.';
+        input.focus();
+        return;
+      }
+      this.devToolsUnlocked = true;
+      close();
+      this.refreshSettingsPanel();
+    });
+    input.addEventListener('keydown', (event) => event.stopPropagation());
+    window.setTimeout(() => input.focus(), 0);
   }
 
   private refreshAudioSettingsButtons(): void {
@@ -1605,9 +1701,13 @@ export class HudController {
       const quantity = entry.quantity > 1 ? ` ×${entry.quantity}` : '';
       return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'rare-spotted-begonia' ? '♣' : entry.item === 'special-repair-pot' ? '◈' : isPlantProductItem(entry.item) && getPlantDefinitionByProduct(entry.item).yieldMode === 'whole-plant' ? '♣' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
     }).join('');
-    const premiumOffers = PREMIUM_PLANT_CATALOG.filter((plant) => !shop.ownedPremiumPlants.includes(plant.id)).map((plant) =>
-      `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>${plant.label}</strong><small>Premium potted plant · one available · ${plant.price} coins</small></div>${quantityControl(1, plant.price, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-premium="${plant.id}">BUY FOR ${plant.price} COINS</button></div>`,
-    ).join('');
+    const premiumOffers = PREMIUM_PLANT_CATALOG.filter((plant) => !shop.ownedPremiumPlants.includes(plant.id)).map((plant) => {
+      const after = this.coins - plant.price;
+      const confirmation = this.premiumPurchasePending === plant.id
+        ? `<div class="premium-purchase-confirm"><strong>CONFIRM PREMIUM PURCHASE</strong><small>${plant.label} · ${plant.price} coins<br>Current balance: ${this.coins}<br>Balance after purchase: ${Math.max(0, after)}${this.activeProperty !== 'second-rental' ? '<br>This purchase may delay your housing objective.' : ''}</small><div><button type="button" data-shop-cancel-premium>CANCEL</button><button type="button" data-shop-confirm-premium="${plant.id}"${after < 0 ? ' disabled' : ''}>CONFIRM PURCHASE</button></div></div>`
+        : `<button class="shop-sell-button" type="button" data-shop-buy-premium="${plant.id}">REVIEW PURCHASE · ${plant.price} COINS</button>`;
+      return `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>${plant.label}</strong><small>Premium potted plant · one available · ${plant.price} coins</small></div>${quantityControl(1, plant.price, 'buy')}${confirmation}</div>`;
+    }).join('');
     const premiumContent = `<div class="shop-section-label">PREMIUM PLANTS</div>${premiumOffers || '<div class="empty-state"><span class="empty-mark">✓</span><strong>Premium shelf purchased</strong><small>All current premium plants are in your Bag.</small></div>'}`;
     const seedContent = shop.povoWelcomeGiftClaimed
       ? `<div class="shop-section-label">SEED PACKS</div>${PLANT_SPECIES.map((species) => { const definition = getPlantDefinition(species); const packPrice = definition.seedPrice * definition.seedPackQuantity; return `<div class="shop-offer"><div class="inventory-art">·</div><div class="shop-offer-copy"><strong>${definition.seedLabel} ×${definition.seedPackQuantity}</strong><small>One pack · ${packPrice} coins</small></div>${quantityControl(Number.MAX_SAFE_INTEGER, packPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy="seed-${species}">BUY PACK</button></div>`; }).join('')}`
@@ -1738,7 +1838,8 @@ export class HudController {
     const optionsMarkup = options.map((checkpoint) => `<option value="${this.escapeHtml(checkpoint.id)}"${checkpoint.id === this.devCheckpointId ? ' selected' : ''}>${this.escapeHtml(checkpoint.label)}</option>`).join('');
     const testDisabled = this.devTestMode ? '' : ' disabled';
     const cropDisabled = this.scene?.canFinishCurrentCrop() ? '' : ' disabled';
-    return `<section class="dev-tools" aria-label="Developer tools"><div class="dev-tools-heading"><strong>DEVELOPER TOOLS</strong><span class="dev-save-badge">DEV ONLY</span></div><p class="dev-tools-note">Development builds only. Checkpoints use a separate test save and never alter the normal save.</p><label class="dev-checkpoint-label" for="dev-checkpoint">CHECKPOINT<select id="dev-checkpoint" data-dev-checkpoint>${optionsMarkup}</select></label><div class="dev-action-grid"><button type="button" data-dev-load-checkpoint>LOAD CHECKPOINT</button><button type="button" data-dev-reset-save>RESET TEST SAVE</button><button type="button" data-dev-return-normal${testDisabled}>RETURN TO NORMAL SAVE</button></div><div class="dev-action-grid dev-small-actions"><button type="button" data-dev-add-coins="10"${testDisabled}>+10 COINS</button><button type="button" data-dev-add-coins="100"${testDisabled}>+100 COINS</button><button type="button" data-dev-finish-crop${cropDisabled}>FINISH CURRENT CROP</button></div><p class="dev-feedback" data-dev-feedback aria-live="polite">${this.escapeHtml(this.devFeedback)}</p>${this.devTestMode ? '<p class="dev-active-state">DEV TEST SAVE ACTIVE</p>' : '<p class="dev-inactive-state">NORMAL SAVE ACTIVE</p>'}</section>`;
+    const confirmation = this.devCheckpointConfirmPending ? `<div class="dev-load-confirm"><strong>REPLACE DEVELOPMENT PROGRESSION?</strong><small>Load “${this.escapeHtml(options.find((option) => option.id === this.devCheckpointId)?.label ?? this.devCheckpointId)}”. The normal save will not be changed.</small><div><button type="button" data-dev-cancel-load>CANCEL</button><button type="button" data-dev-confirm-load>LOAD CHECKPOINT</button></div></div>` : '';
+    return `<section class="dev-tools" aria-label="Developer tools"><div class="dev-tools-heading"><strong>DEVELOPER TOOLS</strong><span class="dev-save-badge">UNLOCKED</span></div><p class="dev-tools-note">Checkpoints use a separate development save and never alter the normal save.</p><label class="dev-checkpoint-label" for="dev-checkpoint">CHECKPOINT<select id="dev-checkpoint" data-dev-checkpoint>${optionsMarkup}</select></label>${confirmation}<div class="dev-action-grid"><button type="button" data-dev-load-checkpoint>LOAD CHECKPOINT</button><button type="button" data-dev-reset-save>RESET TEST SAVE</button><button type="button" data-dev-return-normal${testDisabled}>RETURN TO NORMAL SAVE</button></div><div class="dev-action-grid dev-small-actions"><button type="button" data-dev-add-coins="10"${testDisabled}>+10 COINS</button><button type="button" data-dev-add-coins="100"${testDisabled}>+100 COINS</button><button type="button" data-dev-finish-crop${cropDisabled}>FINISH CURRENT CROP</button></div><button type="button" class="dev-lock-button" data-dev-lock>LOCK DEVELOPER TOOLS</button><p class="dev-feedback" data-dev-feedback aria-live="polite">${this.escapeHtml(this.devFeedback)}</p>${this.devTestMode ? '<p class="dev-active-state">DEVELOPMENT PROGRESSION ACTIVE</p>' : '<p class="dev-inactive-state">NORMAL PROGRESSION ACTIVE</p>'}</section>`;
   }
 
   private cityMapMarkup(): string {

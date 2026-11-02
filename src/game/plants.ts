@@ -32,7 +32,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     growthDurationMs: 30_000,
     seedPrice: 2,
     seedPackQuantity: 10,
-    harvestPrice: 5,
+    harvestPrice: 8,
   },
   mint: {
     species: 'mint',
@@ -45,7 +45,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     growthDurationMs: 60_000,
     seedPrice: 2,
     seedPackQuantity: 5,
-    harvestPrice: 8,
+    harvestPrice: 14,
   },
   'dwarf-marigold': {
     species: 'dwarf-marigold',
@@ -71,7 +71,7 @@ export const PLANT_DEFINITIONS: Record<PlantSpecies, PlantDefinition> = {
     growthDurationMs: 150_000,
     seedPrice: 15,
     seedPackQuantity: 2,
-    harvestPrice: 60,
+    harvestPrice: 50,
   },
 };
 

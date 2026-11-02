@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { drawBuySellBuilding, drawNeighborhood, drawPot, drawGoldenPothos, drawRareSpottedBegonia, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, drawMatchingDoor, drawStarterApartmentDoor, drawRealEstateDoor, setBuySellDoorOpen, setStarterApartmentDoorOpen, setRealEstateDoorOpen, type BasilVisualStage, type BuySellArtwork } from './art';
 import { AudioController } from './AudioController';
-import { PHONE_HYBRID_CONTROLS } from './config';
+import { areDevToolsUnlocked, DEV_TOOLS_ENABLED, PHONE_HYBRID_CONTROLS } from './config';
 import { createDevCheckpoint, type DevCheckpointScene } from './devCheckpoints';
 import {
   DEFAULT_SHOP_STOCK_QUALITY,
@@ -82,7 +82,6 @@ import {
   OPENING_DROP_POINT,
   BASIL_GROWTH_DURATION_MS,
   BASIL_POT_INTERACTION_RADIUS,
-  BASIL_HARVEST_PRICE,
   BASIL_DELIVERY_REWARD,
   BASIL_SEED_PRICE,
   BASIC_FERTILIZER_BOX_PRICE,
@@ -168,7 +167,6 @@ interface PendingShopkeeperTransaction {
   feedback: string;
 }
 type DevSessionMeta = { checkpointId: string; scene: DevCheckpointScene; spawn: { x: number; y: number }; zoom: ZoomMode };
-const DEV_BUILD = import.meta.env.DEV;
 // Broken fragments are intentionally drawn much larger than their anchor
 // points. This range covers the complete visible fragment plus Alex's feet so
 // standing beside or over a piece always counts as close enough.
@@ -204,6 +202,7 @@ export class GameScene extends Phaser.Scene {
   private buySellDoor?: Phaser.GameObjects.Graphics;
   private buySellArtworkObjects: Phaser.GameObjects.GameObject[] = [];
   private buySellUpgradeAnimating = false;
+  private devCheckpointLoading = false;
   private starterApartmentDoor?: Phaser.GameObjects.Graphics;
   private cars: Car[] = [];
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -1347,9 +1346,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   public loadDevCheckpoint(id: string): void {
-    if (!DEV_BUILD) return;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked() || this.devCheckpointLoading
+      || this.openingSequenceActive || this.shopTransitioning || this.shopTransactionBusy
+      || this.graphicsUpgradePresentationActive) return;
     const snapshot = createDevCheckpoint(id);
     if (!snapshot) return;
+    this.devCheckpointLoading = true;
     this.hud.closePanel();
     this.setDevTestMode(true);
     this.clearSceneForDevLoad();
@@ -1381,15 +1383,20 @@ export class GameScene extends Phaser.Scene {
     }
     if (snapshot.shopPanelOpen) this.time.delayedCall(0, () => this.hud.openPanel('shop'));
     if (snapshot.showMintThought) this.time.delayedCall(0, () => this.showThought('I should let the mint grow', true));
+    this.time.delayedCall(500, () => { this.devCheckpointLoading = false; });
+  }
+
+  public isDevTestSaveActive(): boolean {
+    return this.testSaveMode;
   }
 
   public resetDevTestSave(): void {
-    if (!DEV_BUILD) return;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked()) return;
     this.loadDevCheckpoint('fresh-start');
   }
 
   public returnToNormalSave(): void {
-    if (!DEV_BUILD) return;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked()) return;
     this.hud.closePanel();
     this.clearSceneForDevLoad();
     this.setDevTestMode(false);
@@ -1409,7 +1416,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   public addDevCoins(amount: 10 | 100): void {
-    if (!DEV_BUILD || !this.testSaveMode) return;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked() || !this.testSaveMode) return;
     this.coins += amount;
     this.progress.coins = this.coins;
     this.saveProgress();
@@ -1420,7 +1427,7 @@ export class GameScene extends Phaser.Scene {
 
   public canFinishCurrentCrop(): boolean {
     const pot = this.getSelectedGrowingPot() ?? this.progress.growingPots.find((candidate) => candidate.crop?.growthStartedAt !== null && this.getCropStage(candidate) === 'seedling');
-    return DEV_BUILD && this.testSaveMode && Boolean(pot?.crop?.growthStartedAt !== null && pot?.crop && this.getCropStage(pot) === 'seedling');
+    return DEV_TOOLS_ENABLED && areDevToolsUnlocked() && this.testSaveMode && Boolean(pot?.crop?.growthStartedAt !== null && pot?.crop && this.getCropStage(pot) === 'seedling');
   }
 
   public finishCurrentCrop(): void {
@@ -1543,7 +1550,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setDevTestMode(active: boolean): void {
-    this.testSaveMode = active && DEV_BUILD;
+    this.testSaveMode = active && DEV_TOOLS_ENABLED && areDevToolsUnlocked();
     try {
       if (this.testSaveMode) localStorage.setItem(this.devModeKey, '1');
       else localStorage.removeItem(this.devModeKey);
@@ -1552,7 +1559,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readDevTestMode(): boolean {
-    if (!DEV_BUILD) return false;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked()) return false;
     try { return localStorage.getItem(this.devModeKey) === '1'; } catch { return false; }
   }
 
@@ -1574,12 +1581,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private writeDevSessionMeta(meta: DevSessionMeta): void {
-    if (!DEV_BUILD) return;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked()) return;
     try { localStorage.setItem(this.devSessionKey, JSON.stringify(meta)); } catch { /* private browsing may deny storage */ }
   }
 
   private persistDevSession(): void {
-    if (!DEV_BUILD || !this.testSaveMode || !this.player) return;
+    if (!DEV_TOOLS_ENABLED || !areDevToolsUnlocked() || !this.testSaveMode || !this.player) return;
     this.writeDevSessionMeta({
       checkpointId: this.devSessionMeta?.checkpointId ?? 'active-test-save',
       scene: this.shopInterior ? 'shop' : this.homeInterior ? 'home' : 'street',
@@ -5780,9 +5787,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePhoneOrientationState(): void {
-    const viewport = this.getDeviceViewport();
-    const phoneLandscape = this.isPhoneDevice() && viewport.width > viewport.height;
-    const phonePortrait = this.isPhoneDevice() && viewport.height > viewport.width;
+    const physicalOrientation = this.getPhonePhysicalOrientation();
+    const phoneLandscape = physicalOrientation === 'landscape';
+    const phonePortrait = physicalOrientation === 'portrait';
     const nextOrientation: 'portrait' | 'landscape' | 'other' = phonePortrait
       ? 'portrait'
       : phoneLandscape
@@ -5814,10 +5821,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isPortraitPhoneViewport(): boolean {
-    const viewport = this.getDeviceViewport();
     return PHONE_HYBRID_CONTROLS
-      && this.isPhoneDevice()
-      && viewport.height > viewport.width;
+      && this.getPhonePhysicalOrientation() === 'portrait';
+  }
+
+  private getPhonePhysicalOrientation(): 'portrait' | 'landscape' | 'other' {
+    if (!this.isPhoneDevice()) return 'other';
+    // Safari's visual viewport becomes short and wide while the software
+    // keyboard is open. CSS orientation follows the physical/layout viewport,
+    // so text-field focus cannot incorrectly show the rotate-phone overlay.
+    if (window.matchMedia('(orientation: portrait)').matches) return 'portrait';
+    if (window.matchMedia('(orientation: landscape)').matches) return 'landscape';
+    return 'other';
   }
 
   private getDeviceViewport(): { width: number; height: number } {

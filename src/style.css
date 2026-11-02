@@ -125,7 +125,14 @@ html.interface-green-crt .icon-button { color: var(--crt-primary); }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
 .graphics-upgrade-overlay { position: absolute; inset: 0; z-index: 45; display: grid; place-items: center; padding: 18px; background: rgba(0, 0, 0, .86); }
 .graphics-upgrade-overlay.is-bw-upgrade { background: rgba(0, 0, 0, .86); }
+.graphics-upgrade-overlay.is-green-crt-upgrade { background: rgba(0, 7, 2, .94); }
 .graphics-upgrade-card { width: min(480px, 92%); padding: clamp(18px, 4vw, 34px); color: #f6f7f3; background: #050607; border: 2px solid #f6f7f3; box-shadow: 8px 8px 0 #010302; text-align: center; }
+.graphics-upgrade-card.is-green-crt-upgrade { color: #39ff5a; background: #020804; border-color: #39ff5a; box-shadow: 8px 8px 0 #001d08; }
+.graphics-upgrade-card.is-green-crt-upgrade p { color: #8dffa1; }
+.graphics-upgrade-card.is-green-crt-upgrade .graphics-module-list,
+.graphics-upgrade-card.is-green-crt-upgrade .graphics-upgrade-progress { color: #39ff5a; }
+.graphics-upgrade-card.is-green-crt-upgrade .graphics-upgrade-bar { border-color: #39ff5a; background: #001d08; color: #39ff5a; }
+.graphics-upgrade-card.is-green-crt-upgrade .graphics-upgrade-ok { border-color: #39ff5a; background: #062b10; color: #b8ffc5; }
 .graphics-upgrade-card.is-complete, .graphics-upgrade-card.is-colour-upgrade { color: #f6f7f3; background: #050607; border-color: #f6f7f3; }
 .graphics-upgrade-card h2 { margin: 0 0 20px; font-size: clamp(16px, 3vw, 26px); letter-spacing: .08em; }
 .graphics-upgrade-card p { margin: 10px 0 20px; color: #d8dddc; font-size: clamp(12px, 2vw, 16px); line-height: 1.4; }
@@ -242,7 +249,7 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .panel-heading-actions { display: flex; align-items: center; gap: 8px; }
 .map-centre-button { min-height: 42px; padding: 6px 10px; border: 2px solid #f6f7f3; background: #1e2426; color: #f6f7f3; cursor: pointer; font-size: 10px; font-weight: 900; letter-spacing: .04em; }
 .close-button { font-size: 28px; }
-.panel-body { padding: 22px 20px 24px; }
+.panel-body { position: relative; padding: 22px 20px 24px; }
 .panel-backdrop.is-shop { top: max(72px, calc(env(safe-area-inset-top) + 64px)); bottom: 0; padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); place-items: start center; overflow: auto; }
 .panel-backdrop.is-shop .panel { width: min(640px, 100%); max-width: 100%; max-height: min(680px, calc(100dvh - 108px)); display: flex; flex-direction: column; overflow: hidden; }
 .panel-backdrop.is-shop .panel-heading { padding: 12px 14px 10px; align-items: center; }
@@ -268,6 +275,16 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .settings-choice-row { display: flex; gap: 8px; }
 .settings-choice-row button { flex: 1; min-height: 42px; border: 2px solid #697271; background: #1e2426; cursor: pointer; font-size: 10px; font-weight: 900; }
 .settings-choice-row button.is-selected { border-color: #f6f7f3; background: #f6f7f3; color: #111416; }
+.build-information { width: 100%; min-height: 58px; padding: 10px 12px; display: grid; gap: 3px; text-align: left; border: 0; background: transparent; color: #f6f7f3; font: inherit; cursor: default; }
+.build-information strong { font-size: 12px; }
+.build-information small { margin: 0; color: #9fa7a5; font-size: 10px; line-height: 1.3; }
+.dev-access-modal { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(4, 6, 7, .9); }
+.dev-access-modal section { width: min(420px, 100%); padding: 18px; display: grid; gap: 14px; background: #111416; border: 3px solid #f6f7f3; box-shadow: 7px 7px 0 #050607; }
+.dev-access-modal label { display: grid; gap: 7px; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.dev-access-modal input { min-height: 44px; padding: 8px 10px; border: 2px solid #697271; background: #050607; color: #f6f7f3; font: inherit; font-size: 16px; }
+.dev-access-modal p { min-height: 18px; margin: 0; color: #d8dddc; font-size: 11px; }
+.dev-access-modal section > div, .dev-load-confirm > div, .premium-purchase-confirm > div { display: flex; gap: 8px; }
+.dev-access-modal button, .dev-load-confirm button, .dev-lock-button, .premium-purchase-confirm button { min-height: 42px; flex: 1; padding: 7px; border: 2px solid #f6f7f3; background: #111416; color: #f6f7f3; font: inherit; font-size: 10px; font-weight: 900; }
 .dev-tools { display: grid; gap: 12px; padding: 16px; background: #202729; border: 3px dashed #f6f7f3; }
 .dev-tools-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 14px; letter-spacing: .08em; }
 .dev-save-badge, .dev-active-state, .dev-inactive-state { width: max-content; padding: 4px 6px; border: 2px solid #f6f7f3; color: #f6f7f3; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
@@ -281,6 +298,9 @@ html.phone-hybrid .hud-bottom .zoom-controls { display: flex; flex: 0 0 auto; ma
 .dev-small-actions button { border-color: #697271; background: #2b3234; }
 .dev-active-state { background: #f6f7f3; color: #111416; }
 .dev-inactive-state { border-color: #697271; color: #b9c0be; }
+.dev-load-confirm, .premium-purchase-confirm { padding: 12px; display: grid; gap: 10px; border: 2px solid #f6f7f3; background: #111416; }
+.dev-load-confirm small, .premium-purchase-confirm small { margin: 0; color: #d8dddc; line-height: 1.45; }
+.dev-lock-button { width: 100%; border-color: #697271; }
 .restart-button { min-height: 50px; border: 2px solid #f6f7f3; background: #1e2426; cursor: pointer; font-size: 12px; font-weight: 900; }
 .shop-balance { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #202729; border: 2px solid #697271; font-size: 12px; font-weight: 900; }
 .shop-balance strong { font-size: 22px; }

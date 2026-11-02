@@ -66,8 +66,14 @@ if (![0, width - 1].some((x) => pixels[x * 4 + 3] === 0)) throw new Error('Buy/S
 const style = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
 const moduleStart = style.indexOf('.graphics-upgrade-overlay');
 const moduleStyles = style.slice(moduleStart, style.indexOf('.phone-control-panel', moduleStart));
-if (moduleStyles.includes('var(--crt-primary)') || moduleStyles.includes('var(--crt-bright)') || !moduleStyles.includes('#f6f7f3')) {
-  throw new Error('Graphics installation must remain strictly Atari B&W throughout.');
+if (!moduleStyles.includes('.graphics-upgrade-card.is-green-crt-upgrade')
+  || !moduleStyles.includes('#39ff5a') || !moduleStyles.includes('#f6f7f3')) {
+  throw new Error('Graphics installation must provide Green CRT install states and a B&W completion state.');
+}
+const hud = readFileSync(new URL('../src/ui/HudController.ts', import.meta.url), 'utf8');
+if (!hud.includes("this.graphicsUpgradeOverlay.classList.add('is-green-crt-upgrade')")
+  || !hud.includes("this.graphicsUpgradeOverlay.classList.add('is-bw-upgrade')")) {
+  throw new Error('Graphics upgrade sequence does not switch from Green CRT installation to B&W acknowledgement.');
 }
 
 const buildingProgress = readFileSync(new URL('../src/game/buildingProgress.ts', import.meta.url), 'utf8');
@@ -110,4 +116,4 @@ if (!scene.includes("if (definition.yieldMode === 'whole-plant')") || !scene.inc
   throw new Error('Harvest crops must clear only the crop while whole-plant lifting removes the pot.');
 }
 
-console.log('Pass 4.1 regression validation passed: building states, B&W module UI, optional Begonia gate, herb pot retention, and 540-coin move rule.');
+console.log('Pass 4.1 regression validation passed: building states, Green-to-B&W module UI, optional Begonia gate, herb pot retention, and 540-coin move rule.');

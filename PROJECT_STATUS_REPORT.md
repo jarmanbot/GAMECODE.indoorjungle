@@ -1,5 +1,12 @@
 # Indoor Jungle — Current Project Status Report
 
+> Pass 5 calibration note (2 November 2026): application version is
+> `0.5.0-playtest.1`. Current authoritative values are window job 10, ordinary
+> Basil 8, first Basil Wanted delivery 10, ordinary Mint 14, Marigold 35,
+> Peace Lily 50 and optional Rare Spotted Begonia 150. Where older walkthrough
+> arithmetic remains below, these constants and `npm run check:economy` take
+> precedence.
+
 ## Opening graphics progression — current decision
 
 Graphics eras are explicit per system, not one global automatic sequence.
@@ -790,13 +797,13 @@ The grow-table pot becomes EMPTY POT again and remains reusable.
 Basil harvest value:
 
 ~~~text
-5 coins each. Mint harvests use the configured mint value of 8 coins each.
+8 coins each. Mint harvests use the configured mint value of 14 coins each.
 ~~~
 
 For the first basil harvest:
 
 ~~~text
-Coins: 29 + 5 = 34
+Coins: 35 + 8 = 43
 basilHarvests: 1 → 0
 task = buy-seeds
 ~~~
@@ -807,14 +814,14 @@ matching harvests display as Basil harvest ×7.
 Basil buyback price:
 
 ~~~text
-ceil(5 × 1.4) = 7 coins each
+ceil(8 × 1.4) = 12 coins each
 ~~~
 
-Mint harvests sell for 8 coins each. Their shop buyback listing is calculated
+Mint harvests sell for 14 coins each. Their shop buyback listing is calculated
 from the same configured value:
 
 ~~~text
-ceil(8 × 1.4) = 12 coins each
+ceil(14 × 1.4) = 20 coins each
 ~~~
 
 ### 17. Buy more seeds
@@ -828,7 +835,7 @@ Basil seed price:
 After buying one seed from the first-basil-sale state:
 
 ~~~text
-Coins: 34 − 2 = 32
+Coins: 43 − 2 = 41
 basilSeeds: +1
 task = plant-basil
 ~~~
@@ -840,21 +847,21 @@ This begins the repeatable basil-growing loop.
 | Transaction | Amount |
 |---|---:|
 | Opening Golden Pothos sale | +5 |
-| Window-cleaning reward | +9 |
+| Window-cleaning reward | +10 |
 | Repaired special pot sale | +75 |
 | Starter apartment bond | −60 |
-| Basil harvest sale | +5 |
+| Basil harvest sale | +8 |
 | Basil seed purchase | −2 |
 | Golden Pothos buyback | 7 |
 | Repaired pot buyback | 105 |
-| Basil harvest buyback | 7 |
+| Basil harvest buyback | 12 |
 
 Canonical progression:
 
 ~~~text
-5 + 9 + 75 − 60 = 29 coins after renting
-29 + 5 = 34 coins after first basil sale
-34 − 2 = 32 coins after buying the next seed
+5 + 10 + 75 − 60 = 30 coins after renting
+30 + 8 = 38 coins after an ordinary basil sale
+38 − 2 = 36 coins after buying the next seed
 ~~~
 
 If the optional Golden Pothos sale is delayed:
