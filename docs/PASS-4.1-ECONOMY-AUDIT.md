@@ -1,9 +1,95 @@
-# Indoor Jungle Pass 4.1 economy audit
+# Indoor Jungle — Pass 4.1 progression and economy assessment
 
-This audit reflects the code constants on 1 November 2026. No economy values
+This is the single handoff document for reviewing the current progression and
+planning the next economy pass. It reflects the code constants on 2 November
+2026. No economy values
 were changed in Pass 4.1. Route timings are deterministic growth-time
 calculations plus explicitly labelled interaction estimates; they are not a
 physical-phone stopwatch run.
+
+## Executive summary
+
+- Pass 4.1 progression corrections are implemented and compile successfully.
+- The Rare Spotted Begonia is now an optional 300-coin shortcut and does not
+  gate the first rental.
+- The first rental is achievable from mandatory opening income: Alex receives
+  94 coins and has 34 remaining after the 60-coin POVO bond.
+- The two-bedroom property is listed at 600 coins, applies the existing
+  60-coin bond as credit, and deducts exactly 540 coins.
+- Without the Begonia, herb-only earning routes are far too repetitive.
+- Peace Lily is the dominant strategy. Efficient three-slot play is close to,
+  but does not reliably satisfy, the 15–20 minute target.
+- The smallest current proposal is to raise the window job from 4 to 10 coins
+  and Peace Lily from 60 to 75 coins. These proposals are **not implemented**.
+
+## Pass 4.1 progression corrections
+
+### Final building-state progression
+
+| Event | Buy/Sell | Real Estate Agent | POVO Apartments | Nursery |
+|---|---|---|---|---|
+| Fresh game | Green CRT | Green CRT | Green CRT | Atari B&W vacant lot |
+| Cleaning job accepted, still inside | Green CRT | Green CRT | Green CRT | Atari B&W vacant lot |
+| Exit Buy/Sell after accepting | Atari B&W | Green CRT | Green CRT | Atari B&W vacant lot |
+| Repaired-pot graphics upgrade | Atari B&W | Green CRT | Green CRT | Green CRT construction |
+| Room-key colour upgrade | Atari colour | Atari colour | Atari colour | Green CRT construction |
+
+Each building uses its saved building-specific state. The global Alex graphics
+selection does not choose a building facade. Nursery remains independently
+controlled.
+
+### Graphics Module interface
+
+The repaired-pot Graphics Module prompt, progress display, completion state and
+final acknowledgement now use black, white and neutral grey throughout. The
+approved 2.3-second installation timing, persistence and input blocking remain
+unchanged.
+
+### First-rental checklist
+
+Mandatory conditions are now:
+
+1. Sell or deliver the opening Golden Pothos.
+2. Complete the paid Real Estate window-cleaning job.
+3. Repair the special pot.
+4. Hold 60 coins for the POVO bond.
+
+The Begonia appears as an optional checklist shortcut only. It does not unlock
+POVO, trigger the room-key sequence or advance a mandatory tutorial objective.
+
+### Herb harvesting
+
+Harvesting Basil or Mint removes the plant and leaves the pot in its grow slot.
+The pot retains usable medium under the current rules. Whole-plant lifting is
+unchanged: Dwarf Marigold and Peace Lily leave the grow table together with
+their basic pot and therefore require a replacement pot for another cycle.
+
+### Save policy
+
+- Current progression namespace: `indoor-jungle-progress-v5`.
+- Current v5 states reload through the validated `ProgressState` sanitizer.
+- Incompatible v3/v4 progression is no longer imported into v5.
+- Development saves remain isolated from normal saves.
+- Controls, audio, handedness and display preferences remain in separate
+  storage and are not deliberately reset with progression.
+
+## Current implemented journey
+
+1. Start a New Game and complete Alex's eviction/fall sequence.
+2. Collect and deliver the Small Golden Pothos for 15 coins.
+3. Accept the Casual Window Washer job.
+4. Exit Buy/Sell, causing its independent Atari B&W upgrade.
+5. Clean two Real Estate windows with three completed sprays each.
+6. Receive glue and the repair tool, collect four pieces and repair the pot.
+7. Pick up the repaired pot and complete the B&W Graphics Module sequence.
+8. Sell the repaired pot for 75 coins.
+9. Optionally find and sell the Rare Spotted Begonia for 300 coins.
+10. Pay the 60-coin POVO bond and receive the key and Welcome Gift.
+11. Complete the room-key colour upgrade.
+12. Grow and sell at least one genuine Basil and one genuine Mint harvest.
+13. Continue earning until Alex has the 540-coin amount due.
+14. Transfer the 60-coin bond and pay 540 coins for the two-bedroom rental.
+15. Reach the current `PLAYTEST COMPLETE` endpoint.
 
 ## Starting economy
 
@@ -168,3 +254,73 @@ Begonia. They deliberately avoid changing every seed pack and crop. A timed
 physical-phone run should precede any implementation; if active interaction is
 slower than estimated, one further adjustment should target Wanted bonuses or
 shop-trip friction rather than another broad price rewrite.
+
+## Verification completed
+
+The following commands passed after the correction work:
+
+```text
+npm run build
+npm run check:pass3
+npm run check:regression
+npm run check:checkpoints
+npm run check:economy
+git diff --check
+```
+
+Results:
+
+- TypeScript and the Vite production build completed successfully.
+- All 68 development checkpoints generated valid current-schema states.
+- Every checkpoint was serialized, sanitized and compared for v5 reload
+  stability.
+- The POVO-rented checkpoint proves rental is possible with Begonia state
+  still false.
+- Automated assertions cover the final building table, B&W module interface,
+  herb pot retention and the 540-coin affordability/deduction rule.
+- The deterministic economy script reproduces all values and route totals in
+  this document directly from the game constants.
+- The built root document and Green CRT Buy/Sell facade returned HTTP 200 from
+  the production preview.
+- Vite still reports the existing warning that the main JavaScript chunk is
+  larger than 500 kB. This is not a build failure.
+
+## Manual checks still required
+
+Browser automation and a physical iPhone were not available for this pass.
+Before applying economy changes, manually verify:
+
+1. Rent POVO on a fresh run without touching the Begonia.
+2. Real Estate remains Green CRT through the repaired-pot upgrade.
+3. Real Estate changes directly to Atari colour during the room-key upgrade.
+4. All Graphics Module screens visibly remain B&W.
+5. Harvested Basil and Mint visibly leave an empty reusable pot in place.
+6. The property menu clearly communicates 600 total, −60 credit and 540 due.
+7. A 540-coin balance permits the move and becomes zero after confirmation.
+8. Time one efficient three-slot route and one casual two-slot route on a
+   physical phone.
+
+## Files relevant to this assessment
+
+- `src/game/GameScene.ts` — rental gates, transactions, building transitions
+  and harvesting behaviour.
+- `src/game/progress.ts` — current v5 save validation and building state.
+- `src/game/devCheckpoints.ts` — progression fixtures and validation.
+- `src/game/plants.ts` — authoritative plant definitions.
+- `src/game/world.ts` — rewards, housing, pot and fertiliser constants.
+- `src/ui/HudController.ts` — rental checklist and property presentation.
+- `src/style.css` — B&W Graphics Module presentation.
+- `scripts/audit-economy.mjs` — reproducible route calculations.
+- `scripts/validate-pass3.mjs` and `scripts/validate-checkpoints.mjs` — automated
+  regression coverage.
+
+## Recommended next economy workflow
+
+1. Review this document and decide whether the target should favour the
+   all-crop route or allow Peace Lily specialisation.
+2. Perform one timed phone run with current values.
+3. If the measured result confirms the estimates, implement only the approved
+   adjustment rows.
+4. Re-run the audit script with the new constants.
+5. Playtest the adjusted no-Begonia and Begonia routes before changing any
+   additional prices or timers.
