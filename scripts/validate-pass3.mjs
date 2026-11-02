@@ -66,8 +66,8 @@ if (![0, width - 1].some((x) => pixels[x * 4 + 3] === 0)) throw new Error('Buy/S
 const style = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
 const moduleStart = style.indexOf('.graphics-upgrade-overlay');
 const moduleStyles = style.slice(moduleStart, style.indexOf('.phone-control-panel', moduleStart));
-if (!moduleStyles.includes('var(--crt-primary)') || !moduleStyles.includes('.graphics-upgrade-card.is-complete')) {
-  throw new Error('Graphics installation must start Green CRT and retain a distinct B&W completion state.');
+if (moduleStyles.includes('var(--crt-primary)') || moduleStyles.includes('var(--crt-bright)') || !moduleStyles.includes('#f6f7f3')) {
+  throw new Error('Graphics installation must remain strictly Atari B&W throughout.');
 }
 
 const buildingProgress = readFileSync(new URL('../src/game/buildingProgress.ts', import.meta.url), 'utf8');
@@ -85,18 +85,28 @@ if (!progress.includes('buySellBwUpgradePending: boolean')) throw new Error('Per
 if (/^\s*nurseryConstructionComplete:\s*boolean/m.test(progress)) throw new Error('Legacy parallel Nursery construction state remains in ProgressState.');
 
 const scene = readFileSync(new URL('../src/game/GameScene.ts', import.meta.url), 'utf8');
-if (!scene.includes("localStorage.getItem('indoor-jungle-progress-v4')")
-  || !scene.includes("localStorage.getItem('indoor-jungle-progress-v3')")) {
-  throw new Error('Compatible v3/v4 normal-save migration is missing.');
-}
+if (scene.includes("localStorage.getItem('indoor-jungle-progress-v4')")
+  || scene.includes("localStorage.getItem('indoor-jungle-progress-v3')")) throw new Error('Obsolete progression migration remains active.');
 for (const expected of [
   "this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw'",
-  "this.progress.buildings['real-estate'].graphicsEra = 'atari-bw'",
+  "this.progress.buildings['real-estate'].graphicsEra = 'green-crt'",
   "this.progress.buildings['starter-apartment'].graphicsEra = 'green-crt'",
   "this.progress.buildings['buy-sell'].graphicsEra = 'atari-colour'",
+  "this.progress.buildings['real-estate'].graphicsEra = 'atari-colour'",
   "this.progress.buildings['starter-apartment'].graphicsEra = 'atari-colour'",
 ]) {
   if (!scene.includes(expected)) throw new Error(`Missing approved two-stage transition: ${expected}`);
 }
+if (!scene.includes('this.coins -= SECOND_RENTAL_MOVE_COST')
+  || !scene.includes('if (this.coins < SECOND_RENTAL_MOVE_COST)')) {
+  throw new Error('Second-rental affordability and deduction must both use the 540-coin move cost.');
+}
+if (!scene.includes('!this.progress.saleComplete || !this.progress.windowJobComplete || this.progress.repairStep < 10')
+  || scene.includes('this.progress.repairStep < 10 || foundPotCount < 3')) {
+  throw new Error('Starter-rental gate must use mandatory sale/work/repair milestones, not the optional Begonia.');
+}
+if (!scene.includes("if (definition.yieldMode === 'whole-plant')") || !scene.includes('pot.crop = null;')) {
+  throw new Error('Harvest crops must clear only the crop while whole-plant lifting removes the pot.');
+}
 
-console.log('Pass 4 regression validation passed: building defaults, two-stage upgrades, Buy/Sell geometry/alpha, and module themes.');
+console.log('Pass 4.1 regression validation passed: building states, B&W module UI, optional Begonia gate, herb pot retention, and 540-coin move rule.');

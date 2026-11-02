@@ -121,7 +121,7 @@ export class HudController {
   private windowJobAccepted = false;
   private paidWorkComplete = false;
   private repairComplete = false;
-  private foundPotCount = 0;
+  private rareBegoniaCollected = false;
   private basicFertilizerCharges = 0;
   private seedQuantities: Record<PlantSpecies, number> = emptyPlantQuantities();
   private harvestQuantities: Record<PlantSpecies, number> = emptyPlantQuantities();
@@ -416,7 +416,7 @@ export class HudController {
     this.zoomInHandler = zoomIn;
   }
 
-  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; povoWelcomeGiftClaimed?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; windowJobAccepted?: boolean; paidWorkComplete?: boolean; repairComplete?: boolean; foundPotCount?: number; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingEvents?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; interfaceTheme?: InterfaceTheme; ownedPremiumPlants?: PremiumPlantId[] }): void {
+  setGameState(state: { coins: number; inventoryHasPot: boolean; inventoryPotCondition?: PotCondition | null; inventoryItem?: InventoryItem | null; task: TaskState; equippedTool?: EquippedTool; repairToolOwned?: boolean; cleanerOwned?: boolean; wateringCanOwned?: boolean; toolSlots?: EquippedTool[]; glueCharges?: number; brokenPotPieceSelected?: boolean; brokenPotPiecesOwned?: number; canPlaceItem?: boolean; povoWelcomeGiftClaimed?: boolean; rentalBondPaid?: boolean; rentalKeyOwned?: boolean; activeProperty?: PropertyId; rentalBondTotal?: number; basilHarvestSaleRecorded?: boolean; mintHarvestSaleRecorded?: boolean; hasCollectedSaleableItem?: boolean; saleComplete?: boolean; windowJobAccepted?: boolean; paidWorkComplete?: boolean; repairComplete?: boolean; rareBegoniaCollected?: boolean; basicFertilizerCharges?: number; seedQuantities?: Record<PlantSpecies, number>; harvestQuantities?: Record<PlantSpecies, number>; growingEvents?: Record<PlantSpecies, number>; growingPots?: GrowingPotState[]; graphicsUpgradeInstalled?: boolean; alexGraphics?: AlexGraphics; interfaceTheme?: InterfaceTheme; ownedPremiumPlants?: PremiumPlantId[] }): void {
     this.coins = state.coins;
     this.coinCount.textContent = String(state.coins);
     this.hasPot = state.inventoryHasPot;
@@ -444,7 +444,7 @@ export class HudController {
     this.windowJobAccepted = state.windowJobAccepted ?? this.windowJobAccepted;
     this.paidWorkComplete = state.paidWorkComplete ?? this.paidWorkComplete;
     this.repairComplete = state.repairComplete ?? this.repairComplete;
-    this.foundPotCount = state.foundPotCount ?? this.foundPotCount;
+    this.rareBegoniaCollected = state.rareBegoniaCollected ?? this.rareBegoniaCollected;
     this.basicFertilizerCharges = state.basicFertilizerCharges ?? this.basicFertilizerCharges;
     this.seedQuantities = state.seedQuantities ? { ...this.seedQuantities, ...state.seedQuantities } : this.seedQuantities;
     this.harvestQuantities = state.harvestQuantities ? { ...this.harvestQuantities, ...state.harvestQuantities } : this.harvestQuantities;
@@ -533,8 +533,8 @@ export class HudController {
       ['Collect a saleable item', this.hasCollectedSaleableItem],
       ['Sell an item', this.saleComplete],
       ['Complete paid work', this.paidWorkComplete],
-      [`Find 3 pots (${Math.min(3, this.foundPotCount)} / 3)`, this.foundPotCount >= 3],
       ['Repair one item', this.repairComplete],
+      ['Optional: find the Rare Spotted Begonia', this.rareBegoniaCollected],
       [`Have ${RENTAL_BOND_COST} coins for the bond`, this.coins >= RENTAL_BOND_COST || this.rentalBondPaid],
       ['Rent the apartment', this.rentalBondPaid],
       ['Receive the rental key', this.rentalKeyOwned],
@@ -1648,31 +1648,33 @@ export class HudController {
       basilHarvestSaleRecorded: false,
       mintHarvestSaleRecorded: false,
       secondRentalMoveConfirmation: false,
+      openingItemSold: false,
+      paidWorkComplete: false,
       repairComplete: false,
-      foundPotCount: 0,
+      rareBegoniaCollected: false,
     };
     if (listing === 'mid-rental') {
       const eligible = state.basilHarvestSaleRecorded && state.mintHarvestSaleRecorded;
       const occupied = state.activeProperty === 'second-rental';
-      const checklist = `<div class="property-details-list"><span>BASIL HARVEST SOLD <b>${state.basilHarvestSaleRecorded ? 'COMPLETE' : 'REQUIRED'}</b></span><span>MINT HARVEST SOLD <b>${state.mintHarvestSaleRecorded ? 'COMPLETE' : 'REQUIRED'}</b></span><span>GROWING POSITIONS <b>6</b></span><span>TOTAL REFUNDABLE BOND <b>${SECOND_RENTAL_TOTAL_BOND} COINS</b></span><span>EXISTING BOND TRANSFERRED <b>${RENTAL_BOND_COST} COINS</b></span><span>ADDITIONAL PAYMENT <b>${SECOND_RENTAL_MOVE_COST} COINS</b></span></div>`;
+      const checklist = `<div class="property-details-list"><span>BASIL HARVEST SOLD <b>${state.basilHarvestSaleRecorded ? 'COMPLETE' : 'REQUIRED'}</b></span><span>MINT HARVEST SOLD <b>${state.mintHarvestSaleRecorded ? 'COMPLETE' : 'REQUIRED'}</b></span><span>GROWING POSITIONS <b>6</b></span><span>TWO-BEDROOM RENTAL <b>${SECOND_RENTAL_TOTAL_BOND} COINS</b></span><span>POVO BOND CREDIT <b>−${RENTAL_BOND_COST} COINS</b></span><span>AMOUNT DUE <b>${SECOND_RENTAL_MOVE_COST} COINS</b></span></div>`;
       const moveContent = occupied
         ? '<div class="property-status is-unlocked">YOUR TWO-ROOM RENTAL · ACCESS UNLOCKED</div><p class="property-note">The starter apartment was returned. Pots and crops moved with Alex; extra positions do not create free pots.</p>'
         : !eligible
           ? '<p class="property-warning">Complete one genuine basil harvest sale and one genuine mint harvest sale before arranging the move.</p>'
           : state.secondRentalMoveConfirmation
-            ? `<div class="property-confirmation"><strong>CONFIRM MOVE</strong><p class="property-note">The existing ${RENTAL_BOND_COST}-coin bond transfers. Pay ${SECOND_RENTAL_MOVE_COST} additional coins. Pots and plants move with Alex, and the old apartment is returned.</p><button class="property-action" type="button" data-confirm-second-rental>CONFIRM MOVE · ${SECOND_RENTAL_MOVE_COST} COINS</button><button class="property-secondary-action" type="button" data-cancel-second-rental>CANCEL</button></div>`
-            : `<p class="property-note">The starter bond transfers. Save ${SECOND_RENTAL_MOVE_COST} additional coins to move.</p><button class="property-action" type="button" data-review-second-rental>ARRANGE MOVE</button>`;
+            ? `<div class="property-confirmation"><strong>CONFIRM MOVE</strong><p class="property-note">Two-bedroom rental: ${SECOND_RENTAL_TOTAL_BOND} coins.<br>POVO bond credit: −${RENTAL_BOND_COST} coins.<br>Amount due now: ${SECOND_RENTAL_MOVE_COST} coins.<br>Pots and plants move with Alex, and the old apartment is returned.</p><button class="property-action" type="button" data-confirm-second-rental>PAY ${SECOND_RENTAL_MOVE_COST} COINS AND MOVE</button><button class="property-secondary-action" type="button" data-cancel-second-rental>CANCEL</button></div>`
+            : `<p class="property-note">Listed value: ${SECOND_RENTAL_TOTAL_BOND} coins. Your ${RENTAL_BOND_COST}-coin POVO bond transfers, leaving ${SECOND_RENTAL_MOVE_COST} coins due.</p><button class="property-action" type="button" data-review-second-rental>ARRANGE MOVE · ${SECOND_RENTAL_MOVE_COST} DUE</button>`;
       return `<div class="property-details"><div class="property-heading">TO RENT <span>TWO-ROOM RENTAL</span></div><div class="property-preview" aria-label="Two-room rental preview"><span>LIVING<br>ROOM</span><span>GROWING<br>ROOM</span><span>6<br>SLOTS</span></div>${checklist}${moveContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
     }
     if (listing === 'high-property') {
       return '<div class="property-details"><div class="property-heading">FOR SALE <span>FUTURE GOAL</span></div><div class="property-preview" aria-label="Future property preview"><span>HOUSE</span><span>LAND</span><span>COMING<br>LATER</span></div><div class="property-details-list"><span>TYPE <b>High-level property</b></span><span>STATUS <b>VIEWABLE UNAVAILABLE</b></span></div><p class="property-note">A future property listing. Price, unlock conditions and interior access are not available in this prototype.</p></div>';
     }
     const shortfall = Math.max(0, RENTAL_BOND_COST - state.coins);
-    const openingChecklistComplete = state.repairComplete && state.foundPotCount >= 3;
-    const openingChecklist = `<div class="property-details-list"><span>POTS FOUND <b>${Math.min(3, state.foundPotCount)} / 3</b></span><span>ITEM REPAIRED <b>${state.repairComplete ? 'COMPLETE' : 'REQUIRED'}</b></span></div>`;
+    const openingChecklistComplete = state.openingItemSold && state.paidWorkComplete && state.repairComplete;
+    const openingChecklist = `<div class="property-details-list"><span>GOLDEN POTHOS SOLD <b>${state.openingItemSold ? 'COMPLETE' : 'REQUIRED'}</b></span><span>PAID WINDOW JOB <b>${state.paidWorkComplete ? 'COMPLETE' : 'REQUIRED'}</b></span><span>ITEM REPAIRED <b>${state.repairComplete ? 'COMPLETE' : 'REQUIRED'}</b></span><span>RARE SPOTTED BEGONIA <b>${state.rareBegoniaCollected ? 'FOUND · OPTIONAL' : 'OPTIONAL SHORTCUT'}</b></span></div>`;
     const rentalContent = state.rentalBondPaid
       ? `<div class="property-status is-unlocked">YOUR RENTAL · ACCESS UNLOCKED</div><p class="property-note">Apartment key ${state.rentalKeyOwned ? 'received and stored in the Bag.' : 'will be restored from this rental.'} Use the STARTER APARTMENT door on the street to enter.</p><div class="property-kit-note">WELCOME GIFT<br><small>Pot · used medium · basil seeds · basic watering can · 1 basic fertiliser pellet</small></div>`
-      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${!openingChecklistComplete ? '<p class="property-warning">Complete the found-pot and repair requirements before renting.</p>' : shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time welcome gift together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
+      : `<div class="property-balance">AVAILABLE COINS <strong>${state.coins}</strong></div>${!openingChecklistComplete ? '<p class="property-warning">Complete the opening sale, paid window job and repaired-item requirements before renting.</p>' : shortfall > 0 ? `<p class="property-warning">Need ${shortfall} more coin${shortfall === 1 ? '' : 's'}. No coins will be deducted.</p>` : `<p class="property-note">The ${RENTAL_BOND_COST}-coin bond unlocks the apartment and its one-time welcome gift together.</p>`}<button class="property-action" type="button" data-pay-bond>PAY ${RENTAL_BOND_COST}-COIN BOND</button>`;
     return `<div class="property-details"><div class="property-heading">TO RENT <span>STARTER APARTMENT</span></div><div class="property-preview" aria-label="Sparse starter apartment interior preview"><span>WINDOW</span><span>GROWING<br>SPACE</span><span>EXIT</span></div><div class="property-details-list"><span>TYPE <b>Small Green CRT apartment</b></span><span>BOND <b>${RENTAL_BOND_COST} COINS</b></span><span>INCLUDED <b>First rental period</b></span><span>SUPPLIES <b>Starter growing supplies</b></span></div>${openingChecklist}${rentalContent}<p class="property-feedback ${this.propertyFeedback ? 'is-visible' : ''}" aria-live="polite">${this.escapeHtml(this.propertyFeedback)}</p></div>`;
   }
 

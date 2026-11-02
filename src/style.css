@@ -123,19 +123,19 @@ html.interface-green-crt .icon-button { color: var(--crt-primary); }
 
 #game-stage { position: relative; min-height: 0; background: #303637; overflow: hidden; touch-action: none; }
 #game-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; }
-.graphics-upgrade-overlay { position: absolute; inset: 0; z-index: 45; display: grid; place-items: center; padding: 18px; background: rgba(3, 8, 5, .86); }
+.graphics-upgrade-overlay { position: absolute; inset: 0; z-index: 45; display: grid; place-items: center; padding: 18px; background: rgba(0, 0, 0, .86); }
 .graphics-upgrade-overlay.is-bw-upgrade { background: rgba(0, 0, 0, .86); }
-.graphics-upgrade-card { width: min(480px, 92%); padding: clamp(18px, 4vw, 34px); color: var(--crt-bright); background: var(--crt-bg); border: 2px solid var(--crt-primary); box-shadow: 8px 8px 0 #010302; text-align: center; }
+.graphics-upgrade-card { width: min(480px, 92%); padding: clamp(18px, 4vw, 34px); color: #f6f7f3; background: #050607; border: 2px solid #f6f7f3; box-shadow: 8px 8px 0 #010302; text-align: center; }
 .graphics-upgrade-card.is-complete, .graphics-upgrade-card.is-colour-upgrade { color: #f6f7f3; background: #050607; border-color: #f6f7f3; }
 .graphics-upgrade-card h2 { margin: 0 0 20px; font-size: clamp(16px, 3vw, 26px); letter-spacing: .08em; }
-.graphics-upgrade-card p { margin: 10px 0 20px; color: var(--crt-bright); font-size: clamp(12px, 2vw, 16px); line-height: 1.4; }
+.graphics-upgrade-card p { margin: 10px 0 20px; color: #d8dddc; font-size: clamp(12px, 2vw, 16px); line-height: 1.4; }
 .graphics-upgrade-card.is-complete p, .graphics-upgrade-card.is-colour-upgrade p { color: #d8dddc; }
-.graphics-upgrade-progress { min-height: 42px; margin: 16px 0; color: var(--crt-primary); font-size: clamp(14px, 3vw, 22px); letter-spacing: .12em; }
-.graphics-module-list { display: grid; gap: 6px; margin: 12px 0; color: var(--crt-bright); font-size: clamp(9px, 2vw, 13px); line-height: 1.35; text-align: left; }
+.graphics-upgrade-progress { min-height: 42px; margin: 16px 0; color: #f6f7f3; font-size: clamp(14px, 3vw, 22px); letter-spacing: .12em; }
+.graphics-module-list { display: grid; gap: 6px; margin: 12px 0; color: #f6f7f3; font-size: clamp(9px, 2vw, 13px); line-height: 1.35; text-align: left; }
 .graphics-upgrade-card.is-complete .graphics-module-list, .graphics-upgrade-card.is-colour-upgrade .graphics-module-list { color: #f6f7f3; }
-.graphics-upgrade-bar { height: 18px; border: 2px solid var(--crt-primary); background: var(--crt-panel); }
+.graphics-upgrade-bar { height: 18px; border: 2px solid #f6f7f3; background: #111416; }
 .graphics-upgrade-bar span { display: block; height: 100%; width: 0; background: currentColor; transition: width .08s linear; }
-.graphics-upgrade-ok { min-width: 110px; min-height: 44px; padding: 8px 18px; border: 2px solid var(--crt-primary); background: var(--crt-selected); color: var(--crt-bright); cursor: pointer; font-weight: 900; }
+.graphics-upgrade-ok { min-width: 110px; min-height: 44px; padding: 8px 18px; border: 2px solid #f6f7f3; background: #252a2d; color: #f6f7f3; cursor: pointer; font-weight: 900; }
 .graphics-upgrade-card.is-complete .graphics-upgrade-ok, .graphics-upgrade-card.is-colour-upgrade .graphics-upgrade-ok { border-color: #f6f7f3; background: #252a2d; color: #f6f7f3; }
 .graphics-upgrade-card.is-complete .graphics-upgrade-progress, .graphics-upgrade-card.is-colour-upgrade .graphics-upgrade-progress { color: #f6f7f3; }
 .graphics-upgrade-card.is-complete .graphics-upgrade-bar, .graphics-upgrade-card.is-colour-upgrade .graphics-upgrade-bar { border-color: #f6f7f3; background: #111416; }

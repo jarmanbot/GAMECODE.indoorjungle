@@ -9,7 +9,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "check:pass3": "node scripts/validate-pass3.mjs",
     "check:regression": "node scripts/validate-pass3.mjs",
-    "check:checkpoints": "node scripts/validate-checkpoints.mjs"
+    "check:checkpoints": "node scripts/validate-checkpoints.mjs",
+    "check:economy": "node scripts/audit-economy.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"

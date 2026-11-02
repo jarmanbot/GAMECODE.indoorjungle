@@ -894,7 +894,7 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; povoWelcomeGiftClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number; basilHarvestSaleRecorded: boolean; mintHarvestSaleRecorded: boolean; secondRentalMoveConfirmation: boolean; repairComplete: boolean; foundPotCount: number } {
+  getPropertyPanelState(): { coins: number; rentalBondPaid: boolean; rentalKeyOwned: boolean; povoWelcomeGiftClaimed: boolean; activeProperty: PropertyId; rentalBondTotal: number; basilHarvestSaleRecorded: boolean; mintHarvestSaleRecorded: boolean; secondRentalMoveConfirmation: boolean; openingItemSold: boolean; paidWorkComplete: boolean; repairComplete: boolean; rareBegoniaCollected: boolean } {
     return {
       coins: this.coins,
       rentalBondPaid: this.rentalBondPaid,
@@ -905,10 +905,10 @@ export class GameScene extends Phaser.Scene {
       basilHarvestSaleRecorded: this.progress.basilHarvestSaleRecorded,
       mintHarvestSaleRecorded: this.progress.mintHarvestSaleRecorded,
       secondRentalMoveConfirmation: this.secondRentalMoveConfirmation,
+      openingItemSold: this.progress.saleComplete,
+      paidWorkComplete: this.progress.windowJobComplete,
       repairComplete: this.progress.repairStep >= 10,
-      foundPotCount: Number(this.progress.openingGoldenPothosCollected)
-        + Number(this.progress.brokenPotOwned)
-        + Number(this.progress.rareBegoniaCollected),
+      rareBegoniaCollected: this.progress.rareBegoniaCollected,
     };
   }
 
@@ -958,9 +958,7 @@ export class GameScene extends Phaser.Scene {
       windowJobAccepted: this.progress.windowJobAccepted,
       paidWorkComplete: this.progress.windowJobComplete,
       repairComplete: this.progress.repairStep >= 10,
-      foundPotCount: Number(this.progress.openingGoldenPothosCollected)
-        + Number(this.progress.brokenPotOwned)
-        + Number(this.progress.rareBegoniaCollected),
+      rareBegoniaCollected: this.progress.rareBegoniaCollected,
       growingEvents: { ...this.progress.growingEvents },
       basicFertilizerCharges: this.progress.basicFertilizerCharges,
       seedQuantities: this.progress.seedQuantities,
@@ -997,22 +995,16 @@ export class GameScene extends Phaser.Scene {
     let rentalKeyWasSaved = false;
     let buildingProgressWasSaved = false;
     let hadSavedProgress = false;
-    let migratedNormalSave = false;
     try {
-      // Development fixtures can be regenerated, but compatible normal saves
-      // are migrated through sanitizeProgress and copied into the current key.
+      // Progression saves are intentionally schema-keyed. Incompatible older
+      // progression is ignored; separately stored preferences remain intact.
       localStorage.removeItem('indoor-jungle-progress-v1');
       localStorage.removeItem('indoor-jungle-progress-dev-test-v1');
       localStorage.removeItem('indoor-jungle-progress-v2');
       localStorage.removeItem('indoor-jungle-progress-dev-test-v2');
       localStorage.removeItem('indoor-jungle-progress-dev-test-v3');
       localStorage.removeItem('indoor-jungle-progress-dev-test-v4');
-      let raw = localStorage.getItem(this.getProgressStorageKey());
-      if (!this.testSaveMode && !raw) {
-        raw = localStorage.getItem('indoor-jungle-progress-v4')
-          ?? localStorage.getItem('indoor-jungle-progress-v3');
-        migratedNormalSave = raw !== null;
-      }
+      const raw = localStorage.getItem(this.getProgressStorageKey());
       const saved = raw ? JSON.parse(raw) as Partial<ProgressState> : null;
       hadSavedProgress = saved !== null;
       rentalKeyWasSaved = saved?.rentalKeyOwned === true;
@@ -1038,7 +1030,7 @@ export class GameScene extends Phaser.Scene {
     this.rentalKeyOwned = this.progress.rentalKeyOwned;
     this.activeProperty = this.progress.activeProperty;
     this.rentalBondTotal = this.progress.rentalBondTotal;
-    if (migratedNormalSave || (this.rentalBondPaid && !rentalKeyWasSaved) || (hadSavedProgress && !buildingProgressWasSaved)) this.saveProgress();
+    if ((this.rentalBondPaid && !rentalKeyWasSaved) || (hadSavedProgress && !buildingProgressWasSaved)) this.saveProgress();
     this.updateSecondRentalObjective();
     this.repairPickupReady = this.inventoryPot === 'broken' && this.progress.repairStep >= 10;
     // Older saves can retain the repair objective without the newer ground
@@ -2129,7 +2121,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.graphicsUpgradeStage = 'acknowledgement';
     this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw';
     this.progress.buildings['starter-apartment'].graphicsEra = 'green-crt';
-    this.progress.buildings['real-estate'].graphicsEra = 'atari-bw';
+    this.progress.buildings['real-estate'].graphicsEra = 'green-crt';
     if (this.progress.buildings.nursery.operationalState !== 'operational') {
       this.progress.buildings.nursery = { operationalState: 'under-construction', graphicsEra: 'green-crt' };
     }
@@ -2180,7 +2172,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.colourUpgradeStage = 'acknowledgement';
     this.progress.buildings['buy-sell'].graphicsEra = 'atari-colour';
     this.progress.buildings['starter-apartment'].graphicsEra = 'atari-colour';
-    this.progress.buildings['real-estate'].graphicsEra = 'atari-bw';
+    this.progress.buildings['real-estate'].graphicsEra = 'atari-colour';
     this.saveProgress();
     this.applyInstalledGraphics();
     this.hud.updateGraphicsInstallation(1, true);
@@ -2590,12 +2582,10 @@ export class GameScene extends Phaser.Scene {
       this.hud.refreshPropertyPanel('Your rental is already unlocked.');
       return false;
     }
-    const foundPotCount = Number(this.progress.openingGoldenPothosCollected)
-      + Number(this.progress.brokenPotOwned)
-      + Number(this.progress.rareBegoniaCollected);
-    if (this.progress.repairStep < 10 || foundPotCount < 3) {
+    if (!this.progress.saleComplete || !this.progress.windowJobComplete || this.progress.repairStep < 10) {
       const missing = [
-        foundPotCount < 3 ? `find ${3 - foundPotCount} more pot${3 - foundPotCount === 1 ? '' : 's'}` : '',
+        !this.progress.saleComplete ? 'sell the Golden Pothos' : '',
+        !this.progress.windowJobComplete ? 'complete the paid window job' : '',
         this.progress.repairStep < 10 ? 'repair one item' : '',
       ].filter(Boolean).join(' and ');
       this.hud.refreshPropertyPanel(`Complete the housing checklist first: ${missing}.`);

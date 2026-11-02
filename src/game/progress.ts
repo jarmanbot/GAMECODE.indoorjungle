@@ -232,19 +232,12 @@ function sanitizeGrowingPots(input: Partial<ProgressState>): GrowingPotState[] {
 
 export function sanitizeProgress(value: unknown): ProgressState {
   const input = value && typeof value === 'object'
-    ? value as Partial<ProgressState> & {
-      buildingGraphics?: Record<string, unknown>;
-      buySellRasterUpgradePending?: boolean;
-      nurseryConstructionComplete?: boolean;
-    }
+    ? value as Partial<ProgressState>
     : {};
   const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
   const interfaceTheme: InterfaceTheme = input.interfaceTheme === 'green-crt' || input.interfaceTheme === 'atari-bw' ? input.interfaceTheme : 'auto';
   const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
-  const starterHandoverWasAcknowledged = input.propertyHandoversAcknowledged?.['starter-apartment'] === true
-    || input.welcomeGiftsClaimed?.['starter-apartment'] === true;
-  const colourUpgradeInstalled = Boolean(input.colourUpgradeInstalled)
-    || Boolean(input.graphicsUpgradeInstalled && input.rentalKeyOwned && starterHandoverWasAcknowledged);
+  const colourUpgradeInstalled = Boolean(input.colourUpgradeInstalled);
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
   const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
   const tool = validTool(input.equippedTool) ? input.equippedTool : null;
@@ -303,12 +296,15 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const nurseryGraphicsEra: BuildingGraphicsEra = nurseryOperationalState === 'operational'
     ? 'atari-colour'
     : nurseryOperationalState === 'under-construction' ? 'green-crt' : 'atari-bw';
-  const buySellBwUpgradePending = Boolean(input.buySellBwUpgradePending ?? input.buySellRasterUpgradePending);
-  const buySellEra: BuildingGraphicsEra = colourUpgradeInstalled
-    ? 'atari-colour'
-    : graphicsUpgradeInstalled || Boolean(input.windowJobAccepted) && !buySellBwUpgradePending ? 'atari-bw' : 'green-crt';
-  const starterApartmentEra: BuildingGraphicsEra = colourUpgradeInstalled ? 'atari-colour' : 'green-crt';
-  const realEstateEra: BuildingGraphicsEra = graphicsUpgradeInstalled ? 'atari-bw' : 'green-crt';
+  const buySellBwUpgradePending = Boolean(input.buySellBwUpgradePending);
+  const buySellEra = graphicsEra(savedBuySellEra, DEFAULT_BUILDING_PROGRESS['buy-sell'].graphicsEra);
+  const starterApartmentEra: BuildingGraphicsEra = savedBuildings['starter-apartment']?.graphicsEra === 'atari-colour'
+    ? 'atari-colour' : 'green-crt';
+  // Pass 4 briefly wrote an unapproved Atari B&W Real Estate state into v5.
+  // Current-schema saves repair that one regression without deriving the
+  // building from Alex's global graphics flag.
+  const realEstateEra: BuildingGraphicsEra = savedBuildings['real-estate']?.graphicsEra === 'atari-colour'
+    ? 'atari-colour' : 'green-crt';
   const buildings: BuildingProgressState = {
     'buy-sell': {
       operationalState: operationalState(savedBuildings['buy-sell']?.operationalState, DEFAULT_BUILDING_PROGRESS['buy-sell'].operationalState),

@@ -174,7 +174,7 @@ const upgradeInstalledAcknowledged = (): ProgressState => withState(repairedSpec
     ...cloneBuildings(repairedSpecialPotCollected().buildings),
     'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' },
     'starter-apartment': { operationalState: 'operational', graphicsEra: 'green-crt' },
-    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-bw' },
+    'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' },
     nursery: { operationalState: 'under-construction', graphicsEra: 'green-crt' },
   },
 });
@@ -255,8 +255,8 @@ const multipleMatchingHarvestUnits = (): ProgressState => {
   });
 };
 
-const apartmentRented = (): ProgressState => withState(rareBegoniaSold(), {
-  coins: rareBegoniaSold().coins - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true,
+const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
+  coins: repairedPotSold().coins - RENTAL_BOND_COST, rentalBondPaid: true, rentalKeyOwned: true,
   welcomeGiftsClaimed: { 'starter-apartment': true }, propertyHandoversAcknowledged: { 'starter-apartment': false },
   wateringCanOwned: true, toolSlots: ['repair', 'watering-can', null], seedQuantities: { basil: 1, mint: 1 },
   basicFertilizerCharges: 1, growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID)], task: 'place-pot',
@@ -270,7 +270,7 @@ const povoWelcomeGiftClaimed = (): ProgressState => withState(apartmentRented(),
     ...cloneBuildings(apartmentRented().buildings),
     'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-colour' },
     'starter-apartment': { operationalState: 'operational', graphicsEra: 'atari-colour' },
-    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-bw' },
+    'real-estate': { operationalState: 'operational', graphicsEra: 'atari-colour' },
   },
 });
 const keyColourUpgradePrompt = (): ProgressState => withState(apartmentRented(), {
@@ -282,8 +282,8 @@ const keyColourUpgradeAcknowledgement = (): ProgressState => withState(povoWelco
   colourUpgradeStage: 'acknowledgement',
 });
 
-const beforePovoRental = (): ProgressState => withState(rareBegoniaSold(), { coins: RENTAL_BOND_COST - 1 });
-const enoughCoinsForPovoRental = (): ProgressState => withState(rareBegoniaSold(), { coins: RENTAL_BOND_COST });
+const beforePovoRental = (): ProgressState => withState(repairedPotSold(), { coins: RENTAL_BOND_COST - 1 });
+const enoughCoinsForPovoRental = (): ProgressState => withState(repairedPotSold(), { coins: RENTAL_BOND_COST });
 const shopAfterOneSale = (): ProgressState => withState(upgradedShopItemsReadyToSell(), {
   coins: upgradedShopItemsReadyToSell().coins + getPlantDefinition('basil').harvestPrice,
   harvestQuantities: { basil: 1 },
@@ -531,7 +531,8 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
   if (result.graphicsUpgradeInstalled && !result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-bw') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Atari B&W before the key colour upgrade.`);
   if (!result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} changed POVO before the key colour upgrade.`);
   if (result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance POVO to Atari Colour.`);
-  if (result.graphicsUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'atari-bw') throw new Error(`Developer checkpoint ${id} must keep Real Estate Atari B&W after the raster upgrade.`);
+  if (!result.colourUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} must keep Real Estate Green CRT before the key colour upgrade.`);
+  if (result.colourUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Real Estate to Atari Colour.`);
   if (result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Buy/Sell to Atari Colour.`);
   if ((id === 'window-job-accepted' || id === 'buy-sell-bw-pending-reload')
     && (!result.buySellBwUpgradePending || result.buildings['buy-sell'].graphicsEra !== 'green-crt')) {
@@ -555,7 +556,7 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
   if (result.basilDeliveryComplete && !result.basilHarvestSaleRecorded) throw new Error(`Developer checkpoint ${id} completed the basil delivery without recording the sale.`);
   if (result.coins < 0) throw new Error(`Developer checkpoint ${id} has negative coins.`);
   if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);
-  if (result.rentalBondPaid && (!result.openingGoldenPothosCollected || !result.brokenPotOwned || !result.rareBegoniaCollected || result.repairStep < 10)) throw new Error(`Developer checkpoint ${id} rents the starter apartment without completing the housing item requirements.`);
+  if (result.rentalBondPaid && (!result.saleComplete || !result.windowJobComplete || result.repairStep < 10)) throw new Error(`Developer checkpoint ${id} rents the starter apartment without completing the mandatory opening sale, paid work and repair requirements.`);
   if (result.activeProperty === 'second-rental' && result.rentalBondTotal !== SECOND_RENTAL_TOTAL_BOND) throw new Error(`Developer checkpoint ${id} has an invalid second-rental bond.`);
   if (result.rentalBondPaid && !result.welcomeGiftsClaimed['starter-apartment']) throw new Error(`Developer checkpoint ${id} rents POVO without its Welcome Gift.`);
   if (id === 'before-povo-rental' && (result.rentalBondPaid || result.coins !== RENTAL_BOND_COST - 1)) throw new Error(`Developer checkpoint ${id} must be one coin short before acquisition.`);
