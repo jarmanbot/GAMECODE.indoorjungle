@@ -125,13 +125,17 @@ const completeWindowCleaningSections = (): Record<string, number> => Object.from
 );
 const windowJobAccepted = (): ProgressState => withState(firstPlantSold(), {
   windowJobAccepted: true, windowCleaningProgress: 0, windowCleaningSections: emptyWindowCleaningSections(),
-  buySellBwUpgradePending: true,
+  buySellBwUpgradePending: true, buySellBwUpgradeAcknowledged: false,
   cleanerOwned: true, equippedTool: 'cleaner', toolSlots: ['cleaner', null, null], task: 'clean',
 });
 
 const buySellBwOnline = (): ProgressState => withState(windowJobAccepted(), {
-  buySellBwUpgradePending: false,
+  buySellBwUpgradePending: false, buySellBwUpgradeAcknowledged: false,
   buildings: { ...cloneBuildings(windowJobAccepted().buildings), 'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' } },
+});
+
+const buySellBwAcknowledged = (): ProgressState => withState(buySellBwOnline(), {
+  buySellBwUpgradeAcknowledged: true,
 });
 
 const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
@@ -139,11 +143,11 @@ const windowJobComplete = (): ProgressState => withState(firstPlantSold(), {
   windowCleaningProgress: HOMES_WINDOW_CLEAN_SECTIONS.reduce((total, section) => total + section.spraysRequired, 0),
   windowCleaningSections: completeWindowCleaningSections(), windowJobComplete: true,
   cleanerOwned: false, repairToolOwned: true, glueCharges: 1, equippedTool: 'repair', toolSlots: ['repair', null, null], brokenPotAvailable: true, brokenPotOwned: false, brokenPotPiecesRemaining: BROKEN_POT_PIECE_COUNT, brokenPotPiecesOwned: 0, brokenPotPiecesCollected: [], task: 'repair',
-  buySellBwUpgradePending: false,
+  buySellBwUpgradePending: false, buySellBwUpgradeAcknowledged: true,
   buildings: { ...cloneBuildings(firstPlantSold().buildings), 'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-bw' }, 'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' } },
 });
 const windowJobOneSprayRemaining = (): ProgressState => {
-  const base = buySellBwOnline();
+  const base = buySellBwAcknowledged();
   const sections = completeWindowCleaningSections();
   const last = HOMES_WINDOW_CLEAN_SECTIONS[HOMES_WINDOW_CLEAN_SECTIONS.length - 1];
   sections[last.id] = last.spraysRequired - 1;
@@ -465,7 +469,7 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'window-job-accepted', label: 'Cleaning job accepted · raster pending in Green CRT shop', order: 40, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: windowJobAccepted },
   { id: 'buy-sell-bw-pending-reload', label: 'Reloaded inside shop · B&W exit pending', order: 41, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: windowJobAccepted },
   { id: 'buy-sell-bw-online', label: 'First exit · Buy/Sell Atari B&W', order: 42, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: buySellBwOnline },
-  { id: 'buy-sell-bw-reentered', label: 'Re-entered Atari B&W Buy/Sell', order: 43, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buySellBwOnline },
+  { id: 'buy-sell-bw-reentered', label: 'Re-entered Atari B&W Buy/Sell', order: 43, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: buySellBwAcknowledged },
   { id: 'window-job-one-spray-remaining', label: 'Window cleaning · one spray before completion', order: 45, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobOneSprayRemaining },
   { id: 'window-job-complete', label: 'Window-cleaning job complete', order: 50, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: windowJobComplete },
   { id: 'broken-pieces-any-order', label: 'Broken pot pieces · arbitrary-order pickup', order: 55, scene: 'street', spawn: { x: 2400, y: 910 }, zoom: 'normal', crop: 'none', build: brokenPiecesAnyOrder },
@@ -538,8 +542,10 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
     && (!result.buySellBwUpgradePending || result.buildings['buy-sell'].graphicsEra !== 'green-crt')) {
     throw new Error(`Developer checkpoint ${id} must preserve the pending B&W exit while Buy/Sell remains Green CRT.`);
   }
+  if (id === 'buy-sell-bw-online' && result.buySellBwUpgradeAcknowledged) throw new Error(`Developer checkpoint ${id} must leave the new upgrade acknowledgement pending.`);
+  if (id === 'buy-sell-bw-reentered' && !result.buySellBwUpgradeAcknowledged) throw new Error(`Developer checkpoint ${id} must preserve the completed upgrade acknowledgement.`);
   const nursery = result.buildings.nursery;
-  const validNurseryState = (nursery.operationalState === 'vacant' && nursery.graphicsEra === 'atari-bw')
+  const validNurseryState = (nursery.operationalState === 'vacant' && (nursery.graphicsEra === 'green-crt' || nursery.graphicsEra === 'atari-bw'))
     || (nursery.operationalState === 'under-construction' && nursery.graphicsEra === 'green-crt')
     || (nursery.operationalState === 'operational' && nursery.graphicsEra === 'atari-colour');
   if (!validNurseryState) throw new Error(`Developer checkpoint ${id} has an inconsistent Nursery state.`);

@@ -38,6 +38,9 @@ const DEEP = 0x1b2023;
 const MID = 0x5e6669;
 const LIGHT = 0xd8dddc;
 const WHITE = 0xf6f7f3;
+const CRT_GREEN = 0x39ff5a;
+const CRT_DIM_GREEN = 0x1a8f35;
+const CRT_BLACK = 0x030805;
 const BUY_SELL_GREEN_CRT_TEXTURE = 'buy-sell-facade-green-crt';
 const NURSERY_TEXTURES = {
   vacant: 'nursery-vacant-atari-bw',
@@ -57,7 +60,7 @@ export interface BuySellArtwork {
   pulseLayers: Phaser.GameObjects.GameObject[];
 }
 
-export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt', starterApartmentGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
+export function drawNeighborhood(scene: Phaser.Scene, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'green-crt' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt', starterApartmentGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
   const background = scene.add.graphics().setDepth(-100);
   background.fillStyle(0x343a3c, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   background.fillStyle(0x252a2d, 1).fillRect(0, 0, WORLD_WIDTH, 410);
@@ -221,12 +224,15 @@ function drawDistantRoads(scene: Phaser.Scene): void {
 
 function drawRoadAndPavement(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(-10);
+  const roadTop = PAVEMENT_Y + PAVEMENT_HEIGHT;
+  const roadBottom = 1180;
+  const roadMiddle = (roadTop + roadBottom) / 2;
   g.fillStyle(0x9ea5a5, 1).fillRect(0, PAVEMENT_Y, WORLD_WIDTH, PAVEMENT_HEIGHT);
-  g.fillStyle(0x15191b, 1).fillRect(0, PAVEMENT_Y + PAVEMENT_HEIGHT, WORLD_WIDTH, 238);
-  g.lineStyle(8, WHITE, 0.92).lineBetween(0, 944, WORLD_WIDTH, 944);
-  g.lineStyle(8, WHITE, 0.92).lineBetween(0, 1083, WORLD_WIDTH, 1083);
+  g.fillStyle(0x15191b, 1).fillRect(0, roadTop, WORLD_WIDTH, roadBottom - roadTop);
+  g.lineStyle(8, WHITE, 0.92).lineBetween(0, roadTop + 2, WORLD_WIDTH, roadTop + 2);
+  g.lineStyle(8, WHITE, 0.92).lineBetween(0, roadBottom - 2, WORLD_WIDTH, roadBottom - 2);
   for (let x = 0; x < WORLD_WIDTH; x += 170) {
-    g.fillStyle(0xd5d9d8, 0.9).fillRect(x + 30, 1008, 94, 10);
+    g.fillStyle(0xd5d9d8, 0.9).fillRect(x + 30, roadMiddle - 5, 94, 10);
   }
   g.fillStyle(0x737b7c, 1).fillRect(0, PAVEMENT_Y, WORLD_WIDTH, 10);
   g.fillStyle(0xd7dbda, 1).fillRect(0, PAVEMENT_Y + PAVEMENT_HEIGHT - 9, WORLD_WIDTH, 9);
@@ -252,13 +258,13 @@ function drawRoadAndPavement(scene: Phaser.Scene): void {
 
 function drawUndevelopedPlots(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(-3);
-  g.fillStyle(0x3b4344, 1).fillRect(0, 1252, WORLD_WIDTH, WORLD_HEIGHT - 1252);
+  g.fillStyle(CRT_BLACK, 1).fillRect(0, 1252, WORLD_WIDTH, WORLD_HEIGHT - 1252);
 
   // Paths make the land read as connected reserve plots instead of a blank strip.
-  g.fillStyle(0x777f80, 1).fillRect(0, 1364, WORLD_WIDTH, 24);
-  g.fillStyle(0x777f80, 1).fillRect(920, 1252, 24, WORLD_HEIGHT - 1252);
-  g.fillStyle(0x777f80, 1).fillRect(2648, 1252, 24, WORLD_HEIGHT - 1252);
-  g.lineStyle(4, 0x1b2022, 0.8).lineBetween(0, 1376, WORLD_WIDTH, 1376);
+  g.fillStyle(0x07140a, 1).fillRect(0, 1364, WORLD_WIDTH, 24);
+  g.fillStyle(0x07140a, 1).fillRect(920, 1252, 24, WORLD_HEIGHT - 1252);
+  g.fillStyle(0x07140a, 1).fillRect(2648, 1252, 24, WORLD_HEIGHT - 1252);
+  g.lineStyle(4, CRT_DIM_GREEN, 0.8).lineBetween(0, 1376, WORLD_WIDTH, 1376);
 
   drawFuturePlot(scene, g, 110, 1284, 700, 330, 'RESERVED LOT A');
   drawFuturePlot(scene, g, 1050, 1284, 700, 330, 'RESERVED LOT B');
@@ -268,8 +274,8 @@ function drawUndevelopedPlots(scene: Phaser.Scene): void {
   drawBarrier(g, 2638, 1260, 44);
 
   for (const x of [170, 430, 730, 1110, 1430, 1910, 2240, 2470, 2870, 3220, 3710, 3980]) {
-    drawWeed(g, x, 1710);
-    drawRubbish(g, x + 30, 1712);
+    drawWeed(g, x, 1710, true);
+    drawRubbish(g, x + 30, 1712, true);
   }
 }
 
@@ -282,16 +288,16 @@ function drawFuturePlot(
   height: number,
   label: string,
 ): void {
-  g.lineStyle(5, 0xd2d7d5, 0.9).strokeRect(x, y, width, height);
-  g.lineStyle(3, 0x737b7c, 0.9).lineBetween(x + width * 0.5, y, x + width * 0.5, y + height);
+  g.lineStyle(5, CRT_GREEN, 0.9).strokeRect(x, y, width, height);
+  g.lineStyle(3, CRT_DIM_GREEN, 0.9).lineBetween(x + width * 0.5, y, x + width * 0.5, y + height);
   g.lineBetween(x, y + height * 0.58, x + width, y + height * 0.58);
-  g.fillStyle(0x1a1f21, 1).fillRect(x + 18, y + 16, Math.min(width - 36, 230), 30);
-  addWorldLabel(scene, x + 28, y + 31, label, WHITE, 11, false);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x + 18, y + 16, Math.min(width - 36, 230), 30);
+  addWorldLabel(scene, x + 28, y + 31, label, CRT_GREEN, 11, false);
   drawLockedBadge(scene, g, x + width - 82, y + 31);
   drawBarrier(g, x + 20, y + height - 16, width - 40);
 }
 
-function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'atari-bw' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt', starterApartmentGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
+function drawBuilding(scene: Phaser.Scene, building: Building, apartmentRented = false, graphicsUpgradeInstalled = false, activeProperty: PropertyId = 'none', buySellGraphics: BuildingGraphicsEra = 'green-crt', nurseryProgress: BuildingProgress = { operationalState: 'vacant', graphicsEra: 'green-crt' }, realEstateGraphics: BuildingGraphicsEra = 'green-crt', starterApartmentGraphics: BuildingGraphicsEra = 'green-crt'): BuySellArtwork | undefined {
   if (building.kind === 'shop') {
     return drawBuySellBuilding(scene, building, buySellGraphics, graphicsUpgradeInstalled);
   }
@@ -541,12 +547,16 @@ function drawNurseryBuilding(scene: Phaser.Scene, progress: BuildingProgress): v
     ? 'under-construction'
     : progress.operationalState === 'operational' ? 'operational' : 'vacant';
   const texture = NURSERY_TEXTURES[state];
+  const greenCRT = progress.graphicsEra === 'green-crt';
+  const colour = progress.graphicsEra === 'atari-colour';
   if (scene.textures.exists(texture)) {
-    scene.add.image(NURSERY_ASSET_X, NURSERY_ASSET_Y, texture).setOrigin(0, 0).setDepth(5);
+    const nurseryImage = scene.add.image(NURSERY_ASSET_X, NURSERY_ASSET_Y, texture).setOrigin(0, 0).setDepth(5);
+    // The approved vacant source is neutral B&W. Tinting its visible pixels
+    // keeps its geometry and transparency intact while presenting the locked
+    // starting lot in the shared Green CRT language.
+    if (state === 'vacant' && greenCRT) nurseryImage.setTint(CRT_GREEN);
   }
 
-  const greenCRT = state === 'under-construction';
-  const colour = state === 'operational';
   const signFill = greenCRT ? 0x050906 : colour ? 0xeadbb8 : 0xd8dddc;
   const signInk = greenCRT ? 0x39ff5a : colour ? 0x102f48 : 0x111416;
   const signContainer = scene.add.container(NURSERY_SIGN.x, NURSERY_SIGN.y).setDepth(8);
@@ -635,35 +645,38 @@ function drawApartment(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, buil
     g.lineBetween(doorX - 6, APARTMENT_DOOR_BOTTOM + 8, doorX + APARTMENT_DOOR_WIDTH + 6, APARTMENT_DOOR_BOTTOM + 8);
     return;
   }
-  g.fillStyle(0x1b2022, 1).fillTriangle(x - 18, y + 10, x + building.width / 2, y - 62, x + building.width + 18, y + 10);
-  g.lineStyle(8, WHITE, 0.95)
+  const green = style === 'green-crt';
+  const secondRentalLine = green ? CRT_GREEN : WHITE;
+  const secondRentalDim = green ? CRT_DIM_GREEN : 0x6e7677;
+  g.fillStyle(green ? CRT_BLACK : 0x1b2022, 1).fillTriangle(x - 18, y + 10, x + building.width / 2, y - 62, x + building.width + 18, y + 10);
+  g.lineStyle(green ? 4 : 8, secondRentalLine, 0.95)
     .lineBetween(x - 18, y + 10, x + building.width / 2, y - 62)
     .lineBetween(x + building.width / 2, y - 62, x + building.width + 18, y + 10);
-  g.lineStyle(4, 0x6e7677, 0.95).lineBetween(x - 12, y + 12, x + building.width + 12, y + 12);
+  g.lineStyle(4, secondRentalDim, 0.95).lineBetween(x - 12, y + 12, x + building.width + 12, y + 12);
   // Separate upper service doorway used only by the introductory drop. It is
   // not the rentable ground-floor apartment entrance and has no interaction.
   g.fillStyle(0x07090a, 1).fillRect(x + 64, y + 28, 62, 72);
-  g.lineStyle(4, INK, 1).strokeRect(x + 64, y + 28, 62, 72);
-  addWorldLabel(scene, x + 95, y + 18, 'UPPER EXIT', 0xc4ccca, 8, true);
-  g.fillStyle(0x242a2c, 1).fillRect(x + 28, y + 100, building.width - 56, 204);
-  g.lineStyle(6, WHITE, 0.9).strokeRect(x + 28, y + 100, building.width - 56, 204);
+  g.lineStyle(green ? 3 : 4, green ? CRT_GREEN : INK, 1).strokeRect(x + 64, y + 28, 62, 72);
+  addWorldLabel(scene, x + 95, y + 18, 'UPPER EXIT', secondRentalLine, 8, true);
+  g.fillStyle(green ? CRT_BLACK : 0x242a2c, 1).fillRect(x + 28, y + 100, building.width - 56, 204);
+  g.lineStyle(green ? 4 : 6, secondRentalLine, 0.9).strokeRect(x + 28, y + 100, building.width - 56, 204);
   for (let windowX = x + 58; windowX < x + building.width - 50; windowX += 86) {
-    g.fillStyle(0xadb4b3, 1).fillRect(windowX, y + 130, 54, 62);
-    g.lineStyle(4, INK, 1).strokeRect(windowX, y + 130, 54, 62);
+    g.fillStyle(green ? CRT_BLACK : 0xadb4b3, 1).fillRect(windowX, y + 130, 54, 62);
+    g.lineStyle(green ? 3 : 4, green ? CRT_GREEN : INK, 1).strokeRect(windowX, y + 130, 54, 62);
     g.lineBetween(windowX + 27, y + 130, windowX + 27, y + 192);
     g.lineBetween(windowX, y + 161, windowX + 54, y + 161);
   }
-  g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 30, y + 218, 60, 86);
-  g.fillStyle(INK, 1).fillRect(x + building.width / 2 - 64, y + 82, 128, 28);
-  const rentalLabel = addWorldLabel(scene, x + building.width / 2, y + 92, rented ? 'YOUR HOME' : 'TO LET', WHITE, 12, true);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x + building.width / 2 - 30, y + 218, 60, 86);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x + building.width / 2 - 64, y + 82, 128, 28);
+  const rentalLabel = addWorldLabel(scene, x + building.width / 2, y + 92, rented ? 'YOUR HOME' : 'TO LET', secondRentalLine, 12, true);
   rentalLabel.setData('apartment-rental-sign', true);
   rentalLabel.setData('property-id', secondRental ? 'second-rental' : 'starter-apartment');
   rentalLabel.setData('rental-sign-role', 'title');
-  const rentalPrice = addWorldLabel(scene, x + building.width / 2, y + 108, rented ? 'ACCESS UNLOCKED' : secondRental ? 'MOVE TO RENTAL' : '60 COINS', 0xc4ccca, 9, true);
+  const rentalPrice = addWorldLabel(scene, x + building.width / 2, y + 108, rented ? 'ACCESS UNLOCKED' : secondRental ? 'MOVE TO RENTAL' : '60 COINS', green ? CRT_DIM_GREEN : 0xc4ccca, 9, true);
   rentalPrice.setData('apartment-rental-sign', true);
   rentalPrice.setData('property-id', secondRental ? 'second-rental' : 'starter-apartment');
   rentalPrice.setData('rental-sign-role', 'detail');
-  if (secondRental) addWorldLabel(scene, x + building.width / 2, y + 205, '2 ROOMS · 6 SLOTS', WHITE, 9, true);
+  if (secondRental) addWorldLabel(scene, x + building.width / 2, y + 205, '2 ROOMS · 6 SLOTS', secondRentalLine, 9, true);
 }
 
 function drawMiniHome(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number, height: number, actual: boolean): void {
@@ -675,54 +688,54 @@ function drawMiniHome(g: Phaser.GameObjects.Graphics, x: number, y: number, widt
 
 function drawVacantLot(scene: Phaser.Scene, x: number, y: number, width: number, height: number, label: string): void {
   const g = scene.add.graphics().setDepth(-2);
-  g.fillStyle(0x555d5e, 1).fillRect(x, y, width, height);
-  g.lineStyle(6, 0xd2d7d5, 0.9).strokeRect(x, y, width, height);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x, y, width, height);
+  g.lineStyle(5, CRT_GREEN, 0.9).strokeRect(x, y, width, height);
   for (let fenceX = x + 18; fenceX < x + width; fenceX += 64) {
-    g.lineStyle(4, 0xdee2df, 0.82).lineBetween(fenceX, y, fenceX, y + height);
+    g.lineStyle(3, CRT_DIM_GREEN, 0.82).lineBetween(fenceX, y, fenceX, y + height);
   }
-  g.lineStyle(5, 0xe1e4e1, 0.85).lineBetween(x, y + 58, x + width, y + 58);
-  g.fillStyle(0x1a1f21, 1).fillRect(x + 18, y + 18, Math.min(width - 36, 250), 34);
-  addWorldLabel(scene, x + Math.min(width - 36, 250) / 2 + 18, y + 21, label, WHITE, 12, true);
+  g.lineStyle(4, CRT_GREEN, 0.85).lineBetween(x, y + 58, x + width, y + 58);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x + 18, y + 18, Math.min(width - 36, 250), 34);
+  addWorldLabel(scene, x + Math.min(width - 36, 250) / 2 + 18, y + 21, label, CRT_GREEN, 12, true);
   for (let weedX = x + 28; weedX < x + width - 20; weedX += 116) {
-    drawWeed(g, weedX, y + height - 24);
-    if (weedX % 3 === 0) drawRubbish(g, weedX + 32, y + height - 22);
+    drawWeed(g, weedX, y + height - 24, true);
+    if (weedX % 3 === 0) drawRubbish(g, weedX + 32, y + height - 22, true);
   }
 }
 
 function drawConstructionSite(scene: Phaser.Scene, x: number, y: number, width: number, height: number, label: string): void {
   const g = scene.add.graphics().setDepth(-1);
-  g.fillStyle(0x2c3234, 1).fillRect(x, y, width, height);
-  g.lineStyle(6, 0xe2e5e2, 0.9).strokeRect(x, y, width, height);
-  g.lineStyle(8, 0x969e9d, 0.9);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x, y, width, height);
+  g.lineStyle(5, CRT_GREEN, 0.9).strokeRect(x, y, width, height);
+  g.lineStyle(6, CRT_DIM_GREEN, 0.9);
   g.lineBetween(x + 80, y + height, x + 80, y + 70);
   g.lineBetween(x + 80, y + 70, x + width - 90, y + 70);
   g.lineBetween(x + width - 90, y + 70, x + width - 90, y + height);
   g.lineBetween(x + 80, y + 210, x + width - 90, y + 210);
-  g.lineStyle(4, 0xced4d2, 0.7);
+  g.lineStyle(4, CRT_GREEN, 0.7);
   g.lineBetween(x + width - 75, y + 55, x + width - 75, y + 240);
   g.lineBetween(x + width - 115, y + 74, x + width - 30, y + 74);
-  addWorldLabel(scene, x + width / 2, y + 25, label, WHITE, 15, true);
+  addWorldLabel(scene, x + width / 2, y + 25, label, CRT_GREEN, 15, true);
   drawLockedBadge(scene, g, x + width - 82, y + 27);
   drawBarrier(g, x + 28, y + height - 16, width - 56);
-  drawWeed(g, x + 60, y + height - 25);
-  drawRubbish(g, x + width - 120, y + height - 26);
+  drawWeed(g, x + 60, y + height - 25, true);
+  drawRubbish(g, x + width - 120, y + height - 26, true);
 }
 
 function drawLockedBadge(scene: Phaser.Scene, g: Phaser.GameObjects.Graphics, x: number, y: number): void {
-  g.fillStyle(0x111416, 0.96).fillRect(x - 56, y - 18, 112, 36);
-  g.lineStyle(3, WHITE, 0.95).strokeRect(x - 56, y - 18, 112, 36);
-  g.lineStyle(3, WHITE, 0.95).strokeRect(x - 42, y - 7, 14, 12);
+  g.fillStyle(CRT_BLACK, 0.96).fillRect(x - 56, y - 18, 112, 36);
+  g.lineStyle(3, CRT_GREEN, 0.95).strokeRect(x - 56, y - 18, 112, 36);
+  g.lineStyle(3, CRT_GREEN, 0.95).strokeRect(x - 42, y - 7, 14, 12);
   g.lineBetween(x - 40, y - 7, x - 40, y - 15);
   g.lineBetween(x - 40, y - 15, x - 30, y - 15);
   g.lineBetween(x - 30, y - 15, x - 30, y - 7);
-  addWorldLabel(scene, x + 22, y + 1, 'LOCKED', WHITE, 9, true);
+  addWorldLabel(scene, x + 22, y + 1, 'LOCKED', CRT_GREEN, 9, true);
 }
 
 function drawBarrier(g: Phaser.GameObjects.Graphics, x: number, y: number, width: number): void {
-  g.lineStyle(5, WHITE, 0.95).lineBetween(x, y, x + width, y);
-  g.fillStyle(INK, 1).fillRect(x - 5, y - 13, 10, 26).fillRect(x + width - 5, y - 13, 10, 26);
+  g.lineStyle(5, CRT_GREEN, 0.95).lineBetween(x, y, x + width, y);
+  g.fillStyle(CRT_BLACK, 1).fillRect(x - 5, y - 13, 10, 26).fillRect(x + width - 5, y - 13, 10, 26);
   for (let stripeX = x + 10; stripeX < x + width - 4; stripeX += 24) {
-    g.lineStyle(4, 0x696f70, 0.9).lineBetween(stripeX, y - 8, stripeX + 12, y + 8);
+    g.lineStyle(4, CRT_DIM_GREEN, 0.9).lineBetween(stripeX, y - 8, stripeX + 12, y + 8);
   }
 }
 
@@ -784,7 +797,29 @@ export function drawGoldenPothos(g: Phaser.GameObjects.Graphics, x: number, y: n
     .lineBetween(x + 2 * scale, y - 57 * scale, x + 5 * scale, y - 88 * scale);
 }
 
-export function drawRareSpottedBegonia(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour = false): void {
+export function drawRareSpottedBegonia(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour: SpecialItemVisualStyle = false): void {
+  if (colour === 'green-crt') {
+    g.fillStyle(CRT_BLACK, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 49 * scale);
+    g.lineStyle(Math.max(2, 3 * scale), CRT_GREEN, 1)
+      .strokeRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale)
+      .lineBetween(x - 16 * scale, y - 25 * scale, x - 11 * scale, y + 15 * scale)
+      .lineBetween(x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale)
+      .lineBetween(x - 11 * scale, y + 15 * scale, x + 11 * scale, y + 15 * scale)
+      .lineBetween(x, y - 29 * scale, x - 12 * scale, y - 69 * scale)
+      .lineBetween(x, y - 32 * scale, x + 15 * scale, y - 76 * scale)
+      .lineBetween(x, y - 40 * scale, x + 1 * scale, y - 91 * scale)
+      .strokeEllipse(x - 19 * scale, y - 72 * scale, 32 * scale, 18 * scale)
+      .strokeEllipse(x + 21 * scale, y - 79 * scale, 34 * scale, 19 * scale)
+      .strokeEllipse(x + 1 * scale, y - 96 * scale, 30 * scale, 18 * scale);
+    g.fillStyle(CRT_DIM_GREEN, 1)
+      .fillCircle(x - 22 * scale, y - 71 * scale, 3 * scale)
+      .fillCircle(x - 12 * scale, y - 75 * scale, 3 * scale)
+      .fillCircle(x + 17 * scale, y - 77 * scale, 3 * scale)
+      .fillCircle(x + 27 * scale, y - 82 * scale, 3 * scale)
+      .fillCircle(x - 3 * scale, y - 96 * scale, 3 * scale)
+      .fillCircle(x + 7 * scale, y - 99 * scale, 3 * scale);
+    return;
+  }
   drawPot(g, x, y, scale, colour);
   const leaf = colour ? 0x6fae73 : 0xbfc5c3;
   const spot = colour ? 0xe8dca8 : 0x4f5759;
@@ -965,17 +1000,18 @@ export function drawBrokenPotPieces(g: Phaser.GameObjects.Graphics, x: number, y
   }
 }
 
-function drawWeed(g: Phaser.GameObjects.Graphics, x: number, y: number): void {
-  g.lineStyle(4, 0x222729, 1);
+function drawWeed(g: Phaser.GameObjects.Graphics, x: number, y: number, greenCrt = false): void {
+  g.lineStyle(4, greenCrt ? CRT_GREEN : 0x222729, 1);
   g.lineBetween(x, y, x - 11, y - 32);
   g.lineBetween(x, y, x + 4, y - 44);
   g.lineBetween(x, y, x + 16, y - 27);
-  g.fillStyle(0x6d7677, 1).fillRect(x - 18, y, 38, 11);
+  g.fillStyle(greenCrt ? CRT_BLACK : 0x6d7677, 1).fillRect(x - 18, y, 38, 11);
+  if (greenCrt) g.lineStyle(2, CRT_DIM_GREEN, 1).strokeRect(x - 18, y, 38, 11);
 }
 
-function drawRubbish(g: Phaser.GameObjects.Graphics, x: number, y: number): void {
-  g.fillStyle(0x252b2d, 1).fillRect(x, y - 13, 22, 15);
-  g.lineStyle(3, 0xbfc5c3, 0.8).strokeRect(x, y - 13, 22, 15);
+function drawRubbish(g: Phaser.GameObjects.Graphics, x: number, y: number, greenCrt = false): void {
+  g.fillStyle(greenCrt ? CRT_BLACK : 0x252b2d, 1).fillRect(x, y - 13, 22, 15);
+  g.lineStyle(3, greenCrt ? CRT_GREEN : 0xbfc5c3, 0.8).strokeRect(x, y - 13, 22, 15);
 }
 
 export function addWorldLabel(

@@ -1086,6 +1086,11 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.progress.openingComplete) {
       this.startHousingThoughtReminder();
+      if (this.progress.buildings['buy-sell'].graphicsEra === 'atari-bw'
+        && !this.progress.buySellBwUpgradeAcknowledged) {
+        this.time.delayedCall(0, () => this.presentBuySellBwUpgradeAcknowledgement());
+        return;
+      }
       this.presentGraphicsUpgradeIfNeeded();
       this.presentPlaytestCompletionIfNeeded();
       return;
@@ -1368,6 +1373,7 @@ export class GameScene extends Phaser.Scene {
     this.updateInteraction();
     this.startHousingThoughtReminder();
     this.presentGraphicsUpgradeIfNeeded();
+    if (snapshot.id === 'buy-sell-bw-online') this.time.delayedCall(0, () => this.presentBuySellBwUpgradeAcknowledgement());
     if (snapshot.id === 'apartment-rented') this.time.delayedCall(0, () => this.presentPovoHandover());
     if (snapshot.queuedPresentationCount) {
       this.queueShopkeeperTransaction('fresh-basil-leaves', 1, 'sell', this.getShopItemShelfPosition('fresh-basil-leaves'), 'Basil sale presentation complete.');
@@ -1617,8 +1623,12 @@ export class GameScene extends Phaser.Scene {
     if (this.pot) this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
     if (this.rareBegonia) {
       this.rareBegonia.clear();
-      drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled);
+      drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
       this.rareBegonia.setVisible(!this.progress.rareBegoniaCollected);
+    }
+    if (this.heavyPot) {
+      this.heavyPot.clear();
+      drawGoldenPothos(this.heavyPot, 0, 0, 1.55, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     }
     // The broken pieces remain visible even while the opening pot is still in
     // the Bag. Selling is no longer the next required objective, so hiding
@@ -2556,6 +2566,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.shopInterior || this.progress.windowJobAccepted || this.progress.windowJobComplete) return;
     this.progress.windowJobAccepted = true;
     this.progress.buySellBwUpgradePending = this.progress.buildings['buy-sell'].graphicsEra === 'green-crt';
+    if (this.progress.buySellBwUpgradePending) this.progress.buySellBwUpgradeAcknowledged = false;
     this.progress.windowCleaningProgress = 0;
     this.progress.windowCleaningSections = Object.fromEntries(
       HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0]),
@@ -3665,13 +3676,13 @@ export class GameScene extends Phaser.Scene {
 
   private createRareBegonia(): void {
     this.rareBegonia = this.add.graphics().setDepth(22).setPosition(RARE_BEGONIA_POSITION.x, RARE_BEGONIA_POSITION.y);
-    drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled);
+    drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
     this.rareBegonia.setVisible(!this.progress.rareBegoniaCollected);
   }
 
   private createHeavyPot(): void {
     this.heavyPot = this.add.graphics().setDepth(22).setPosition(HEAVY_POT_POSITION.x, HEAVY_POT_POSITION.y);
-    drawGoldenPothos(this.heavyPot, 0, 0, 1.55, false);
+    drawGoldenPothos(this.heavyPot, 0, 0, 1.55, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
   }
 
   private createBrokenPot(): void {
@@ -3826,9 +3837,9 @@ export class GameScene extends Phaser.Scene {
 
   private createCars(): void {
     const carData = [
-      { x: 330, y: 1000, speed: 80, direction: 1 as const },
-      { x: 1530, y: 1110, speed: 70, direction: -1 as const },
-      { x: 2750, y: 1000, speed: 58, direction: 1 as const },
+      { x: 330, y: 1002, speed: 135, direction: 1 as const },
+      { x: 1530, y: 1122, speed: 125, direction: -1 as const },
+      { x: 2750, y: 1002, speed: 112, direction: 1 as const },
     ];
     this.cars = carData.map((data, index) => {
       const graphics = this.add.graphics().setDepth(18);
@@ -3839,10 +3850,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawCar(g: Phaser.GameObjects.Graphics, direction: 1 | -1): void {
-    g.fillStyle(0x0c0e0f, 1).fillRoundedRect(-40, -18, 80, 24, 5);
-    g.fillStyle(0xdde1df, 1).fillTriangle(-20, -18, 4, -42, 30, -18);
-    g.fillStyle(0x121618, 1).fillCircle(-22, 7, 10).fillCircle(23, 7, 10);
-    g.fillStyle(0xdde1df, 1).fillCircle(-22, 7, 4).fillCircle(23, 7, 4);
+    const green = 0x39ff5a;
+    const dimGreen = 0x1a8f35;
+    const dark = 0x030805;
+    g.fillStyle(dark, 1).fillRoundedRect(-54, -24, 108, 32, 6);
+    g.lineStyle(4, green, 1).strokeRoundedRect(-54, -24, 108, 32, 6);
+    g.fillStyle(dark, 1).fillTriangle(-28, -24, 5, -56, 40, -24);
+    g.lineStyle(4, green, 1)
+      .lineBetween(-28, -24, 5, -56)
+      .lineBetween(5, -56, 40, -24)
+      .lineBetween(-28, -24, 40, -24)
+      .lineBetween(5, -54, 5, -25);
+    g.fillStyle(dark, 1).fillCircle(-30, 9, 13).fillCircle(31, 9, 13);
+    g.lineStyle(4, green, 1).strokeCircle(-30, 9, 13).strokeCircle(31, 9, 13);
+    g.fillStyle(dimGreen, 1).fillCircle(-30, 9, 5).fillCircle(31, 9, 5);
     if (direction < 0) g.scaleX = -1;
   }
 
@@ -4871,6 +4892,7 @@ export class GameScene extends Phaser.Scene {
       // restoring stale pending state inside the shop.
       this.progress.buildings['buy-sell'].graphicsEra = 'atari-bw';
       this.progress.buySellBwUpgradePending = false;
+      this.progress.buySellBwUpgradeAcknowledged = false;
       this.saveProgress();
       this.buySellUpgradeAnimating = true;
       this.time.delayedCall(1200, () => {
@@ -4907,6 +4929,21 @@ export class GameScene extends Phaser.Scene {
       });
       this.buySellUpgradeAnimating = false;
       notice.destroy();
+      this.presentBuySellBwUpgradeAcknowledgement();
+    });
+  }
+
+  private presentBuySellBwUpgradeAcknowledgement(): void {
+    if (this.progress.buySellBwUpgradeAcknowledged
+      || this.progress.buildings['buy-sell'].graphicsEra !== 'atari-bw'
+      || this.modalOpen) return;
+    this.setModalOpen(true);
+    this.hud.showAcknowledgement("Birch's Buy'n Sell just got an upgrade.", () => {
+      if (!this.progress.buySellBwUpgradeAcknowledged) {
+        this.progress.buySellBwUpgradeAcknowledged = true;
+        this.saveProgress();
+      }
+      this.setModalOpen(false);
     });
   }
 

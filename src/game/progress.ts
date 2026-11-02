@@ -89,6 +89,7 @@ export interface ProgressState {
   ownedPremiumPlants: PremiumPlantId[];
   windowJobAccepted: boolean;
   buySellBwUpgradePending: boolean;
+  buySellBwUpgradeAcknowledged: boolean;
   windowCleaningProgress: number;
   windowCleaningSections: Record<string, number>;
   windowJobComplete: boolean;
@@ -158,6 +159,7 @@ export const DEFAULT_PROGRESS: ProgressState = {
   ownedPremiumPlants: [],
   windowJobAccepted: false,
   buySellBwUpgradePending: false,
+  buySellBwUpgradeAcknowledged: false,
   windowCleaningProgress: 0,
   windowCleaningSections: Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0])),
   windowJobComplete: false,
@@ -295,9 +297,17 @@ export function sanitizeProgress(value: unknown): ProgressState {
       : 'vacant';
   const nurseryGraphicsEra: BuildingGraphicsEra = nurseryOperationalState === 'operational'
     ? 'atari-colour'
-    : nurseryOperationalState === 'under-construction' ? 'green-crt' : 'atari-bw';
+    : nurseryOperationalState === 'under-construction'
+      ? 'green-crt'
+      : graphicsEra(savedBuildings.nursery?.graphicsEra, DEFAULT_BUILDING_PROGRESS.nursery.graphicsEra);
   const buySellBwUpgradePending = Boolean(input.buySellBwUpgradePending);
   const buySellEra = graphicsEra(savedBuySellEra, DEFAULT_BUILDING_PROGRESS['buy-sell'].graphicsEra);
+  // Saves created before the acknowledgement existed have already seen the
+  // B&W storefront, so do not interrupt them with a retroactive popup. New
+  // transitions persist an explicit false until the player presses OK.
+  const buySellBwUpgradeAcknowledged = typeof input.buySellBwUpgradeAcknowledged === 'boolean'
+    ? input.buySellBwUpgradeAcknowledged
+    : buySellEra === 'atari-bw' || buySellEra === 'atari-colour';
   const starterApartmentEra: BuildingGraphicsEra = savedBuildings['starter-apartment']?.graphicsEra === 'atari-colour'
     ? 'atari-colour' : 'green-crt';
   // Pass 4 briefly wrote an unapproved Atari B&W Real Estate state into v5.
@@ -452,7 +462,7 @@ export function sanitizeProgress(value: unknown): ProgressState {
     coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
     inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
     saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock, ownedPremiumPlants,
-    windowJobAccepted: Boolean(input.windowJobAccepted), buySellBwUpgradePending, windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
+    windowJobAccepted: Boolean(input.windowJobAccepted), buySellBwUpgradePending, buySellBwUpgradeAcknowledged, windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
     cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
     brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned, brokenPotPiecesCollected,
     repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,

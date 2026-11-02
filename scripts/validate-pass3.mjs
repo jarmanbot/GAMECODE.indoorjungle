@@ -75,13 +75,14 @@ for (const expected of [
   "'buy-sell': { operationalState: 'operational', graphicsEra: 'green-crt' }",
   "'starter-apartment': { operationalState: 'operational', graphicsEra: 'green-crt' }",
   "'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' }",
-  "nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' }",
+  "nursery: { operationalState: 'vacant', graphicsEra: 'green-crt' }",
 ]) {
   if (!buildingProgress.includes(expected)) throw new Error(`Missing approved building default: ${expected}`);
 }
 
 const progress = readFileSync(new URL('../src/game/progress.ts', import.meta.url), 'utf8');
 if (!progress.includes('buySellBwUpgradePending: boolean')) throw new Error('Persisted Buy/Sell B&W pending state is missing.');
+if (!progress.includes('buySellBwUpgradeAcknowledged: boolean')) throw new Error('Persisted Buy/Sell B&W acknowledgement state is missing.');
 if (/^\s*nurseryConstructionComplete:\s*boolean/m.test(progress)) throw new Error('Legacy parallel Nursery construction state remains in ProgressState.');
 
 const scene = readFileSync(new URL('../src/game/GameScene.ts', import.meta.url), 'utf8');

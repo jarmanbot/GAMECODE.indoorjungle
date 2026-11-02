@@ -54,8 +54,8 @@ export const FUTURE_ZONES: FutureZone[] = [
     label: 'WILLOW RESERVE',
     condition: 'Provisional housing district',
     x: 100,
-    y: 520,
-    width: 650,
+    y: 560,
+    width: 680,
     height: 270,
   },
   {
@@ -226,7 +226,7 @@ export const POT_POSITION = { x: 1080, y: 930 };
 export const RARE_BEGONIA_POSITION = { x: 2940, y: 930 };
 // Oversized starting-world pot. It is deliberately not collectible until a
 // future trolley or heavy-lift upgrade exists.
-export const HEAVY_POT_POSITION = { x: 3150, y: 920 };
+export const HEAVY_POT_POSITION = { x: 2110, y: 920 };
 export const START_POSITION = { x: 560, y: 890 };
 export const BROKEN_POT_PIECES_SCALE = 2.268;
 export const BROKEN_POT_PIECE_COUNT = 4;

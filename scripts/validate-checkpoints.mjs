@@ -29,7 +29,9 @@ try {
   const accepted = snapshots.get('window-job-accepted')?.progress;
   if (!accepted?.buySellBwUpgradePending || accepted.buildings['buy-sell'].graphicsEra !== 'green-crt') throw new Error('Cleaning-job checkpoint does not preserve the pending Green CRT shop state.');
   const bw = snapshots.get('buy-sell-bw-online')?.progress;
-  if (bw?.buySellBwUpgradePending || bw?.buildings['buy-sell'].graphicsEra !== 'atari-bw') throw new Error('Buy/Sell B&W exit checkpoint is inconsistent.');
+  if (bw?.buySellBwUpgradePending || bw?.buySellBwUpgradeAcknowledged || bw?.buildings['buy-sell'].graphicsEra !== 'atari-bw') throw new Error('Buy/Sell B&W exit checkpoint is inconsistent.');
+  const bwReentered = snapshots.get('buy-sell-bw-reentered')?.progress;
+  if (!bwReentered?.buySellBwUpgradeAcknowledged) throw new Error('Buy/Sell re-entry checkpoint did not preserve the upgrade acknowledgement.');
   const raster = snapshots.get('graphics-upgrade-installed')?.progress;
   if (!raster?.graphicsUpgradeInstalled || raster.colourUpgradeInstalled
     || raster.buildings['buy-sell'].graphicsEra !== 'atari-bw'

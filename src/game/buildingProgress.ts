@@ -16,7 +16,7 @@ export const DEFAULT_BUILDING_PROGRESS: BuildingProgressState = {
   'buy-sell': { operationalState: 'operational', graphicsEra: 'green-crt' },
   'starter-apartment': { operationalState: 'operational', graphicsEra: 'green-crt' },
   'real-estate': { operationalState: 'operational', graphicsEra: 'green-crt' },
-  nursery: { operationalState: 'vacant', graphicsEra: 'atari-bw' },
+  nursery: { operationalState: 'vacant', graphicsEra: 'green-crt' },
 };
 
 export type BuildingUpgradeRequirement =
