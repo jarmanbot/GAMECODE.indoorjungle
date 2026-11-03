@@ -7,17 +7,24 @@
 > arithmetic remains below, these constants and `npm run check:economy` take
 > precedence.
 
+> Common Parlour Palm progression note (3 November 2026): the first genuine
+> Basil or Mint harvest sale reveals one Common Parlour Palm at the original
+> Golden Pothos position. Collecting it—not receiving the POVO key—starts the
+> Atari-colour graphics-module sequence. It is a unique, persistent item worth
+> 250 coins; selling or reloading cannot respawn or duplicate it.
+
 ## Opening graphics progression — current decision
 
 Graphics eras are explicit per system, not one global automatic sequence.
-Fresh saves start with Green CRT Alex, interface, Buy/Sell and Real Estate;
-the opening tower is restrained Atari colour, while the apartment, Nursery
-vacant lot and street remain Atari B&W. First Pothos collection advances only
-Buy/Sell to Atari B&W. First cleaning completion advances only Real Estate to
-Atari B&W. The repaired-pot module installation advances Alex and Auto UI to
-Atari B&W, applies the one-time 25% visual-only Alex scale, advances Buy/Sell
-to Atari colour, and places the Nursery in Green CRT construction. Existing
-progress is migrated forward without replaying milestone rewards or prompts.
+Fresh saves start with Green CRT Alex, interface, Buy/Sell, Real Estate and
+POVO. The opening tower is restrained Atari colour. Accepting the cleaning job
+and subsequently leaving Buy/Sell advances that building to Atari B&W. The
+repaired-pot module installation advances Alex and Auto UI to Atari B&W while
+Buy/Sell stays B&W, Real Estate and POVO stay Green CRT, and the Nursery enters
+Green CRT construction. The first later harvest sale reveals the one-time
+Common Parlour Palm; collecting it advances Buy/Sell, Real Estate and POVO to
+Atari colour. Existing progress is migrated without replaying milestone
+rewards or prompts.
 
 Audit date: 25 October 2026
 

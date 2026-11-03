@@ -27,7 +27,7 @@ try {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   if (packageJson.version !== '0.5.0-playtest.1') throw new Error('Application version is not authoritative in package.json.');
   const definitions = Object.fromEntries(plants.PLANT_SPECIES.map((species) => [species, plants.getPlantDefinition(species)]));
-  if (world.WINDOW_JOB_REWARD !== 10 || world.BASIL_DELIVERY_REWARD !== 10 || world.RARE_BEGONIA_SALE_PRICE !== 150) throw new Error('Opening economy values are incorrect.');
+  if (world.WINDOW_JOB_REWARD !== 10 || world.BASIL_DELIVERY_REWARD !== 10 || world.RARE_BEGONIA_SALE_PRICE !== 150 || world.COMMON_PARLOUR_PALM_SALE_PRICE !== 250) throw new Error('Opening economy values are incorrect.');
   if (definitions.basil.harvestPrice !== 8 || definitions.mint.harvestPrice !== 14 || definitions['dwarf-marigold'].harvestPrice !== 35 || definitions['peace-lily'].harvestPrice !== 50) throw new Error('Crop sale values are incorrect.');
   if (world.SECOND_RENTAL_MOVE_COST !== 540) throw new Error('Two-bedroom deduction changed.');
   if (world.getShopBuybackPrice(8) !== 12 || world.getShopBuybackPrice(14) !== 20 || world.getShopBuybackPrice(50) !== 70 || world.getShopBuybackPrice(150) !== 210) throw new Error('Authoritative buyback pricing is incorrect.');
@@ -40,6 +40,8 @@ try {
   if (!scene.includes('shouldShowOpeningGoldenPothos()')
     || !scene.includes("this.progress.shopStock.some((entry) => entry.item === 'small-golden-pothos')")
     || !scene.includes('this.progress.openingGoldenPothosCollected = true;')) throw new Error('Opening Golden Pothos can respawn after collection or sale.');
+  if (!scene.includes('shouldShowCommonParlourPalm()') || !scene.includes('this.progress.commonParlourPalmCollected = true;')
+    || !scene.includes("this.progress.colourUpgradeStage = 'prompt'")) throw new Error('Common Parlour Palm colour-upgrade trigger is incomplete.');
   if (!hud.includes('CONFIRM PREMIUM PURCHASE') || !hud.includes('data-shop-confirm-premium')) throw new Error('Premium purchases lack explicit confirmation.');
   if (!vite.includes('COMMIT_REF') || !vite.includes("return 'local'") || !vite.includes('__APP_VERSION__')) throw new Error('Build identifier fallback/version injection is incomplete.');
   console.log('Playtest validation passed: version, economy, build identity, developer gate, save isolation and premium confirmation.');

@@ -14,8 +14,8 @@ The current fresh-save playtest is expected to follow this implemented route:
 4. Collect all four special-pot pieces in any order, put the pieces down from the Bag, and complete ten repair actions. Pick up the repaired pot to install and acknowledge the first graphics upgrade.
 5. Sell the repaired pot through Buy/Sell. The Rare Spotted Begonia at the far-right accessible edge is an optional 150-coin exploration reward, not a housing requirement.
 6. After the opening sale, paid window job and repair are complete, use Rose's Real Estate menu to pay the 60-coin starter bond, receive the POVO room key and one-time Welcome Gift, then enter the apartment.
-7. Place pots on the grow table; plant, water, grow, harvest, and sell genuine basil and mint. Repeat implemented crop sales as needed to save the additional second-rental payment.
-8. Once genuine basil and mint harvest sales are recorded and 540 additional coins are available, arrange the move through Rose. The transfer records the 600-coin total bond and unlocks the two-room rental with six growing positions.
+7. Place pots on the grow table; plant, water, grow, harvest, and sell genuine basil and mint. After the first genuine Basil or Mint harvest sale, a one-time **Common Parlour Palm** appears where the opening Pothos was found. Collecting it starts the colour graphics-module sequence; the Palm may then be sold for 250 coins and cannot respawn or pay twice.
+8. Repeat implemented crop sales as needed to save the additional second-rental payment. Once genuine basil and mint harvest sales are recorded and 540 additional coins are available, arrange the move through Rose. The transfer records the 600-coin total bond and unlocks the two-room rental with six growing positions.
 
 The exact candidate endpoint is the successful second-rental transfer. A one-time
 **PLAYTEST COMPLETE** modal appears at that point (and on Continue for a compatible
@@ -39,7 +39,9 @@ with the build identifier, build date and save-data version.
   presentation to Atari B&W, enlarges Alex's rendering by 25% without changing
   collision or movement geometry, keeps Buy/Sell Atari B&W and Real Estate and
   POVO Green CRT, and moves the Nursery to Green CRT under-construction state.
-- A separate room-key colour upgrade advances Buy/Sell, Real Estate and POVO
+- The POVO room key no longer triggers colour. Selling the first genuine Basil
+  or Mint harvest reveals the one-time Common Parlour Palm at the opening
+  Pothos location. Collecting that Palm advances Buy/Sell, Real Estate and POVO
   directly to Atari colour. Nursery progression remains independent.
 - Settings exposes only unlocked Alex styles. Interface graphics provides Auto
   and Green CRT initially, then unlocks Atari B&W after installation.

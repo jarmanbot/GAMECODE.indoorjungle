@@ -21,6 +21,7 @@ import {
   OPENING_POTHOS_SALE_PRICE,
   OPENING_POTHOS_DELIVERY_REWARD,
   REPAIRED_POT_SALE_PRICE,
+  COMMON_PARLOUR_PALM_SALE_PRICE,
   RARE_BEGONIA_SALE_PRICE,
   WINDOW_JOB_REWARD,
   RENTAL_BOND_COST,
@@ -1273,11 +1274,14 @@ export class HudController {
       const potLabel = this.potCondition === 'broken'
         ? 'Broken special collectible pot'
         : this.potCondition === 'repaired' ? 'Repaired special collectible pot'
+          : this.inventoryItem === 'common-parlour-palm' ? 'Common Parlour Palm'
           : this.inventoryItem === 'rare-spotted-begonia' ? 'Rare Spotted Begonia' : 'Small Golden Pothos';
       const potNote = this.potCondition === 'broken'
         ? 'Collect the pieces, then repair this special empty pot.'
         : this.potCondition === 'repaired'
           ? `Empty and ready to sell at ${BUY_SELL_NAME} for ${REPAIRED_POT_SALE_PRICE} coins.`
+          : this.inventoryItem === 'common-parlour-palm'
+            ? `${BUY_SELL_NAME} is buying it for ${COMMON_PARLOUR_PALM_SALE_PRICE} coins.`
           : this.inventoryItem === 'rare-spotted-begonia'
             ? `${BUY_SELL_NAME} is currently buying it for ${RARE_BEGONIA_SALE_PRICE} coins.`
             : `Opening delivery. Sell it at ${BUY_SELL_NAME} for ${OPENING_POTHOS_SALE_PRICE} coins.`;
@@ -1415,6 +1419,7 @@ export class HudController {
       this.bindButtonActivation(sellButton, () => {
         const quantity = Number(sellButton.closest<HTMLElement>('.shop-offer')?.querySelector<HTMLInputElement>('[data-shop-quantity]')?.value ?? '1');
         if (sellButton.dataset.shopSell === 'repaired') this.scene?.sellRepairedPot();
+        else if (sellButton.dataset.shopSell === 'common-parlour-palm') this.scene?.sellCommonParlourPalm();
         else if (sellButton.dataset.shopSell === 'rare-spotted-begonia') this.scene?.sellRareSpottedBegonia();
         else if (isPlantSpecies(sellButton.dataset.shopSell)) this.scene?.sellPlantHarvest(sellButton.dataset.shopSell, quantity);
         else this.scene?.sellOpeningPot();
@@ -1672,6 +1677,7 @@ export class HudController {
       : `<div class="shop-quantity-row is-single"><strong data-shop-total>${transaction === 'sell' ? 'SELL' : 'BUY'} FOR ${unitPrice} COINS</strong></div>`;
     const stockName = (entry: ShopStockEntry): string => entry.item === 'small-golden-pothos'
       ? 'Small Golden Pothos'
+      : entry.item === 'common-parlour-palm' ? 'Common Parlour Palm'
       : entry.item === 'rare-spotted-begonia' ? 'Rare Spotted Begonia'
       : entry.item === 'special-repair-pot' ? 'Empty repaired pot'
         : getPlantDefinitionByProduct(entry.item).harvestLabel;
@@ -1681,6 +1687,7 @@ export class HudController {
     const stockQuality = (entry: ShopStockEntry): string => entry.quality === DEFAULT_SHOP_STOCK_QUALITY ? '' : ` · ${this.escapeHtml(entry.quality)}`;
     const sellOffers = [
       shop.inventoryPot === 'ordinary' && shop.inventoryItem === 'small-golden-pothos' ? `<div class="shop-offer"><div class="inventory-art">▱</div><div class="shop-offer-copy"><strong>Small Golden Pothos</strong><small>Sell for ${OPENING_POTHOS_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(OPENING_POTHOS_SALE_PRICE)} coins</small></div>${quantityControl(1, OPENING_POTHOS_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="ordinary">SELL FOR ${OPENING_POTHOS_SALE_PRICE} COINS</button></div>` : '',
+      shop.inventoryPot === 'ordinary' && shop.inventoryItem === 'common-parlour-palm' ? `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>Common Parlour Palm</strong><small>Sell for ${COMMON_PARLOUR_PALM_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(COMMON_PARLOUR_PALM_SALE_PRICE)} coins</small></div>${quantityControl(1, COMMON_PARLOUR_PALM_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="common-parlour-palm">SELL FOR ${COMMON_PARLOUR_PALM_SALE_PRICE} COINS</button></div>` : '',
       shop.inventoryPot === 'ordinary' && shop.inventoryItem === 'rare-spotted-begonia' ? `<div class="shop-offer"><div class="inventory-art">♣</div><div class="shop-offer-copy"><strong>Rare Spotted Begonia</strong><small>Ordinary wanted purchase · Sell for ${RARE_BEGONIA_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(RARE_BEGONIA_SALE_PRICE)} coins</small></div>${quantityControl(1, RARE_BEGONIA_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="rare-spotted-begonia">SELL FOR ${RARE_BEGONIA_SALE_PRICE} COINS</button></div>` : '',
       shop.inventoryPot === 'repaired' ? `<div class="shop-offer"><div class="inventory-art">◈</div><div class="shop-offer-copy"><strong>Empty repaired pot</strong><small>Sell for ${REPAIRED_POT_SALE_PRICE} coins · Buy back for ${getShopBuybackPrice(REPAIRED_POT_SALE_PRICE)} coins</small></div>${quantityControl(1, REPAIRED_POT_SALE_PRICE, 'sell')}<button class="shop-sell-button" type="button" data-shop-sell="repaired">SELL FOR ${REPAIRED_POT_SALE_PRICE} COINS</button></div>` : '',
       ...PLANT_SPECIES.map((species) => {
@@ -1693,13 +1700,15 @@ export class HudController {
     const stockOffers = shop.shopStock.map((entry) => {
       const unitPrice = getShopBuybackPrice(entry.item === 'small-golden-pothos'
         ? OPENING_POTHOS_SALE_PRICE
+        : entry.item === 'common-parlour-palm'
+          ? COMMON_PARLOUR_PALM_SALE_PRICE
         : entry.item === 'rare-spotted-begonia'
           ? RARE_BEGONIA_SALE_PRICE
         : entry.item === 'special-repair-pot'
           ? REPAIRED_POT_SALE_PRICE
           : getPlantDefinitionByProduct(entry.item).harvestPrice);
       const quantity = entry.quantity > 1 ? ` ×${entry.quantity}` : '';
-      return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'rare-spotted-begonia' ? '♣' : entry.item === 'special-repair-pot' ? '◈' : isPlantProductItem(entry.item) && getPlantDefinitionByProduct(entry.item).yieldMode === 'whole-plant' ? '♣' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
+      return `<div class="shop-offer" data-stock-id="${this.escapeHtml(entry.stockId)}"><div class="inventory-art">${entry.item === 'small-golden-pothos' ? '▱' : entry.item === 'common-parlour-palm' || entry.item === 'rare-spotted-begonia' ? '♣' : entry.item === 'special-repair-pot' ? '◈' : isPlantProductItem(entry.item) && getPlantDefinitionByProduct(entry.item).yieldMode === 'whole-plant' ? '♣' : '✦'}</div><div class="shop-offer-copy"><strong>${stockName(entry)}${quantity}</strong><small>${stockCondition(entry)}${stockQuality(entry)} · ${unitPrice} coins each</small></div>${quantityControl(entry.quantity, unitPrice, 'buy')}<button class="shop-sell-button" type="button" data-shop-buy-stock="${this.escapeHtml(entry.stockId)}">BUY SELECTED</button></div>`;
     }).join('');
     const premiumOffers = PREMIUM_PLANT_CATALOG.filter((plant) => !shop.ownedPremiumPlants.includes(plant.id)).map((plant) => {
       const after = this.coins - plant.price;

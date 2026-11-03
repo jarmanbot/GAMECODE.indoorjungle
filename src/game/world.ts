@@ -337,6 +337,7 @@ export const OPENING_POTHOS_DELIVERY_REWARD = 15;
 export const BASIL_DELIVERY_REWARD = 10;
 export const WINDOW_JOB_REWARD = 10;
 export const REPAIRED_POT_SALE_PRICE = 75;
+export const COMMON_PARLOUR_PALM_SALE_PRICE = 250;
 export const RARE_BEGONIA_SALE_PRICE = 150;
 export const RENTAL_BOND_COST = 60;
 // Pass 5 prototype values. These are intentionally provisional and are not

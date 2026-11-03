@@ -12,8 +12,10 @@ try {
   const target = world.SECOND_RENTAL_MOVE_COST;
   const packPrice = (species) => definitions[species].seedPrice * definitions[species].seedPackQuantity;
 
-  const simulate = ({ name, pattern, slots = 3, begonia = false }) => {
-    let balance = postBondBalance + tutorialIncome + (begonia ? world.RARE_BEGONIA_SALE_PRICE : 0);
+  const simulate = ({ name, pattern, slots = 3, begonia = false, parlourPalm = false }) => {
+    let balance = postBondBalance + tutorialIncome
+      + (begonia ? world.RARE_BEGONIA_SALE_PRICE : 0)
+      + (parlourPalm ? world.COMMON_PARLOUR_PALM_SALE_PRICE : 0);
     const seeds = Object.fromEntries(plants.PLANT_SPECIES.map((species) => [species, 0]));
     let reusablePot = true;
     let cycles = 0;
@@ -55,10 +57,10 @@ try {
       serialGrowthMs += definition.growthDurationMs;
       cycles += 1;
     }
-    const saleActions = cycles + 2 + (begonia ? 1 : 0);
+    const saleActions = cycles + 2 + (begonia ? 1 : 0) + (parlourPalm ? 1 : 0);
     const activeSeconds = Math.round(cycles * 16 + saleActions * 6 + (seedPurchases + potPurchases) * 8 + 150);
     const parallelGrowthMs = Math.max(...slotAvailableAt);
-    return { name, slots, begonia, cropCycles: cycles + 2, postTutorialCycles: cycles, saleActions, seedCosts, potCosts,
+    return { name, slots, begonia, parlourPalm, cropCycles: cycles + 2, postTutorialCycles: cycles, saleActions, seedCosts, potCosts,
       serialGrowthMinutes: Number((serialGrowthMs / 60_000).toFixed(2)), parallelGrowthMinutes: Number((parallelGrowthMs / 60_000).toFixed(2)),
       estimatedActiveMinutes: Number((activeSeconds / 60).toFixed(2)), estimatedElapsedMinutes: Number(((activeSeconds * 1000 + parallelGrowthMs) / 60_000).toFixed(2)), finalBalance: balance };
   };
@@ -73,6 +75,8 @@ try {
     simulate({ name: 'Casual two-slot', pattern: ['basil', 'mint', 'dwarf-marigold', 'peace-lily'], slots: 2 }),
     simulate({ name: 'Mixed with optional Begonia', pattern: ['basil', 'mint', 'dwarf-marigold', 'peace-lily'], begonia: true }),
     simulate({ name: 'Mixed without Begonia', pattern: ['basil', 'mint', 'dwarf-marigold', 'peace-lily'], begonia: false }),
+    simulate({ name: 'Mixed with Common Parlour Palm', pattern: ['basil', 'mint', 'dwarf-marigold', 'peace-lily'], parlourPalm: true }),
+    simulate({ name: 'Mixed with Palm and optional Begonia', pattern: ['basil', 'mint', 'dwarf-marigold', 'peace-lily'], parlourPalm: true, begonia: true }),
   ];
   const expected = { basil: { sale: 8, net: 6, rate: 12 }, mint: { sale: 14, net: 12, rate: 12 }, 'dwarf-marigold': { sale: 35, net: 17, rate: 11.33 }, 'peace-lily': { sale: 50, net: 25, rate: 10 } };
   const cropEconomy = plants.PLANT_SPECIES.map((species) => {
@@ -83,7 +87,7 @@ try {
     if (definition.harvestPrice !== expected[species].sale || net !== expected[species].net || rate !== expected[species].rate) throw new Error(`Unexpected calibrated crop economy for ${species}.`);
     return { species, seedCost: definition.seedPrice, potCost, sale: definition.harvestPrice, net, growthSeconds: definition.growthDurationMs / 1000, netPerGrowthMinute: rate, buyback: world.getShopBuybackPrice(definition.harvestPrice) };
   });
-  if (world.WINDOW_JOB_REWARD !== 10 || world.BASIL_DELIVERY_REWARD !== 10 || world.RARE_BEGONIA_SALE_PRICE !== 150) throw new Error('Approved opening economy constants are not calibrated.');
+  if (world.WINDOW_JOB_REWARD !== 10 || world.BASIL_DELIVERY_REWARD !== 10 || world.RARE_BEGONIA_SALE_PRICE !== 150 || world.COMMON_PARLOUR_PALM_SALE_PRICE !== 250) throw new Error('Approved opening economy constants are not calibrated.');
   if (world.SECOND_RENTAL_TOTAL_BOND !== 600 || world.RENTAL_BOND_COST !== 60 || target !== 540) throw new Error('Housing payment constants are inconsistent.');
   if (routes.some((route) => route.finalBalance < target)) throw new Error('A deterministic route failed to reach the move amount.');
   const dominant = [...routes.slice(0, 4)].sort((a, b) => a.estimatedElapsedMinutes - b.estimatedElapsedMinutes)[0].name;

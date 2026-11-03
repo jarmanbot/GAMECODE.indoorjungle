@@ -840,6 +840,39 @@ export function drawRareSpottedBegonia(g: Phaser.GameObjects.Graphics, x: number
     .fillCircle(x + 7 * scale, y - 99 * scale, 3 * scale);
 }
 
+export function drawCommonParlourPalm(g: Phaser.GameObjects.Graphics, x: number, y: number, scale = 1, colour: SpecialItemVisualStyle = false): void {
+  if (colour === 'green-crt') {
+    g.fillStyle(CRT_BLACK, 1).fillRect(x - 22 * scale, y - 34 * scale, 44 * scale, 49 * scale);
+    g.lineStyle(Math.max(2, 3 * scale), CRT_GREEN, 1)
+      .strokeRect(x - 22 * scale, y - 34 * scale, 44 * scale, 9 * scale)
+      .lineBetween(x - 16 * scale, y - 25 * scale, x - 11 * scale, y + 15 * scale)
+      .lineBetween(x + 16 * scale, y - 25 * scale, x + 11 * scale, y + 15 * scale)
+      .lineBetween(x - 11 * scale, y + 15 * scale, x + 11 * scale, y + 15 * scale);
+  } else {
+    drawPot(g, x, y, scale, colour);
+  }
+  const leaf = colour === 'green-crt' ? CRT_GREEN : colour ? 0x4f9c59 : 0xbfc5c3;
+  const outline = colour === 'green-crt' ? CRT_GREEN : INK;
+  g.lineStyle(Math.max(2, 3 * scale), outline, 1)
+    .lineBetween(x, y - 38 * scale, x, y - 100 * scale)
+    .lineBetween(x, y - 68 * scale, x - 30 * scale, y - 96 * scale)
+    .lineBetween(x, y - 72 * scale, x + 31 * scale, y - 104 * scale)
+    .lineBetween(x, y - 82 * scale, x - 20 * scale, y - 118 * scale)
+    .lineBetween(x, y - 84 * scale, x + 18 * scale, y - 121 * scale);
+  g.fillStyle(leaf, colour === 'green-crt' ? 0.2 : 1)
+    .fillEllipse(x - 33 * scale, y - 98 * scale, 38 * scale, 13 * scale)
+    .fillEllipse(x + 34 * scale, y - 106 * scale, 40 * scale, 14 * scale)
+    .fillEllipse(x - 23 * scale, y - 121 * scale, 34 * scale, 12 * scale)
+    .fillEllipse(x + 22 * scale, y - 124 * scale, 34 * scale, 12 * scale);
+  if (colour === 'green-crt') {
+    g.lineStyle(Math.max(2, 2 * scale), CRT_GREEN, 1)
+      .strokeEllipse(x - 33 * scale, y - 98 * scale, 38 * scale, 13 * scale)
+      .strokeEllipse(x + 34 * scale, y - 106 * scale, 40 * scale, 14 * scale)
+      .strokeEllipse(x - 23 * scale, y - 121 * scale, 34 * scale, 12 * scale)
+      .strokeEllipse(x + 22 * scale, y - 124 * scale, 34 * scale, 12 * scale);
+  }
+}
+
 export type BasilVisualStage = 'empty' | 'planted' | 'seedling' | 'mature';
 
 export type GrowingCropVisualSpecies = 'basil' | 'mint' | 'dwarf-marigold' | 'peace-lily';

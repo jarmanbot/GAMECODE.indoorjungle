@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
-import { drawBuySellBuilding, drawNeighborhood, drawPot, drawGoldenPothos, drawRareSpottedBegonia, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, drawMatchingDoor, drawStarterApartmentDoor, drawRealEstateDoor, setBuySellDoorOpen, setStarterApartmentDoorOpen, setRealEstateDoorOpen, type BasilVisualStage, type BuySellArtwork } from './art';
+import { drawBuySellBuilding, drawNeighborhood, drawPot, drawGoldenPothos, drawRareSpottedBegonia, drawCommonParlourPalm, drawBrokenPot, drawBrokenPotPieces, drawGrowingCrop, drawMatchingDoor, drawStarterApartmentDoor, drawRealEstateDoor, setBuySellDoorOpen, setStarterApartmentDoorOpen, setRealEstateDoorOpen, type BasilVisualStage, type BuySellArtwork } from './art';
 import { AudioController } from './AudioController';
 import { areDevToolsUnlocked, DEV_TOOLS_ENABLED, PHONE_HYBRID_CONTROLS } from './config';
 import { createDevCheckpoint, type DevCheckpointScene } from './devCheckpoints';
 import {
   DEFAULT_SHOP_STOCK_QUALITY,
   DEFAULT_PROGRESS,
+  COMMON_PARLOUR_PALM_INSTANCE_ID,
   OPENING_GOLDEN_POTHOS_INSTANCE_ID,
   RARE_SPOTTED_BEGONIA_INSTANCE_ID,
   sanitizeProgress,
@@ -93,6 +94,7 @@ import {
   OPENING_POTHOS_SALE_PRICE,
   WINDOW_JOB_REWARD,
   REPAIRED_POT_SALE_PRICE,
+  COMMON_PARLOUR_PALM_SALE_PRICE,
   RARE_BEGONIA_SALE_PRICE,
   RENTAL_BOND_COST,
   SECOND_RENTAL_TOTAL_BOND,
@@ -147,7 +149,7 @@ interface Car {
   direction: 1 | -1;
 }
 
-type PendingInteraction = 'pickup' | 'pickup-begonia' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-real-estate' | 'exit-real-estate' | 'enter-home' | 'exit-home' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot' | 'gardening-action';
+type PendingInteraction = 'pickup' | 'pickup-parlour-palm' | 'pickup-begonia' | 'pickup-placed-item' | 'select-broken-piece' | 'pickup-repaired' | 'window-clean' | 'enter-shop' | 'counter' | 'exit-shop' | 'enter-real-estate' | 'exit-real-estate' | 'enter-home' | 'exit-home' | 'place-starter-pot' | 'select-basil-pot' | 'place-growing-pot' | 'select-growing-pot' | 'gardening-action';
 type PlayerFacing = 'front' | 'back' | 'left' | 'right';
 type GardeningActionType = 'plant' | 'water' | 'fertilize' | 'harvest';
 interface GardeningAction {
@@ -191,6 +193,7 @@ export class GameScene extends Phaser.Scene {
   private readonly audio: AudioController;
   private player!: Phaser.GameObjects.Graphics;
   private pot!: Phaser.GameObjects.Graphics;
+  private parlourPalm!: Phaser.GameObjects.Graphics;
   private rareBegonia!: Phaser.GameObjects.Graphics;
   private heavyPot!: Phaser.GameObjects.Graphics;
   private placedItemDisplay?: Phaser.GameObjects.Graphics;
@@ -370,6 +373,7 @@ export class GameScene extends Phaser.Scene {
     this.createCars();
     this.createPlayer();
     this.createPot();
+    this.createParlourPalm();
     this.createRareBegonia();
     this.createHeavyPot();
     this.createBrokenPot();
@@ -1321,6 +1325,8 @@ export class GameScene extends Phaser.Scene {
     this.progress.inventoryInstanceId = this.inventoryPot
       ? this.inventoryInstanceId ?? (carriedItem === 'rare-spotted-begonia'
         ? RARE_SPOTTED_BEGONIA_INSTANCE_ID
+        : carriedItem === 'common-parlour-palm'
+          ? COMMON_PARLOUR_PALM_INSTANCE_ID
         : this.inventoryPot === 'ordinary' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID)
       : null;
     this.progress.saleComplete = this.saleComplete;
@@ -1628,6 +1634,14 @@ export class GameScene extends Phaser.Scene {
 
   private updateProgressVisuals(): void {
     if (this.pot) this.pot.setVisible(this.shouldShowOpeningGoldenPothos());
+    if (this.parlourPalm) {
+      this.parlourPalm.clear();
+      drawCommonParlourPalm(this.parlourPalm, 0, 0, 0.78, this.progress.colourUpgradeInstalled);
+      // Harvest sales happen inside Buy/Sell. Keep the newly unlocked street
+      // collectible hidden until Alex returns outside instead of briefly
+      // rendering a street object over the shop interior.
+      this.parlourPalm.setVisible(!this.shopInterior && !this.homeInterior && this.shouldShowCommonParlourPalm());
+    }
     if (this.rareBegonia) {
       this.rareBegonia.clear();
       drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
@@ -2345,6 +2359,7 @@ export class GameScene extends Phaser.Scene {
 
   private getShopSalePrice(item: ShopStockItem): number {
     if (item === 'small-golden-pothos') return OPENING_POTHOS_SALE_PRICE;
+    if (item === 'common-parlour-palm') return COMMON_PARLOUR_PALM_SALE_PRICE;
     if (item === 'rare-spotted-begonia') return RARE_BEGONIA_SALE_PRICE;
     if (item === 'special-repair-pot') return REPAIRED_POT_SALE_PRICE;
     return getPlantDefinitionByProduct(item).harvestPrice;
@@ -2373,7 +2388,8 @@ export class GameScene extends Phaser.Scene {
 
     const id = instanceId?.trim() || (item === 'small-golden-pothos'
       ? OPENING_GOLDEN_POTHOS_INSTANCE_ID
-      : item === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID);
+      : item === 'common-parlour-palm' ? COMMON_PARLOUR_PALM_INSTANCE_ID
+        : item === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID);
     if (this.progress.shopStock.some((entry) => entry.item === item && entry.instanceIds.includes(id))) return false;
     this.progress.shopStock.push({ stockId: id, item, quality, condition, quantity: 1, instanceIds: [id] });
     return true;
@@ -2469,6 +2485,32 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  sellCommonParlourPalm(): void {
+    if (!this.shopInterior || this.shopTransactionBusy || this.inventoryPot !== 'ordinary' || this.progress.inventoryItem !== 'common-parlour-palm') return;
+    const instanceId = this.inventoryInstanceId ?? COMMON_PARLOUR_PALM_INSTANCE_ID;
+    if (!this.addShopStock('common-parlour-palm', 'ordinary', 1, instanceId)) return;
+    this.inventoryHasPot = false;
+    this.inventoryPot = null;
+    this.inventoryInstanceId = null;
+    this.progress.inventoryPot = null;
+    this.progress.inventoryItem = null;
+    this.progress.inventoryInstanceId = null;
+    this.progress.commonParlourPalmCollected = true;
+    this.progress.commonParlourPalmSold = true;
+    this.coins += COMMON_PARLOUR_PALM_SALE_PRICE;
+    this.progress.coins = this.coins;
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.refreshShopPanel(`Common Parlour Palm sold for ${COMMON_PARLOUR_PALM_SALE_PRICE} coins.`);
+    this.startShopkeeperTransaction(
+      'common-parlour-palm',
+      1,
+      'sell',
+      this.getShopShelfPosition(instanceId),
+      `Common Parlour Palm sold for ${COMMON_PARLOUR_PALM_SALE_PRICE} coins.`,
+    );
+  }
+
   sellRepairedPot(): void {
     if (!this.shopInterior || this.shopTransactionBusy || this.inventoryPot !== 'repaired') return;
     const instanceId = this.inventoryInstanceId ?? SPECIAL_REPAIR_POT_INSTANCE_ID;
@@ -2533,7 +2575,9 @@ export class GameScene extends Phaser.Scene {
       this.progress.inventoryPot = this.inventoryPot;
       this.progress.inventoryItem = removed.item === 'rare-spotted-begonia'
         ? 'rare-spotted-begonia'
-        : this.inventoryPot === 'ordinary' ? 'small-golden-pothos' : 'special-repair-pot';
+        : removed.item === 'common-parlour-palm'
+          ? 'common-parlour-palm'
+          : this.inventoryPot === 'ordinary' ? 'small-golden-pothos' : 'special-repair-pot';
       this.progress.inventoryInstanceId = this.inventoryInstanceId;
     }
     this.progress.coins = this.coins;
@@ -2542,7 +2586,8 @@ export class GameScene extends Phaser.Scene {
     const label = isPlantProductItem(removed.item)
       ? getPlantDefinitionByProduct(removed.item).harvestLabel
       : removed.item === 'small-golden-pothos' ? 'Small Golden Pothos'
-        : removed.item === 'rare-spotted-begonia' ? 'Rare Spotted Begonia' : 'Empty repaired pot';
+        : removed.item === 'rare-spotted-begonia' ? 'Rare Spotted Begonia'
+          : removed.item === 'common-parlour-palm' ? 'Common Parlour Palm' : 'Empty repaired pot';
     this.hud.refreshShopPanel(`Bought ${amount} ${label}${amount === 1 ? '' : 's'} for ${total} coins.`);
     this.startShopkeeperTransaction(removed.item, amount, 'buy', sourcePosition, `${label} added to the Bag.`);
   }
@@ -2649,13 +2694,9 @@ export class GameScene extends Phaser.Scene {
     this.setModalOpen(true);
     this.hud.showPropertyHandover(message, () => {
       this.progress.propertyHandoversAcknowledged['starter-apartment'] = true;
-      if (!this.progress.colourUpgradeInstalled && this.progress.colourUpgradeStage === 'none') {
-        this.progress.colourUpgradeStage = 'prompt';
-      }
       this.saveProgress();
       this.setModalOpen(false);
       this.syncHudState();
-      this.time.delayedCall(0, () => this.presentColourUpgradeIfNeeded());
     });
   }
 
@@ -3080,6 +3121,7 @@ export class GameScene extends Phaser.Scene {
     if (species === 'mint') this.progress.mintHarvestSaleRecorded = true;
     this.progress.task = 'buy-seeds';
     this.updateSecondRentalObjective();
+    this.updateProgressVisuals();
     this.saveProgress();
     this.syncHudState();
     this.refreshWantedSign();
@@ -3099,6 +3141,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.coins = this.coins;
     this.progress.task = this.progress.additionalGrowingPotsPurchased < 2 ? 'place-pot' : 'buy-seeds';
     this.updateSecondRentalObjective();
+    this.updateProgressVisuals();
     this.saveProgress();
     this.syncHudState();
     this.refreshWantedSign();
@@ -3682,6 +3725,12 @@ export class GameScene extends Phaser.Scene {
     this.pot.setVisible(this.shouldShowOpeningGoldenPothos());
   }
 
+  private createParlourPalm(): void {
+    this.parlourPalm = this.add.graphics().setDepth(22).setPosition(POT_POSITION.x, POT_POSITION.y);
+    drawCommonParlourPalm(this.parlourPalm, 0, 0, 0.78, this.progress.colourUpgradeInstalled);
+    this.parlourPalm.setVisible(this.shouldShowCommonParlourPalm());
+  }
+
   private createRareBegonia(): void {
     this.rareBegonia = this.add.graphics().setDepth(22).setPosition(RARE_BEGONIA_POSITION.x, RARE_BEGONIA_POSITION.y);
     drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
@@ -3718,6 +3767,8 @@ export class GameScene extends Phaser.Scene {
     this.placedItemDisplay.setPosition(placed.x, placed.y).clear();
     if (placed.item === 'small-golden-pothos') {
       drawGoldenPothos(this.placedItemDisplay, 0, 0, 0.9, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
+    } else if (placed.item === 'common-parlour-palm') {
+      drawCommonParlourPalm(this.placedItemDisplay, 0, 0, 0.78, this.progress.colourUpgradeInstalled);
     } else if (placed.item === 'rare-spotted-begonia') {
       drawRareSpottedBegonia(this.placedItemDisplay, 0, 0, 0.82, this.progress.colourUpgradeInstalled);
     } else if (placed.condition === 'broken') {
@@ -3788,6 +3839,15 @@ export class GameScene extends Phaser.Scene {
       && this.progress.inventoryItem !== 'small-golden-pothos'
       && this.progress.placedWorldItem?.item !== 'small-golden-pothos'
       && !this.progress.shopStock.some((entry) => entry.item === 'small-golden-pothos');
+  }
+
+  private shouldShowCommonParlourPalm(): boolean {
+    return (this.progress.basilHarvestSaleRecorded || this.progress.mintHarvestSaleRecorded)
+      && !this.progress.commonParlourPalmCollected
+      && !this.progress.colourUpgradeInstalled
+      && this.progress.inventoryItem !== 'common-parlour-palm'
+      && this.progress.placedWorldItem?.item !== 'common-parlour-palm'
+      && !this.progress.shopStock.some((entry) => entry.item === 'common-parlour-palm');
   }
 
   private getCollectedBrokenPotPieceIndices(): number[] {
@@ -4042,6 +4102,26 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         this.selectPendingInteraction('select-broken-piece', approach, tapPath);
+      }
+      return;
+    }
+    if (this.isNearPoint(point, POT_POSITION, 96) && this.parlourPalm.visible) {
+      if (this.inventoryHasPot) {
+        this.cancelTapWalk();
+        this.showToast('The Bag is carrying another loose pot. Put it down or sell it first.', 1800);
+        return;
+      }
+      const approach = this.getPotApproachPoint();
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, POT_POSITION.x, POT_POSITION.y) <= 115) {
+        this.selectPendingInteraction('pickup-parlour-palm', approach);
+      } else {
+        const tapPath = this.getTapPath(approach.x, approach.y);
+        if (!tapPath) {
+          this.cancelTapWalk();
+          this.showToast('That plant cannot be reached.', 1500);
+          return;
+        }
+        this.selectPendingInteraction('pickup-parlour-palm', approach, tapPath);
       }
       return;
     }
@@ -4521,6 +4601,7 @@ export class GameScene extends Phaser.Scene {
     this.pendingInteraction = null;
     this.clearInteractionHighlight();
     if (interaction === 'pickup') this.collectPot();
+    if (interaction === 'pickup-parlour-palm') this.collectCommonParlourPalm();
     if (interaction === 'pickup-begonia') this.collectRareBegonia();
     if (interaction === 'pickup-placed-item') this.collectPlacedItem();
     if (interaction === 'select-broken-piece') this.selectBrokenPotPiece();
@@ -4578,7 +4659,27 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress();
     this.syncHudState();
     this.hud.highlightBag();
-    this.showToast('Found a Rare Spotted Begonia. Birch is buying it for 300 coins.', 2200);
+    this.showToast(`Found a Rare Spotted Begonia. Birch is buying it for ${RARE_BEGONIA_SALE_PRICE} coins.`, 2200);
+  }
+
+  private collectCommonParlourPalm(): void {
+    if (this.shopInterior || this.homeInterior || this.inventoryHasPot || !this.parlourPalm.visible) return;
+    if (this.progress.commonParlourPalmCollected) return;
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, POT_POSITION.x, POT_POSITION.y) > 120) return;
+    this.inventoryHasPot = true;
+    this.inventoryPot = 'ordinary';
+    this.inventoryInstanceId = COMMON_PARLOUR_PALM_INSTANCE_ID;
+    this.progress.inventoryPot = 'ordinary';
+    this.progress.inventoryItem = 'common-parlour-palm';
+    this.progress.inventoryInstanceId = COMMON_PARLOUR_PALM_INSTANCE_ID;
+    this.progress.commonParlourPalmCollected = true;
+    this.parlourPalm.setVisible(false);
+    if (!this.progress.colourUpgradeInstalled) this.progress.colourUpgradeStage = 'prompt';
+    this.saveProgress();
+    this.syncHudState();
+    this.hud.highlightBag();
+    this.showToast(`Found a Common Parlour Palm. Worth ${COMMON_PARLOUR_PALM_SALE_PRICE} coins.`, 1800);
+    if (!this.progress.colourUpgradeInstalled) this.time.delayedCall(700, () => this.presentColourUpgradeIfNeeded());
   }
 
   private collectPlacedItem(): void {
@@ -4609,6 +4710,7 @@ export class GameScene extends Phaser.Scene {
 
   private getPlacedItemLabel(item: Pick<PlacedWorldItem, 'item' | 'condition'>): string {
     if (item.item === 'small-golden-pothos') return 'Small Golden Pothos';
+    if (item.item === 'common-parlour-palm') return 'Common Parlour Palm';
     if (item.item === 'rare-spotted-begonia') return 'Rare Spotted Begonia';
     return item.condition === 'repaired' ? 'Repaired pot' : 'Broken pot';
   }
@@ -5243,6 +5345,7 @@ export class GameScene extends Phaser.Scene {
     this.shopkeeperCarry = this.add.graphics().setDepth(8);
     if (item === 'snake-plant' || item === 'monstera' || item === 'variegated-pothos') this.drawPremiumPlant(this.shopkeeperCarry, item, 0, 12, 0.52);
     else if (item === 'small-golden-pothos') drawGoldenPothos(this.shopkeeperCarry, 0, 12, 0.34, this.progress.colourUpgradeInstalled);
+    else if (item === 'common-parlour-palm') drawCommonParlourPalm(this.shopkeeperCarry, 0, 12, 0.3, this.progress.colourUpgradeInstalled);
     else if (item === 'rare-spotted-begonia') drawRareSpottedBegonia(this.shopkeeperCarry, 0, 12, 0.34, this.progress.colourUpgradeInstalled);
     else if (item === 'special-repair-pot') drawBrokenPot(this.shopkeeperCarry, 0, 12, 0.72, 10, this.progress.colourUpgradeInstalled);
     else if (isPlantProductItem(item)) this.drawHarvestCarry(this.shopkeeperCarry, getPlantDefinitionByProduct(item).species);
@@ -5680,6 +5783,8 @@ export class GameScene extends Phaser.Scene {
       const item = this.add.graphics().setDepth(4).setPosition(slot.x, slot.y - itemOffsetY);
       if (entry.item === 'small-golden-pothos') {
         drawGoldenPothos(item, 0, 0, 0.55, this.progress.colourUpgradeInstalled);
+      } else if (entry.item === 'common-parlour-palm') {
+        drawCommonParlourPalm(item, 0, 0, 0.42, this.progress.colourUpgradeInstalled);
       } else if (entry.item === 'rare-spotted-begonia') {
         drawRareSpottedBegonia(item, 0, 0, 0.5, this.progress.colourUpgradeInstalled);
       } else if (entry.item === 'special-repair-pot') {
@@ -5689,6 +5794,8 @@ export class GameScene extends Phaser.Scene {
       }
       const label = entry.item === 'small-golden-pothos'
         ? 'GOLDEN POTHOS'
+        : entry.item === 'common-parlour-palm'
+          ? 'PARLOUR PALM'
         : entry.item === 'rare-spotted-begonia'
           ? 'SPOTTED BEGONIA'
         : entry.item === 'special-repair-pot'

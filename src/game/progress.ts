@@ -21,13 +21,13 @@ import {
 } from './buildingProgress';
 
 export type PotCondition = 'ordinary' | 'broken' | 'repaired';
-export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia';
+export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | 'common-parlour-palm';
 export type EquippedTool = 'cleaner' | 'repair' | 'watering-can' | null;
 export type AlexGraphics = 'atari-bw' | 'green-screen';
 export type InterfaceTheme = 'auto' | 'green-crt' | 'atari-bw';
 export type GraphicsUpgradeStage = 'none' | 'prompt' | 'installing' | 'acknowledgement';
 export type BasilStage = 'empty' | 'planted' | 'seedling' | 'mature';
-export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | PlantProductItem;
+export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | 'common-parlour-palm' | PlantProductItem;
 export type ShopStockCondition = PotCondition | 'fresh' | 'living';
 export const SAVE_DATA_VERSION = 5;
 
@@ -51,6 +51,7 @@ export interface ShopStockEntry {
 export const OPENING_GOLDEN_POTHOS_INSTANCE_ID = 'opening-golden-pothos-1';
 export const SPECIAL_REPAIR_POT_INSTANCE_ID = 'special-repair-pot-1';
 export const RARE_SPOTTED_BEGONIA_INSTANCE_ID = 'rare-spotted-begonia-1';
+export const COMMON_PARLOUR_PALM_INSTANCE_ID = 'common-parlour-palm-1';
 export const BASIL_HARVEST_STOCK_ID = 'fresh-basil-leaves';
 export const MINT_HARVEST_STOCK_ID = 'fresh-mint-leaves';
 export const DWARF_MARIGOLD_STOCK_ID = 'potted-dwarf-marigold';
@@ -67,6 +68,8 @@ export interface ProgressState {
   playtestCompletionShown: boolean;
   openingComplete: boolean;
   openingGoldenPothosCollected: boolean;
+  commonParlourPalmCollected: boolean;
+  commonParlourPalmSold: boolean;
   rareBegoniaCollected: boolean;
   rareBegoniaSold: boolean;
   buildings: BuildingProgressState;
@@ -132,6 +135,8 @@ export const DEFAULT_PROGRESS: ProgressState = {
   playtestCompletionShown: false,
   openingComplete: false,
   openingGoldenPothosCollected: false,
+  commonParlourPalmCollected: false,
+  commonParlourPalmSold: false,
   rareBegoniaCollected: false,
   rareBegoniaSold: false,
   buildings: {
@@ -243,18 +248,19 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
   const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
   const tool = validTool(input.equippedTool) ? input.equippedTool : null;
-  const savedItem = input.inventoryItem === 'small-golden-pothos' || input.inventoryItem === 'special-repair-pot' || input.inventoryItem === 'rare-spotted-begonia' ? input.inventoryItem : null;
+  const savedItem = input.inventoryItem === 'small-golden-pothos' || input.inventoryItem === 'special-repair-pot' || input.inventoryItem === 'rare-spotted-begonia' || input.inventoryItem === 'common-parlour-palm' ? input.inventoryItem : null;
   const inventoryItem: InventoryItem | null = condition === null
     ? null
     : savedItem ?? (condition === 'ordinary' ? 'small-golden-pothos' : 'special-repair-pot');
   const savedInstanceId = typeof input.inventoryInstanceId === 'string' && input.inventoryInstanceId.trim() ? input.inventoryInstanceId.trim() : null;
-  const inventoryInstanceId = condition === null ? null : savedInstanceId ?? (inventoryItem === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID : condition === 'ordinary' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID);
+  const inventoryInstanceId = condition === null ? null : savedInstanceId ?? (inventoryItem === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID : inventoryItem === 'common-parlour-palm' ? COMMON_PARLOUR_PALM_INSTANCE_ID : condition === 'ordinary' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID);
   const rawPlacedItem = input.placedWorldItem && typeof input.placedWorldItem === 'object' ? input.placedWorldItem as Partial<PlacedWorldItem> : null;
   const placedItem = rawPlacedItem
-    && (rawPlacedItem.item === 'small-golden-pothos' || rawPlacedItem.item === 'special-repair-pot' || rawPlacedItem.item === 'rare-spotted-begonia')
+    && (rawPlacedItem.item === 'small-golden-pothos' || rawPlacedItem.item === 'special-repair-pot' || rawPlacedItem.item === 'rare-spotted-begonia' || rawPlacedItem.item === 'common-parlour-palm')
     && (rawPlacedItem.condition === 'ordinary' || rawPlacedItem.condition === 'broken' || rawPlacedItem.condition === 'repaired')
     && ((rawPlacedItem.item === 'small-golden-pothos' && rawPlacedItem.condition === 'ordinary')
       || (rawPlacedItem.item === 'rare-spotted-begonia' && rawPlacedItem.condition === 'ordinary')
+      || (rawPlacedItem.item === 'common-parlour-palm' && rawPlacedItem.condition === 'ordinary')
       || (rawPlacedItem.item === 'special-repair-pot' && (rawPlacedItem.condition === 'broken' || rawPlacedItem.condition === 'repaired')))
     && typeof rawPlacedItem.instanceId === 'string' && rawPlacedItem.instanceId.trim()
     && Number.isFinite(rawPlacedItem.x) && Number.isFinite(rawPlacedItem.y)
@@ -339,6 +345,12 @@ export function sanitizeProgress(value: unknown): ProgressState {
     || inventoryItem === 'rare-spotted-begonia'
     || placedItem?.item === 'rare-spotted-begonia'
     || rareBegoniaSold;
+  const commonParlourPalmSold = Boolean(input.commonParlourPalmSold) || shopStock.some((entry) => entry.item === 'common-parlour-palm');
+  const commonParlourPalmCollected = Boolean(input.commonParlourPalmCollected)
+    || inventoryItem === 'common-parlour-palm'
+    || placedItem?.item === 'common-parlour-palm'
+    || commonParlourPalmSold
+    || colourUpgradeInstalled;
   // Repair completion leaves the pot on the ground. The graphics upgrade is
   // deliberately unlocked only after that repaired pot has been picked up
   // (or a later saved state proves that it was picked up/sold).
@@ -349,8 +361,14 @@ export function sanitizeProgress(value: unknown): ProgressState {
   const graphicsUpgradeStage: GraphicsUpgradeStage = input.graphicsUpgradeStage === 'installing' || input.graphicsUpgradeStage === 'acknowledgement' || input.graphicsUpgradeStage === 'prompt'
     ? input.graphicsUpgradeStage
     : graphicsUpgradeUnlocked && !graphicsUpgradeInstalled ? 'prompt' : 'none';
-  const colourUpgradeStage: GraphicsUpgradeStage = input.colourUpgradeStage === 'installing' || input.colourUpgradeStage === 'acknowledgement' || input.colourUpgradeStage === 'prompt'
+  const savedColourUpgradeStage: GraphicsUpgradeStage = input.colourUpgradeStage === 'installing' || input.colourUpgradeStage === 'acknowledgement' || input.colourUpgradeStage === 'prompt'
     ? input.colourUpgradeStage
+    : 'none';
+  // Pre-palm saves could have a key-triggered pending colour module. Cancel
+  // that obsolete trigger; installed colour saves remain completed and do not
+  // receive another collectible.
+  const colourUpgradeStage: GraphicsUpgradeStage = typeof input.commonParlourPalmCollected === 'boolean' || colourUpgradeInstalled
+    ? savedColourUpgradeStage
     : 'none';
   const rawTask = input.task;
   const task: TaskState = rawTask === 'sell' || rawTask === 'clean' || rawTask === 'repair' || rawTask === 'sell-repaired' || rawTask === 'complete'
@@ -449,6 +467,8 @@ export function sanitizeProgress(value: unknown): ProgressState {
     playtestCompletionShown: Boolean(input.playtestCompletionShown),
     openingComplete,
     openingGoldenPothosCollected,
+    commonParlourPalmCollected,
+    commonParlourPalmSold,
     rareBegoniaCollected,
     rareBegoniaSold,
     buildings,
@@ -497,7 +517,7 @@ function sanitizeShopStock(value: unknown, legacyPothosStock: boolean, inventory
   for (const candidate of source) {
     if (!candidate || typeof candidate !== 'object') continue;
     const raw = candidate as Partial<ShopStockEntry> & { item?: string };
-    const item = raw.item === 'small-golden-pothos' || raw.item === 'special-repair-pot' || raw.item === 'rare-spotted-begonia' || isPlantProductItem(raw.item)
+    const item = raw.item === 'small-golden-pothos' || raw.item === 'special-repair-pot' || raw.item === 'rare-spotted-begonia' || raw.item === 'common-parlour-palm' || isPlantProductItem(raw.item)
       ? raw.item : raw.item === 'basil-harvest' ? 'fresh-basil-leaves' : null;
     if (!item) continue;
     const plantDefinition = isPlantProductItem(item)
@@ -505,7 +525,7 @@ function sanitizeShopStock(value: unknown, legacyPothosStock: boolean, inventory
       : null;
     const expectedCondition: ShopStockCondition = plantDefinition
       ? plantDefinition.yieldMode === 'whole-plant' ? 'living' : 'fresh'
-      : item === 'small-golden-pothos' || item === 'rare-spotted-begonia' ? 'ordinary' : 'repaired';
+      : item === 'small-golden-pothos' || item === 'rare-spotted-begonia' || item === 'common-parlour-palm' ? 'ordinary' : 'repaired';
     const quality = typeof raw.quality === 'string' && raw.quality.trim() ? raw.quality.trim() : DEFAULT_SHOP_STOCK_QUALITY;
     const condition = raw.condition === 'ordinary' || raw.condition === 'broken' || raw.condition === 'repaired' || raw.condition === 'fresh' || raw.condition === 'living' ? raw.condition : expectedCondition;
     if (condition !== expectedCondition) continue;
@@ -522,6 +542,7 @@ function sanitizeShopStock(value: unknown, legacyPothosStock: boolean, inventory
       ? raw.stockId.trim()
       : item === 'small-golden-pothos' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID
         : item === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID
+          : item === 'common-parlour-palm' ? COMMON_PARLOUR_PALM_INSTANCE_ID
           : SPECIAL_REPAIR_POT_INSTANCE_ID;
     const instanceIds = candidateIds.length > 0 ? candidateIds : [fallbackId];
     instanceIds.forEach((instanceId) => {

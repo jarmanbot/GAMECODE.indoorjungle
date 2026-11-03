@@ -38,7 +38,7 @@ physical-phone stopwatch run.
 | Cleaning job accepted, still inside | Green CRT | Green CRT | Green CRT | Atari B&W vacant lot |
 | Exit Buy/Sell after accepting | Atari B&W | Green CRT | Green CRT | Atari B&W vacant lot |
 | Repaired-pot graphics upgrade | Atari B&W | Green CRT | Green CRT | Green CRT construction |
-| Room-key colour upgrade | Atari colour | Atari colour | Atari colour | Green CRT construction |
+| Common Parlour Palm colour upgrade | Atari colour | Atari colour | Atari colour | Green CRT construction |
 
 Each building uses its saved building-specific state. The global Alex graphics
 selection does not choose a building facade. Nursery remains independently
@@ -91,7 +91,7 @@ their basic pot and therefore require a replacement pot for another cycle.
 8. Sell the repaired pot for 75 coins.
 9. Optionally find and sell the Rare Spotted Begonia for 300 coins.
 10. Pay the 60-coin POVO bond and receive the key and Welcome Gift.
-11. Complete the room-key colour upgrade.
+11. Sell the first genuine harvest, collect the one-time Common Parlour Palm at the opening Pothos location, and complete its colour upgrade.
 12. Grow and sell at least one genuine Basil and one genuine Mint harvest.
 13. Continue earning until Alex has the 540-coin amount due.
 14. Transfer the 60-coin bond and pay 540 coins for the two-bedroom rental.
@@ -277,7 +277,7 @@ git diff --check
 Results:
 
 - TypeScript and the Vite production build completed successfully.
-- All 68 development checkpoints generated valid current-schema states.
+- All 70 development checkpoints generated valid current-schema states, including the Common Parlour Palm ready, colour-module and sold states.
 - Every checkpoint was serialized, sanitized and compared for v5 reload
   stability.
 - The POVO-rented checkpoint proves rental is possible with Begonia state
@@ -298,7 +298,7 @@ Before applying economy changes, manually verify:
 
 1. Rent POVO on a fresh run without touching the Begonia.
 2. Real Estate remains Green CRT through the repaired-pot upgrade.
-3. Real Estate changes directly to Atari colour during the room-key upgrade.
+3. The room key does not change graphics; Real Estate changes directly to Atari colour when the Common Parlour Palm module is installed after the first harvest sale.
 4. All Graphics Module screens visibly remain B&W.
 5. Harvested Basil and Mint visibly leave an empty reusable pot in place.
 6. The property menu clearly communicates 600 total, −60 credit and 540 due.

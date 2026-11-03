@@ -5,6 +5,7 @@ import {
   MINT_HARVEST_STOCK_ID,
   DEFAULT_SHOP_STOCK_QUALITY,
   DEFAULT_PROGRESS,
+  COMMON_PARLOUR_PALM_INSTANCE_ID,
   OPENING_GOLDEN_POTHOS_INSTANCE_ID,
   RARE_SPOTTED_BEGONIA_INSTANCE_ID,
   sanitizeProgress,
@@ -13,7 +14,6 @@ import {
 } from './progress';
 import {
   BASIL_GROWTH_DURATION_MS,
-  BASIL_DELIVERY_REWARD,
   BASIC_FERTILIZER_BOX_PRICE,
   BROKEN_POT_PIECE_COUNT,
   BROKEN_POT_PIECE_IDS,
@@ -26,6 +26,7 @@ import {
   RARE_BEGONIA_POSITION,
   RARE_BEGONIA_SALE_PRICE,
   REPAIRED_POT_SALE_PRICE,
+  COMMON_PARLOUR_PALM_SALE_PRICE,
   RENTAL_BOND_COST,
   SECOND_RENTAL_MOVE_COST,
   SECOND_RENTAL_TOTAL_BOND,
@@ -268,22 +269,26 @@ const apartmentRented = (): ProgressState => withState(repairedPotSold(), {
 
 const povoWelcomeGiftClaimed = (): ProgressState => withState(apartmentRented(), {
   propertyHandoversAcknowledged: { 'starter-apartment': true },
-  colourUpgradeInstalled: true,
+  colourUpgradeInstalled: false,
   colourUpgradeStage: 'none',
+});
+const keyColourUpgradePrompt = (): ProgressState => withState(firstBasilSaleComplete(), {
+  commonParlourPalmCollected: true,
+  inventoryPot: 'ordinary',
+  inventoryItem: 'common-parlour-palm',
+  inventoryInstanceId: COMMON_PARLOUR_PALM_INSTANCE_ID,
+  colourUpgradeInstalled: false,
+  colourUpgradeStage: 'prompt',
+});
+const keyColourUpgradeAcknowledgement = (): ProgressState => withState(keyColourUpgradePrompt(), {
+  colourUpgradeInstalled: true,
+  colourUpgradeStage: 'acknowledgement',
   buildings: {
-    ...cloneBuildings(apartmentRented().buildings),
+    ...cloneBuildings(keyColourUpgradePrompt().buildings),
     'buy-sell': { operationalState: 'operational', graphicsEra: 'atari-colour' },
     'starter-apartment': { operationalState: 'operational', graphicsEra: 'atari-colour' },
     'real-estate': { operationalState: 'operational', graphicsEra: 'atari-colour' },
   },
-});
-const keyColourUpgradePrompt = (): ProgressState => withState(apartmentRented(), {
-  propertyHandoversAcknowledged: { 'starter-apartment': true },
-  colourUpgradeInstalled: false,
-  colourUpgradeStage: 'prompt',
-});
-const keyColourUpgradeAcknowledgement = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
-  colourUpgradeStage: 'acknowledgement',
 });
 
 const beforePovoRental = (): ProgressState => withState(repairedPotSold(), { coins: RENTAL_BOND_COST - 1 });
@@ -324,12 +329,34 @@ const basilHarvested = (): ProgressState => withState(basilPlanted(), {
   growingPots: [createEmptyGrowingPot(STARTER_GROWING_POT_ID, 1)], harvestQuantities: { basil: 1, mint: 0 }, task: 'sell-basil',
 });
 const firstBasilSaleComplete = (): ProgressState => withState(basilHarvested(), {
-  coins: apartmentRented().coins + BASIL_DELIVERY_REWARD, harvestQuantities: { basil: 0, mint: 0 },
+  coins: apartmentRented().coins + getPlantDefinition('basil').harvestPrice, harvestQuantities: { basil: 0, mint: 0 },
   shopStock: [...basilHarvested().shopStock, { stockId: BASIL_HARVEST_STOCK_ID, item: 'fresh-basil-leaves', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'fresh', quantity: 1, instanceIds: [] }], task: 'buy-seeds',
-  basilHarvestSaleRecorded: true, basilDeliveryComplete: true,
+  basilHarvestSaleRecorded: true, basilDeliveryComplete: false,
+  commonParlourPalmCollected: false,
+  commonParlourPalmSold: false,
+  colourUpgradeInstalled: false,
+  colourUpgradeStage: 'none',
 });
 
-const secondRentalEligibleBase = (): ProgressState => withState(povoWelcomeGiftClaimed(), {
+const commonParlourPalmSold = (): ProgressState => withState(keyColourUpgradeAcknowledgement(), {
+  coins: keyColourUpgradeAcknowledgement().coins + COMMON_PARLOUR_PALM_SALE_PRICE,
+  inventoryPot: null,
+  inventoryItem: null,
+  inventoryInstanceId: null,
+  commonParlourPalmCollected: true,
+  commonParlourPalmSold: true,
+  colourUpgradeStage: 'none',
+  shopStock: [...keyColourUpgradeAcknowledgement().shopStock, {
+    stockId: COMMON_PARLOUR_PALM_INSTANCE_ID,
+    item: 'common-parlour-palm',
+    quality: DEFAULT_SHOP_STOCK_QUALITY,
+    condition: 'ordinary',
+    quantity: 1,
+    instanceIds: [COMMON_PARLOUR_PALM_INSTANCE_ID],
+  }],
+});
+
+const secondRentalEligibleBase = (): ProgressState => withState(commonParlourPalmSold(), {
   coins: SECOND_RENTAL_MOVE_COST,
   basilHarvestSaleRecorded: true,
   basilDeliveryComplete: true,
@@ -493,8 +520,8 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'before-povo-rental', label: 'Immediately before renting POVO · one coin short', order: 98, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: beforePovoRental },
   { id: 'povo-rental-coins-ready', label: 'POVO rental · enough coins', order: 99, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: enoughCoinsForPovoRental },
   { id: 'apartment-rented', label: 'POVO rented · handover awaiting OK', order: 100, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: apartmentRented },
-  { id: 'key-colour-upgrade-prompt', label: 'Room key received · colour upgrade prompt', order: 101, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: keyColourUpgradePrompt },
-  { id: 'key-colour-upgrade-acknowledgement', label: 'Colour graphics loaded · OK pending', order: 102, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: keyColourUpgradeAcknowledgement },
+  { id: 'key-colour-upgrade-prompt', label: 'Common Parlour Palm collected · colour upgrade prompt', order: 161, scene: 'street', spawn: { x: POT_POSITION.x - 90, y: POT_POSITION.y }, zoom: 'close', crop: 'none', build: keyColourUpgradePrompt },
+  { id: 'key-colour-upgrade-acknowledgement', label: 'Parlour Palm colour upgrade loaded · OK pending', order: 162, scene: 'street', spawn: { x: POT_POSITION.x - 90, y: POT_POSITION.y }, zoom: 'close', crop: 'none', build: keyColourUpgradeAcknowledgement },
   { id: 'welcome-gift-claimed', label: 'POVO handover acknowledged · Welcome Gift claimed', order: 110, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: povoWelcomeGiftClaimed },
   { id: 'shop-item-ready-to-sell', label: 'Buy/Sell open · item ready to sell', order: 111, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: upgradedShopItemsReadyToSell, shopPanelOpen: true },
   { id: 'shop-one-sale-queued', label: 'Buy/Sell open · one completed sale queued', order: 111.1, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: shopAfterOneSale, shopPanelOpen: true, queuedPresentationCount: 1 },
@@ -515,6 +542,8 @@ const definitions: DevCheckpointDefinition[] = [
   { id: 'basil-mature', label: 'Basil mature', order: 140, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'mature', build: basilMature },
   { id: 'basil-harvested', label: 'Basil harvested · ready to sell', order: 150, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'none', build: basilHarvested },
   { id: 'first-basil-sale', label: 'First basil sale complete · ready to buy seeds', order: 160, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: firstBasilSaleComplete },
+  { id: 'common-parlour-palm-ready', label: 'Common Parlour Palm · ready to collect', order: 160.5, scene: 'street', spawn: { x: POT_POSITION.x - 90, y: POT_POSITION.y }, zoom: 'close', crop: 'none', build: firstBasilSaleComplete },
+  { id: 'common-parlour-palm-sold', label: 'Common Parlour Palm sold · colour upgrade complete', order: 163, scene: 'shop', spawn: SHOP_PLAYER_START, zoom: 'normal', crop: 'none', build: commonParlourPalmSold },
   { id: 'second-rental-eligible-insufficient', label: 'Second rental eligible · insufficient coins', order: 170, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: secondRentalEligibleInsufficient },
   { id: 'second-rental-eligible-sufficient', label: 'Second rental eligible · sufficient coins', order: 171, scene: 'street', spawn: START_POSITION, zoom: 'normal', crop: 'none', build: secondRentalEligibleSufficient },
   { id: 'ready-to-move-mixed-pots', label: 'Ready to move · mixed empty, growing and mature pots', order: 172, scene: 'home', spawn: HOME_PLAYER_START, zoom: 'normal', crop: 'growing', build: readyToMoveMixedPots },
@@ -532,10 +561,10 @@ const definitions: DevCheckpointDefinition[] = [
 function validateCheckpoint(id: string, progress: ProgressState): ProgressState {
   const result = sanitizeProgress(progress);
   if (id === 'golden-pothos-collected' && result.buildings['buy-sell'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Green CRT after collection.`);
-  if (result.graphicsUpgradeInstalled && !result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-bw') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Atari B&W before the key colour upgrade.`);
-  if (!result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} changed POVO before the key colour upgrade.`);
+  if (result.graphicsUpgradeInstalled && !result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-bw') throw new Error(`Developer checkpoint ${id} must keep Buy/Sell Atari B&W before the Parlour Palm colour upgrade.`);
+  if (!result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} changed POVO before the Parlour Palm colour upgrade.`);
   if (result.colourUpgradeInstalled && result.buildings['starter-apartment'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance POVO to Atari Colour.`);
-  if (!result.colourUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} must keep Real Estate Green CRT before the key colour upgrade.`);
+  if (!result.colourUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error(`Developer checkpoint ${id} must keep Real Estate Green CRT before the Parlour Palm colour upgrade.`);
   if (result.colourUpgradeInstalled && result.buildings['real-estate'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Real Estate to Atari Colour.`);
   if (result.colourUpgradeInstalled && result.buildings['buy-sell'].graphicsEra !== 'atari-colour') throw new Error(`Developer checkpoint ${id} did not advance Buy/Sell to Atari Colour.`);
   if ((id === 'window-job-accepted' || id === 'buy-sell-bw-pending-reload')
@@ -560,6 +589,7 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
     throw new Error(`Developer checkpoint ${id} cannot verify arbitrary-order piece collection.`);
   }
   if (result.basilDeliveryComplete && !result.basilHarvestSaleRecorded) throw new Error(`Developer checkpoint ${id} completed the basil delivery without recording the sale.`);
+  if (result.basilDeliveryComplete && !result.colourUpgradeInstalled) throw new Error(`Developer checkpoint ${id} completed the colour-era Basil delivery before installing the Parlour Palm module.`);
   if (result.coins < 0) throw new Error(`Developer checkpoint ${id} has negative coins.`);
   if (result.rentalBondPaid && !result.rentalKeyOwned) throw new Error(`Developer checkpoint ${id} rents an apartment without its key.`);
   if (result.rentalBondPaid && (!result.saleComplete || !result.windowJobComplete || result.repairStep < 10)) throw new Error(`Developer checkpoint ${id} rents the starter apartment without completing the mandatory opening sale, paid work and repair requirements.`);
@@ -569,6 +599,9 @@ function validateCheckpoint(id: string, progress: ProgressState): ProgressState 
   if (id === 'povo-rental-coins-ready' && (result.rentalBondPaid || result.coins !== RENTAL_BOND_COST)) throw new Error(`Developer checkpoint ${id} must have the exact POVO bond available.`);
   if (id === 'apartment-rented' && (!result.rentalKeyOwned || !result.welcomeGiftsClaimed['starter-apartment'] || result.propertyHandoversAcknowledged['starter-apartment'])) throw new Error(`Developer checkpoint ${id} must await only the POVO handover acknowledgement.`);
   if (id === 'welcome-gift-claimed' && !result.propertyHandoversAcknowledged['starter-apartment']) throw new Error(`Developer checkpoint ${id} must have acknowledged the POVO handover.`);
+  if (id === 'common-parlour-palm-ready' && (!result.basilHarvestSaleRecorded || result.commonParlourPalmCollected || result.colourUpgradeInstalled)) throw new Error(`Developer checkpoint ${id} must expose the uncollected Palm after the first harvest sale.`);
+  if (id === 'key-colour-upgrade-prompt' && (!result.commonParlourPalmCollected || result.inventoryItem !== 'common-parlour-palm' || result.colourUpgradeStage !== 'prompt')) throw new Error(`Developer checkpoint ${id} must hold the collected Palm with the colour prompt pending.`);
+  if (id === 'common-parlour-palm-sold' && (!result.commonParlourPalmSold || result.shopStock.filter((entry) => entry.item === 'common-parlour-palm').reduce((total, entry) => total + entry.quantity, 0) !== 1)) throw new Error(`Developer checkpoint ${id} must contain exactly one sold Palm in shop stock.`);
   if (id === 'mint-low-supplies-before' && result.mintLowSuppliesAcknowledged) throw new Error(`Developer checkpoint ${id} must leave the supplies popup pending.`);
   if (id === 'mint-low-supplies-acknowledged' && !result.mintLowSuppliesAcknowledged) throw new Error(`Developer checkpoint ${id} must persist the supplies acknowledgement.`);
   if (id === 'fertilizer-box-ready-to-buy' && (result.coins !== BASIC_FERTILIZER_BOX_PRICE || result.basicFertilizerCharges !== 0)) throw new Error(`Developer checkpoint ${id} cannot test the configured fertiliser box purchase.`);

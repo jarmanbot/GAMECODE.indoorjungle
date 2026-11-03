@@ -37,10 +37,16 @@ try {
     || raster.buildings['buy-sell'].graphicsEra !== 'atari-bw'
     || raster.buildings['starter-apartment'].graphicsEra !== 'green-crt'
     || raster.buildings['real-estate'].graphicsEra !== 'green-crt') throw new Error('First graphics-module checkpoint has the wrong building eras.');
-  const colour = snapshots.get('welcome-gift-claimed')?.progress;
+  const handover = snapshots.get('welcome-gift-claimed')?.progress;
+  if (!handover?.rentalKeyOwned || handover.colourUpgradeInstalled) throw new Error('POVO handover must not install the colour upgrade.');
+  const palmReady = snapshots.get('common-parlour-palm-ready')?.progress;
+  if (!palmReady?.basilHarvestSaleRecorded || palmReady.commonParlourPalmCollected || palmReady.colourUpgradeInstalled) throw new Error('First harvest checkpoint does not expose the Common Parlour Palm correctly.');
+  const colour = snapshots.get('key-colour-upgrade-acknowledgement')?.progress;
   if (!colour?.colourUpgradeInstalled || colour.buildings['buy-sell'].graphicsEra !== 'atari-colour'
     || colour.buildings['starter-apartment'].graphicsEra !== 'atari-colour'
-    || colour.buildings['real-estate'].graphicsEra !== 'atari-colour') throw new Error('Room-key colour checkpoint has the wrong building eras.');
+    || colour.buildings['real-estate'].graphicsEra !== 'atari-colour') throw new Error('Parlour Palm colour checkpoint has the wrong building eras.');
+  const palmSold = snapshots.get('common-parlour-palm-sold')?.progress;
+  if (!palmSold?.commonParlourPalmSold || palmSold.shopStock.filter((entry) => entry.item === 'common-parlour-palm').reduce((total, entry) => total + entry.quantity, 0) !== 1) throw new Error('Sold Parlour Palm checkpoint duplicates or loses shop stock.');
   const rentedWithoutBegonia = snapshots.get('apartment-rented')?.progress;
   if (!rentedWithoutBegonia?.rentalBondPaid || rentedWithoutBegonia.rareBegoniaCollected) throw new Error('POVO rental checkpoint must prove the Begonia is optional.');
   console.log(`Checkpoint validation passed: ${options.length} current-schema checkpoints.`);
