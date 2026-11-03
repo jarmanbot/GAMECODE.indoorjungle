@@ -37,6 +37,9 @@ try {
   const vite = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
   if (!scene.includes("indoor-jungle-progress-v5") || !scene.includes("indoor-jungle-progress-dev-test-v5")) throw new Error('Normal and development save namespaces are not isolated.');
   if (!scene.includes('areDevToolsUnlocked()') || !scene.includes('DEV_TOOLS_ENABLED')) throw new Error('Checkpoint methods can bypass the developer lock.');
+  if (!scene.includes('shouldShowOpeningGoldenPothos()')
+    || !scene.includes("this.progress.shopStock.some((entry) => entry.item === 'small-golden-pothos')")
+    || !scene.includes('this.progress.openingGoldenPothosCollected = true;')) throw new Error('Opening Golden Pothos can respawn after collection or sale.');
   if (!hud.includes('CONFIRM PREMIUM PURCHASE') || !hud.includes('data-shop-confirm-premium')) throw new Error('Premium purchases lack explicit confirmation.');
   if (!vite.includes('COMMIT_REF') || !vite.includes("return 'local'") || !vite.includes('__APP_VERSION__')) throw new Error('Build identifier fallback/version injection is incomplete.');
   console.log('Playtest validation passed: version, economy, build identity, developer gate, save isolation and premium confirmation.');

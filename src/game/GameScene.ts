@@ -1627,7 +1627,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateProgressVisuals(): void {
-    if (this.pot) this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
+    if (this.pot) this.pot.setVisible(this.shouldShowOpeningGoldenPothos());
     if (this.rareBegonia) {
       this.rareBegonia.clear();
       drawRareSpottedBegonia(this.rareBegonia, 0, 0, 0.82, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
@@ -2423,6 +2423,7 @@ export class GameScene extends Phaser.Scene {
     this.progress.inventoryPot = null;
     this.progress.inventoryItem = null;
     this.progress.inventoryInstanceId = null;
+    this.progress.openingGoldenPothosCollected = true;
     this.progress.coins = this.coins;
     this.progress.shopGoldenPothosStock = true;
     if (delivery) {
@@ -3678,7 +3679,7 @@ export class GameScene extends Phaser.Scene {
     this.pot = this.add.graphics().setDepth(22);
     this.pot.setPosition(POT_POSITION.x, POT_POSITION.y);
     drawGoldenPothos(this.pot, 0, 0, 0.9, this.progress.colourUpgradeInstalled ? true : this.progress.graphicsUpgradeInstalled ? false : 'green-crt');
-    this.pot.setVisible(!this.progress.openingGoldenPothosCollected && this.progress.inventoryItem !== 'small-golden-pothos');
+    this.pot.setVisible(this.shouldShowOpeningGoldenPothos());
   }
 
   private createRareBegonia(): void {
@@ -3778,6 +3779,15 @@ export class GameScene extends Phaser.Scene {
       x: BROKEN_POT_PIECES_CENTRE.x + BROKEN_POT_PIECE_OFFSETS[index] * BROKEN_POT_PIECES_SCALE,
       y: BROKEN_POT_PIECES_CENTRE.y,
     };
+  }
+
+  private shouldShowOpeningGoldenPothos(): boolean {
+    return !this.progress.openingGoldenPothosCollected
+      && !this.saleComplete
+      && !this.progress.saleComplete
+      && this.progress.inventoryItem !== 'small-golden-pothos'
+      && this.progress.placedWorldItem?.item !== 'small-golden-pothos'
+      && !this.progress.shopStock.some((entry) => entry.item === 'small-golden-pothos');
   }
 
   private getCollectedBrokenPotPieceIndices(): number[] {
