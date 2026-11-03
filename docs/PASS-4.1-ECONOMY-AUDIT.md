@@ -46,6 +46,12 @@ controlled.
 
 ### Graphics Module interface
 
+**Authoritative progression constraint:** POVO key acquisition, rental
+handover and the Welcome Gift are not colour-upgrade triggers. The only
+approved opening Atari Colour trigger is collection of the unique Common
+Parlour Palm, which appears after the first genuine Basil or Mint harvest sale.
+This must remain true for fresh saves, migration and developer checkpoints.
+
 The repaired-pot Graphics Module prompt, progress display, completion state and
 final acknowledgement now use black, white and neutral grey throughout. The
 approved 2.3-second installation timing, persistence and input blocking remain

@@ -15,6 +15,12 @@
 
 ## Opening graphics progression — current decision
 
+**Non-regression rule:** the POVO room key, rental handover and Welcome Gift
+never trigger, queue or recover the Atari Colour upgrade. Only collecting the
+one-time Common Parlour Palm after a genuine Basil or Mint harvest sale may do
+so. This rule applies to fresh saves, migrations, developer checkpoints and
+reload recovery.
+
 Graphics eras are explicit per system, not one global automatic sequence.
 Fresh saves start with Green CRT Alex, interface, Buy/Sell, Real Estate and
 POVO. The opening tower is restrained Atari colour. Accepting the cleaning job

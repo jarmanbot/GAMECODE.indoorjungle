@@ -27,6 +27,12 @@ with the build identifier, build date and save-data version.
 
 ## Opening graphics progression
 
+> **Authoritative rule:** the POVO room key only grants apartment access and
+> the Welcome Gift. It must not trigger or restore the Atari Colour module.
+> The one-time Common Parlour Palm, revealed after the first genuine Basil or
+> Mint harvest sale and collected at the original Pothos position, is the only
+> approved opening trigger for that module.
+
 - A fresh game uses the restrained Atari-colour opening tower and Green CRT
   Alex, HUD/GameJoy, Buy/Sell, Real Estate and Povo starter apartment. The
   vacant Nursery lot, street and surrounding scenery remain Atari B&W.
