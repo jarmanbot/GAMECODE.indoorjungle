@@ -1,12 +1,17 @@
 {
   "name": "indoor-jungle-prototype",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0-playtest.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "check:pass3": "node scripts/validate-pass3.mjs",
+    "check:regression": "node scripts/validate-pass3.mjs",
+    "check:checkpoints": "node scripts/validate-checkpoints.mjs",
+    "check:economy": "node scripts/audit-economy.mjs",
+    "check:playtest": "node scripts/validate-playtest.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"

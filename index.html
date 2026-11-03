@@ -13,24 +13,38 @@
           <span class="coin-mark" aria-hidden="true"></span>
           <span id="coin-count">0</span>
         </div>
-        <div class="hud-objective">
+        <button id="objective-button" class="hud-objective hud-objective-button" type="button" aria-expanded="false" aria-controls="housing-objective-dropdown">
           <span class="eyebrow">CURRENT OBJECTIVE</span>
-          <strong id="objective-text">Find a loose empty pot</strong>
-        </div>
+          <strong id="objective-text">Find a place to live</strong>
+        </button>
         <button class="icon-button" id="settings-button" type="button" aria-label="Open settings">⚙</button>
+        <div id="housing-objective-dropdown" class="housing-objective-dropdown" hidden></div>
       </header>
 
-      <section id="game-stage" aria-label="Indoor Jungle street"></section>
+      <section id="game-stage" aria-label="Indoor Jungle street">
+        <button id="interact-button" class="interact-button" type="button" hidden>
+          <span class="interact-dot" aria-hidden="true"></span>
+          <span id="interact-label">INTERACT</span>
+        </button>
+        <div id="graphics-upgrade-overlay" class="graphics-upgrade-overlay" hidden>
+          <section id="graphics-upgrade-card" class="graphics-upgrade-card" role="dialog" aria-modal="true" aria-labelledby="graphics-upgrade-title">
+            <div id="graphics-upgrade-content"></div>
+            <button id="graphics-upgrade-ok" class="graphics-upgrade-ok" type="button">OK</button>
+          </section>
+        </div>
+      </section>
 
       <section id="phone-control-panel" class="phone-control-panel" aria-label="Phone movement and camera controls">
         <div id="joystick" class="joystick" role="application" aria-label="Move Alex with the joystick">
           <span class="joystick-ring" aria-hidden="true"></span>
           <span id="joystick-knob" class="joystick-knob" aria-hidden="true"></span>
         </div>
-        <div class="arcade-controls" aria-label="Arcade actions">
-          <div id="equipped-tool" class="equipped-tool" aria-live="polite"><span id="equipped-tool-icon" aria-hidden="true">—</span><span id="equipped-tool-name">NO TOOL EQUIPPED</span></div>
-          <button id="arcade-a" class="arcade-button" type="button" aria-label="Hop"><strong>A</strong><small>HOP</small></button>
-          <button id="arcade-b" class="arcade-button" type="button" aria-label="Use equipped tool"><strong>B</strong><small id="arcade-b-label">USE</small></button>
+        <div class="control-console" aria-label="Arcade controls">
+      <div class="console-label" aria-hidden="true"><span>INTENDONT</span><span>GAMEJOY</span></div>
+          <div class="arcade-controls" aria-label="Arcade actions">
+            <button id="arcade-a" class="arcade-button" type="button" aria-label="Hop"><strong>A</strong></button>
+            <button id="arcade-b" class="arcade-button" type="button" aria-label="Use equipped tool"><strong>B</strong></button>
+          </div>
         </div>
       </section>
 
@@ -42,11 +56,6 @@
         </div>
       </div>
 
-      <button id="interact-button" class="interact-button" type="button" hidden>
-        <span class="interact-dot" aria-hidden="true"></span>
-        <span id="interact-label">INTERACT</span>
-      </button>
-
       <nav class="hud hud-bottom" aria-label="Game navigation">
         <button class="nav-button" data-panel="bag" type="button"><span class="nav-icon">▣</span><span>BAG</span></button>
         <button class="nav-button" data-panel="map" type="button"><span class="nav-icon">⌖</span><span>MAP</span></button>
@@ -54,11 +63,19 @@
         <button class="nav-button" data-panel="home" type="button"><span class="nav-icon">⌂</span><span>HOME</span></button>
         <button class="nav-button" data-panel="more" type="button"><span class="nav-icon">•••</span><span>MORE</span></button>
         <div class="zoom-controls" aria-label="Camera zoom controls">
+          <button id="tool-selector" class="tool-selector" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Open tool selector"><span id="tool-selector-icon" aria-hidden="true">⚒</span></button>
           <button id="zoom-toggle" type="button" aria-label="Zoom in (period key)"><span id="zoom-glyph" class="zoom-glyph">＋</span><span id="zoom-caption" class="zoom-caption">IN</span></button>
         </div>
       </nav>
 
-      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="tool-popup-backdrop" class="tool-popup-backdrop" hidden>
+        <section id="tool-popup" class="tool-popup" role="dialog" aria-modal="true" aria-labelledby="tool-popup-title">
+          <div class="tool-popup-heading"><strong id="tool-popup-title">TOOLS</strong><button id="tool-popup-close" class="tool-popup-close" type="button" aria-label="Close tool selector">×</button></div>
+          <div id="tool-slots" class="tool-slots"></div>
+        </section>
+      </div>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"><span id="toast-message"></span><button id="toast-ok" class="toast-action" type="button" hidden>OK</button><button id="toast-close" class="toast-close" type="button" aria-label="Close message" hidden>×</button></div>
 
       <div id="panel-backdrop" class="panel-backdrop" hidden>
         <section id="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="panel-title">
@@ -76,6 +93,39 @@
         </section>
       </div>
     </main>
+    <div id="start-screen" class="start-screen" hidden>
+      <section class="start-card" role="dialog" aria-modal="true" aria-labelledby="start-title">
+        <span class="boot-kicker">INDOOR JUNGLE</span>
+        <h1 id="start-title">INDOOR JUNGLE</h1>
+        <p class="start-tagline">SYSTEM BOOT<span class="boot-cursor" aria-hidden="true">█</span></p>
+        <div class="start-actions">
+          <button id="start-continue" type="button"><span aria-hidden="true">&gt; </span>CONTINUE SAVED GAME</button>
+          <button id="start-new" type="button"><span aria-hidden="true">&gt; </span>NEW GAME</button>
+        </div>
+        <div id="start-confirm" class="start-confirm" hidden>
+          <strong>EXISTING SAVE DETECTED</strong>
+          <small>Starting a new game will replace the current normal save. Developer test saves remain separate.</small>
+        </div>
+        <div id="start-terminal-status" class="boot-terminal-status" role="status" aria-live="polite" hidden></div>
+      </section>
+    </div>
+    <div id="playtest-complete-overlay" class="playtest-complete-overlay" hidden>
+      <section class="playtest-complete-card" role="dialog" aria-modal="true" aria-labelledby="playtest-complete-title">
+        <h2 id="playtest-complete-title">PLAYTEST COMPLETE</h2>
+        <p>Thank you for playing this Indoor Jungle prototype.</p>
+        <div id="playtest-complete-actions" class="playtest-complete-actions">
+          <button id="playtest-continue" type="button">CONTINUE PLAYING</button>
+          <button id="playtest-restart" type="button">RESTART PLAYTEST</button>
+          <button id="playtest-close" type="button">CLOSE</button>
+        </div>
+        <div id="playtest-restart-confirm" class="playtest-restart-confirm" hidden>
+          <strong>RESTART PLAYTEST?</strong>
+          <small>Current normal-save progress will be replaced. Developer test saves remain separate.</small>
+          <div class="playtest-complete-actions"><button id="playtest-restart-cancel" type="button">&gt; CANCEL</button><button id="playtest-restart-confirm-button" type="button">RESTART</button></div>
+          <div id="restart-terminal-status" class="boot-terminal-status" role="status" aria-live="polite" hidden></div>
+        </div>
+      </section>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

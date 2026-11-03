@@ -1,62 +1,556 @@
+import { GROWING_TABLE_SLOT_COUNT, MAX_ADDITIONAL_GROWING_POTS, type GrowingCropState, type GrowingPotState } from './growing';
+import {
+  emptyPlantQuantities,
+  getPlantDefinition,
+  isPlantProductItem,
+  isPlantSpecies,
+  PLANT_SPECIES,
+  type PlantProductItem,
+  type PlantSpecies,
+  type PlantStage,
+} from './plants';
+import { BROKEN_POT_PIECE_COUNT, BROKEN_POT_PIECE_IDS, HOMES_WINDOW_CLEAN_SECTIONS, RENTAL_BOND_COST, SECOND_RENTAL_TOTAL_BOND } from './world';
+import type { PropertyId } from './world';
+import { isPremiumPlantId, type PremiumPlantId } from './shopCatalog';
+import {
+  BUILDING_GRAPHICS_ERAS,
+  DEFAULT_BUILDING_PROGRESS,
+  type BuildingGraphicsEra,
+  type BuildingOperationalState,
+  type BuildingProgressState,
+} from './buildingProgress';
+
 export type PotCondition = 'ordinary' | 'broken' | 'repaired';
-export type EquippedTool = 'cleaner' | 'repair' | null;
-export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' | 'complete';
+export type InventoryItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | 'common-parlour-palm';
+export type EquippedTool = 'cleaner' | 'repair' | 'watering-can' | null;
+export type AlexGraphics = 'atari-bw' | 'green-screen';
+export type InterfaceTheme = 'auto' | 'green-crt' | 'atari-bw';
+export type GraphicsUpgradeStage = 'none' | 'prompt' | 'installing' | 'acknowledgement';
+export type BasilStage = 'empty' | 'planted' | 'seedling' | 'mature';
+export type ShopStockItem = 'small-golden-pothos' | 'special-repair-pot' | 'rare-spotted-begonia' | 'common-parlour-palm' | PlantProductItem;
+export type ShopStockCondition = PotCondition | 'fresh' | 'living';
+export const SAVE_DATA_VERSION = 5;
+
+export interface PlacedWorldItem {
+  item: InventoryItem;
+  condition: PotCondition;
+  instanceId: string;
+  x: number;
+  y: number;
+}
+
+export interface ShopStockEntry {
+  stockId: string;
+  item: ShopStockItem;
+  quality: string;
+  condition: ShopStockCondition;
+  quantity: number;
+  instanceIds: string[];
+}
+
+export const OPENING_GOLDEN_POTHOS_INSTANCE_ID = 'opening-golden-pothos-1';
+export const SPECIAL_REPAIR_POT_INSTANCE_ID = 'special-repair-pot-1';
+export const RARE_SPOTTED_BEGONIA_INSTANCE_ID = 'rare-spotted-begonia-1';
+export const COMMON_PARLOUR_PALM_INSTANCE_ID = 'common-parlour-palm-1';
+export const BASIL_HARVEST_STOCK_ID = 'fresh-basil-leaves';
+export const MINT_HARVEST_STOCK_ID = 'fresh-mint-leaves';
+export const DWARF_MARIGOLD_STOCK_ID = 'potted-dwarf-marigold';
+export const PEACE_LILY_STOCK_ID = 'potted-peace-lily';
+export const DEFAULT_SHOP_STOCK_QUALITY = 'standard';
+export type TaskState = 'find' | 'sell' | 'clean' | 'repair' | 'sell-repaired' | 'complete'
+  | 'place-pot' | 'plant-basil' | 'water-basil' | 'grow-basil' | 'harvest-basil' | 'sell-basil'
+  | 'plant-mint' | 'water-mint' | 'grow-mint' | 'harvest-mint' | 'sell-mint'
+  | 'plant-dwarf-marigold' | 'water-dwarf-marigold' | 'grow-dwarf-marigold' | 'lift-dwarf-marigold' | 'sell-dwarf-marigold'
+  | 'plant-peace-lily' | 'water-peace-lily' | 'grow-peace-lily' | 'lift-peace-lily' | 'sell-peace-lily'
+  | 'buy-seeds' | 'move-rental';
 
 export interface ProgressState {
+  playtestCompletionShown: boolean;
+  openingComplete: boolean;
+  openingGoldenPothosCollected: boolean;
+  commonParlourPalmCollected: boolean;
+  commonParlourPalmSold: boolean;
+  rareBegoniaCollected: boolean;
+  rareBegoniaSold: boolean;
+  buildings: BuildingProgressState;
+  graphicsUpgradeUnlocked: boolean;
+  graphicsUpgradeInstalled: boolean;
+  graphicsUpgradeStage: GraphicsUpgradeStage;
+  colourUpgradeInstalled: boolean;
+  colourUpgradeStage: GraphicsUpgradeStage;
+  alexGraphics: AlexGraphics;
+  interfaceTheme: InterfaceTheme;
   coins: number;
   inventoryPot: PotCondition | null;
+  inventoryItem: InventoryItem | null;
+  inventoryInstanceId: string | null;
+  placedWorldItem: PlacedWorldItem | null;
   saleComplete: boolean;
+  repairedPotSaleComplete: boolean;
+  shopGoldenPothosStock: boolean;
+  shopStock: ShopStockEntry[];
+  ownedPremiumPlants: PremiumPlantId[];
   windowJobAccepted: boolean;
+  buySellBwUpgradePending: boolean;
+  buySellBwUpgradeAcknowledged: boolean;
   windowCleaningProgress: number;
+  windowCleaningSections: Record<string, number>;
   windowJobComplete: boolean;
   cleanerOwned: boolean;
   repairToolOwned: boolean;
   glueCharges: number;
   brokenPotAvailable: boolean;
   brokenPotOwned: boolean;
+  brokenPotPiecesRemaining: number;
+  brokenPotPiecesOwned: number;
+  brokenPotPiecesCollected: string[];
   repairStep: number;
   equippedTool: EquippedTool;
   task: TaskState;
+  rentalBondPaid: boolean;
+  rentalKeyOwned: boolean;
+  activeProperty: PropertyId;
+  rentalBondTotal: number;
+  basilHarvestSaleRecorded: boolean;
+  basilDeliveryComplete: boolean;
+  mintHarvestSaleRecorded: boolean;
+  welcomeGiftsClaimed: Partial<Record<PropertyId, boolean>>;
+  propertyHandoversAcknowledged: Partial<Record<PropertyId, boolean>>;
+  mintLowSuppliesAcknowledged: boolean;
+
+  // Authoritative growing model.
+  growingPots: GrowingPotState[];
+  seedQuantities: Record<PlantSpecies, number>;
+  harvestQuantities: Record<PlantSpecies, number>;
+  growingEvents: Record<PlantSpecies, number>;
+  additionalGrowingPotsPurchased: number;
+  growingPotPurchaseSerial: number;
+
+  basicFertilizerCharges: number;
+  wateringCanOwned: boolean;
+  toolSlots: EquippedTool[];
 }
 
 export const DEFAULT_PROGRESS: ProgressState = {
+  playtestCompletionShown: false,
+  openingComplete: false,
+  openingGoldenPothosCollected: false,
+  commonParlourPalmCollected: false,
+  commonParlourPalmSold: false,
+  rareBegoniaCollected: false,
+  rareBegoniaSold: false,
+  buildings: {
+    'buy-sell': { ...DEFAULT_BUILDING_PROGRESS['buy-sell'] },
+    'starter-apartment': { ...DEFAULT_BUILDING_PROGRESS['starter-apartment'] },
+    'real-estate': { ...DEFAULT_BUILDING_PROGRESS['real-estate'] },
+    nursery: { ...DEFAULT_BUILDING_PROGRESS.nursery },
+  },
+  graphicsUpgradeUnlocked: false,
+  graphicsUpgradeInstalled: false,
+  graphicsUpgradeStage: 'none',
+  colourUpgradeInstalled: false,
+  colourUpgradeStage: 'none',
+  alexGraphics: 'green-screen',
+  interfaceTheme: 'auto',
   coins: 0,
   inventoryPot: null,
+  inventoryItem: null,
+  inventoryInstanceId: null,
+  placedWorldItem: null,
   saleComplete: false,
+  repairedPotSaleComplete: false,
+  shopGoldenPothosStock: false,
+  shopStock: [],
+  ownedPremiumPlants: [],
   windowJobAccepted: false,
+  buySellBwUpgradePending: false,
+  buySellBwUpgradeAcknowledged: false,
   windowCleaningProgress: 0,
+  windowCleaningSections: Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => [section.id, 0])),
   windowJobComplete: false,
   cleanerOwned: false,
   repairToolOwned: false,
   glueCharges: 0,
   brokenPotAvailable: false,
   brokenPotOwned: false,
+  brokenPotPiecesRemaining: BROKEN_POT_PIECE_COUNT,
+  brokenPotPiecesOwned: 0,
+  brokenPotPiecesCollected: [],
   repairStep: 0,
   equippedTool: null,
   task: 'find',
+  rentalBondPaid: false,
+  rentalKeyOwned: false,
+  activeProperty: 'none',
+  rentalBondTotal: 0,
+  basilHarvestSaleRecorded: false,
+  basilDeliveryComplete: false,
+  mintHarvestSaleRecorded: false,
+  welcomeGiftsClaimed: {},
+  propertyHandoversAcknowledged: {},
+  mintLowSuppliesAcknowledged: false,
+  growingPots: [],
+  seedQuantities: emptyPlantQuantities(),
+  harvestQuantities: emptyPlantQuantities(),
+  growingEvents: emptyPlantQuantities(),
+  additionalGrowingPotsPurchased: 0,
+  growingPotPurchaseSerial: 0,
+  basicFertilizerCharges: 0,
+  wateringCanOwned: false,
+  toolSlots: [null, null, null],
 };
 
+const isPlantStage = (value: unknown): value is PlantStage => value === 'planted' || value === 'seedling' || value === 'mature';
+const finiteTimestamp = (value: unknown): number | null => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+};
+const quantity = (value: unknown): number => Math.max(0, Math.floor(Number(value) || 0));
+
+function sanitizeCrop(value: unknown, fallbackSpecies: PlantSpecies = 'basil'): GrowingCropState | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<GrowingCropState>;
+  const species = isPlantSpecies(raw.species) ? raw.species : fallbackSpecies;
+  const stage = isPlantStage(raw.stage) ? raw.stage : 'planted';
+  const growthStartedAt = finiteTimestamp(raw.growthStartedAt);
+  return { species, stage, wateredAt: finiteTimestamp(raw.wateredAt), growthStartedAt: stage === 'planted' ? null : growthStartedAt };
+}
+
+function sanitizeGrowingPots(input: Partial<ProgressState>): GrowingPotState[] {
+  const result: GrowingPotState[] = [];
+  const ids = new Set<string>();
+  const slots = new Set<number>();
+  const source = Array.isArray(input.growingPots) ? input.growingPots : [];
+  for (const candidate of source) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const raw = candidate as Partial<GrowingPotState>;
+    const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : null;
+    if (!id || ids.has(id)) continue;
+    const rawSlot = raw.slot === null || raw.slot === undefined ? null : Math.floor(Number(raw.slot));
+    const slot = rawSlot !== null && Number.isFinite(rawSlot) && rawSlot >= 0 && rawSlot < GROWING_TABLE_SLOT_COUNT && !slots.has(rawSlot) ? rawSlot : null;
+    ids.add(id);
+    if (slot !== null) slots.add(slot);
+    const type = raw.type === 'special-repair-pot' ? 'special-repair-pot' : 'small-basic-plastic-pot';
+    result.push({ id, type, medium: 'usable', slot, crop: sanitizeCrop(raw.crop) });
+  }
+
+  return result;
+}
+
 export function sanitizeProgress(value: unknown): ProgressState {
-  const input = value && typeof value === 'object' ? value as Partial<ProgressState> : {};
-  const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired'
-    ? input.inventoryPot : null;
-  const tool = input.equippedTool === 'cleaner' || input.equippedTool === 'repair' ? input.equippedTool : null;
-  const task: TaskState = input.task === 'sell' || input.task === 'clean' || input.task === 'repair'
-    || input.task === 'sell-repaired' || input.task === 'complete' ? input.task : 'find';
-  return {
-    coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
-    inventoryPot: condition,
-    saleComplete: Boolean(input.saleComplete),
-    windowJobAccepted: Boolean(input.windowJobAccepted),
-    windowCleaningProgress: Math.max(0, Math.min(3, Number(input.windowCleaningProgress) || 0)),
-    windowJobComplete: Boolean(input.windowJobComplete),
-    cleanerOwned: Boolean(input.cleanerOwned),
-    repairToolOwned: Boolean(input.repairToolOwned),
-    glueCharges: Math.max(0, Math.floor(Number(input.glueCharges) || 0)),
-    brokenPotAvailable: Boolean(input.brokenPotAvailable),
-    brokenPotOwned: Boolean(input.brokenPotOwned),
-    repairStep: Math.max(0, Math.min(3, Math.floor(Number(input.repairStep) || 0))),
-    equippedTool: tool,
-    task,
+  const input = value && typeof value === 'object'
+    ? value as Partial<ProgressState>
+    : {};
+  const alexGraphics: AlexGraphics = input.alexGraphics === 'green-screen' ? 'green-screen' : 'atari-bw';
+  const interfaceTheme: InterfaceTheme = input.interfaceTheme === 'green-crt' || input.interfaceTheme === 'atari-bw' ? input.interfaceTheme : 'auto';
+  const graphicsUpgradeInstalled = Boolean(input.graphicsUpgradeInstalled);
+  const colourUpgradeInstalled = Boolean(input.colourUpgradeInstalled);
+  const condition = input.inventoryPot === 'ordinary' || input.inventoryPot === 'broken' || input.inventoryPot === 'repaired' ? input.inventoryPot : null;
+  const validTool = (candidate: unknown): candidate is Exclude<EquippedTool, null> => candidate === 'cleaner' || candidate === 'repair' || candidate === 'watering-can';
+  const tool = validTool(input.equippedTool) ? input.equippedTool : null;
+  const savedItem = input.inventoryItem === 'small-golden-pothos' || input.inventoryItem === 'special-repair-pot' || input.inventoryItem === 'rare-spotted-begonia' || input.inventoryItem === 'common-parlour-palm' ? input.inventoryItem : null;
+  const inventoryItem: InventoryItem | null = condition === null
+    ? null
+    : savedItem ?? (condition === 'ordinary' ? 'small-golden-pothos' : 'special-repair-pot');
+  const savedInstanceId = typeof input.inventoryInstanceId === 'string' && input.inventoryInstanceId.trim() ? input.inventoryInstanceId.trim() : null;
+  const inventoryInstanceId = condition === null ? null : savedInstanceId ?? (inventoryItem === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID : inventoryItem === 'common-parlour-palm' ? COMMON_PARLOUR_PALM_INSTANCE_ID : condition === 'ordinary' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID : SPECIAL_REPAIR_POT_INSTANCE_ID);
+  const rawPlacedItem = input.placedWorldItem && typeof input.placedWorldItem === 'object' ? input.placedWorldItem as Partial<PlacedWorldItem> : null;
+  const placedItem = rawPlacedItem
+    && (rawPlacedItem.item === 'small-golden-pothos' || rawPlacedItem.item === 'special-repair-pot' || rawPlacedItem.item === 'rare-spotted-begonia' || rawPlacedItem.item === 'common-parlour-palm')
+    && (rawPlacedItem.condition === 'ordinary' || rawPlacedItem.condition === 'broken' || rawPlacedItem.condition === 'repaired')
+    && ((rawPlacedItem.item === 'small-golden-pothos' && rawPlacedItem.condition === 'ordinary')
+      || (rawPlacedItem.item === 'rare-spotted-begonia' && rawPlacedItem.condition === 'ordinary')
+      || (rawPlacedItem.item === 'common-parlour-palm' && rawPlacedItem.condition === 'ordinary')
+      || (rawPlacedItem.item === 'special-repair-pot' && (rawPlacedItem.condition === 'broken' || rawPlacedItem.condition === 'repaired')))
+    && typeof rawPlacedItem.instanceId === 'string' && rawPlacedItem.instanceId.trim()
+    && Number.isFinite(rawPlacedItem.x) && Number.isFinite(rawPlacedItem.y)
+    ? { item: rawPlacedItem.item, condition: rawPlacedItem.condition, instanceId: rawPlacedItem.instanceId.trim(), x: Number(rawPlacedItem.x), y: Number(rawPlacedItem.y) } as PlacedWorldItem : null;
+
+  const legacyPothosStock = Boolean(input.shopGoldenPothosStock) || Boolean(input.saleComplete);
+  const shopStock = sanitizeShopStock(input.shopStock, legacyPothosStock, condition);
+  const saleComplete = typeof input.saleComplete === 'boolean'
+    ? input.saleComplete
+    : legacyPothosStock || shopStock.some((entry) => entry.item === 'small-golden-pothos');
+  // This explicit milestone is authoritative for new saves. Older saves are
+  // migrated from durable ownership, placement, sale and later-upgrade facts;
+  // current inventory alone is never used after this migration is persisted.
+  const savedBuildings = input.buildings && typeof input.buildings === 'object'
+    ? input.buildings as Partial<BuildingProgressState> : {};
+  const savedBuySellEra = savedBuildings['buy-sell']?.graphicsEra;
+  const durableOpeningPothosEvidence = inventoryItem === 'small-golden-pothos'
+    || placedItem?.item === 'small-golden-pothos'
+    || saleComplete
+    || shopStock.some((entry) => entry.item === 'small-golden-pothos')
+    || savedBuySellEra === 'atari-colour'
+    || graphicsUpgradeInstalled;
+  // A previous migration accidentally treated the initial Green CRT facade
+  // as collection evidence. Repair only untouched `find` saves with no
+  // durable item/sale/upgrade evidence; genuine collected saves advance the
+  // task and therefore remain completed.
+  const openingGoldenPothosCollected = durableOpeningPothosEvidence
+    || (Boolean(input.openingGoldenPothosCollected) && input.task !== 'find');
+  const graphicsEra = (value: unknown, fallback: BuildingGraphicsEra): BuildingGraphicsEra =>
+    BUILDING_GRAPHICS_ERAS.includes(value as BuildingGraphicsEra) ? value as BuildingGraphicsEra : fallback;
+  const operationalState = (value: unknown, fallback: BuildingOperationalState): BuildingOperationalState =>
+    value === 'operational' || value === 'vacant' || value === 'locked' || value === 'under-construction' ? value : fallback;
+  const savedNurseryState = savedBuildings.nursery?.operationalState;
+  // Building progress is authoritative. The global Alex/interface upgrade
+  // must never silently select artwork for an unrelated building.
+  const nurseryOperationalState: BuildingOperationalState = savedNurseryState === 'operational'
+    ? 'operational'
+    : savedNurseryState === 'under-construction'
+      ? 'under-construction'
+      : 'vacant';
+  const nurseryGraphicsEra: BuildingGraphicsEra = nurseryOperationalState === 'operational'
+    ? 'atari-colour'
+    : nurseryOperationalState === 'under-construction'
+      ? 'green-crt'
+      : graphicsEra(savedBuildings.nursery?.graphicsEra, DEFAULT_BUILDING_PROGRESS.nursery.graphicsEra);
+  const buySellBwUpgradePending = Boolean(input.buySellBwUpgradePending);
+  const buySellEra = graphicsEra(savedBuySellEra, DEFAULT_BUILDING_PROGRESS['buy-sell'].graphicsEra);
+  // Saves created before the acknowledgement existed have already seen the
+  // B&W storefront, so do not interrupt them with a retroactive popup. New
+  // transitions persist an explicit false until the player presses OK.
+  const buySellBwUpgradeAcknowledged = typeof input.buySellBwUpgradeAcknowledged === 'boolean'
+    ? input.buySellBwUpgradeAcknowledged
+    : buySellEra === 'atari-bw' || buySellEra === 'atari-colour';
+  const starterApartmentEra: BuildingGraphicsEra = savedBuildings['starter-apartment']?.graphicsEra === 'atari-colour'
+    ? 'atari-colour' : 'green-crt';
+  // Pass 4 briefly wrote an unapproved Atari B&W Real Estate state into v5.
+  // Current-schema saves repair that one regression without deriving the
+  // building from Alex's global graphics flag.
+  const realEstateEra: BuildingGraphicsEra = savedBuildings['real-estate']?.graphicsEra === 'atari-colour'
+    ? 'atari-colour' : 'green-crt';
+  const buildings: BuildingProgressState = {
+    'buy-sell': {
+      operationalState: operationalState(savedBuildings['buy-sell']?.operationalState, DEFAULT_BUILDING_PROGRESS['buy-sell'].operationalState),
+      graphicsEra: buySellEra,
+    },
+    'starter-apartment': {
+      operationalState: operationalState(savedBuildings['starter-apartment']?.operationalState, DEFAULT_BUILDING_PROGRESS['starter-apartment'].operationalState),
+      graphicsEra: starterApartmentEra,
+    },
+    'real-estate': {
+      operationalState: operationalState(savedBuildings['real-estate']?.operationalState, DEFAULT_BUILDING_PROGRESS['real-estate'].operationalState),
+      graphicsEra: realEstateEra,
+    },
+    nursery: {
+      operationalState: nurseryOperationalState,
+      graphicsEra: nurseryGraphicsEra,
+    },
   };
+  const repairedPotSaleComplete = Boolean(input.repairedPotSaleComplete) || input.task === 'complete' || shopStock.some((entry) => entry.item === 'special-repair-pot');
+  const rareBegoniaSold = Boolean(input.rareBegoniaSold) || shopStock.some((entry) => entry.item === 'rare-spotted-begonia');
+  const rareBegoniaCollected = Boolean(input.rareBegoniaCollected)
+    || inventoryItem === 'rare-spotted-begonia'
+    || placedItem?.item === 'rare-spotted-begonia'
+    || rareBegoniaSold;
+  const commonParlourPalmSold = Boolean(input.commonParlourPalmSold) || shopStock.some((entry) => entry.item === 'common-parlour-palm');
+  const commonParlourPalmCollected = Boolean(input.commonParlourPalmCollected)
+    || inventoryItem === 'common-parlour-palm'
+    || placedItem?.item === 'common-parlour-palm'
+    || commonParlourPalmSold
+    || colourUpgradeInstalled;
+  // Repair completion leaves the pot on the ground. The graphics upgrade is
+  // deliberately unlocked only after that repaired pot has been picked up
+  // (or a later saved state proves that it was picked up/sold).
+  const repairedPotPickedUp = condition === 'repaired'
+    || placedItem?.item === 'special-repair-pot' && placedItem.condition === 'repaired'
+    || repairedPotSaleComplete;
+  const graphicsUpgradeUnlocked = Boolean(input.graphicsUpgradeUnlocked) || graphicsUpgradeInstalled || repairedPotPickedUp;
+  const graphicsUpgradeStage: GraphicsUpgradeStage = input.graphicsUpgradeStage === 'installing' || input.graphicsUpgradeStage === 'acknowledgement' || input.graphicsUpgradeStage === 'prompt'
+    ? input.graphicsUpgradeStage
+    : graphicsUpgradeUnlocked && !graphicsUpgradeInstalled ? 'prompt' : 'none';
+  const savedColourUpgradeStage: GraphicsUpgradeStage = input.colourUpgradeStage === 'installing' || input.colourUpgradeStage === 'acknowledgement' || input.colourUpgradeStage === 'prompt'
+    ? input.colourUpgradeStage
+    : 'none';
+  // Pre-palm saves could have a key-triggered pending colour module. Cancel
+  // that obsolete trigger; installed colour saves remain completed and do not
+  // receive another collectible.
+  const colourUpgradeStage: GraphicsUpgradeStage = typeof input.commonParlourPalmCollected === 'boolean' || colourUpgradeInstalled
+    ? savedColourUpgradeStage
+    : 'none';
+  const rawTask = input.task;
+  const task: TaskState = rawTask === 'sell' || rawTask === 'clean' || rawTask === 'repair' || rawTask === 'sell-repaired' || rawTask === 'complete'
+    || rawTask === 'place-pot' || rawTask === 'plant-basil' || rawTask === 'water-basil' || rawTask === 'grow-basil' || rawTask === 'harvest-basil' || rawTask === 'sell-basil'
+    || rawTask === 'plant-mint' || rawTask === 'water-mint' || rawTask === 'grow-mint' || rawTask === 'harvest-mint' || rawTask === 'sell-mint'
+    || rawTask === 'plant-dwarf-marigold' || rawTask === 'water-dwarf-marigold' || rawTask === 'grow-dwarf-marigold' || rawTask === 'lift-dwarf-marigold' || rawTask === 'sell-dwarf-marigold'
+    || rawTask === 'plant-peace-lily' || rawTask === 'water-peace-lily' || rawTask === 'grow-peace-lily' || rawTask === 'lift-peace-lily' || rawTask === 'sell-peace-lily'
+    || rawTask === 'buy-seeds' || rawTask === 'move-rental' ? rawTask : 'find';
+  const cleanerOwned = Boolean(input.cleanerOwned);
+  const repairToolOwned = Boolean(input.repairToolOwned);
+  const wateringCanOwned = Boolean(input.wateringCanOwned);
+  const savedToolSlots = Array.isArray(input.toolSlots) ? input.toolSlots.slice(0, 3).map((candidate) => validTool(candidate) ? candidate : null) : [];
+  const toolSlots: EquippedTool[] = savedToolSlots.length === 3 ? savedToolSlots : [cleanerOwned ? 'cleaner' : null, repairToolOwned ? 'repair' : null, wateringCanOwned ? 'watering-can' : null];
+  const ownedTools: Exclude<EquippedTool, null>[] = [
+    ...(cleanerOwned ? ['cleaner' as const] : []), ...(repairToolOwned ? ['repair' as const] : []), ...(wateringCanOwned ? ['watering-can' as const] : []),
+  ];
+  for (let index = 0; index < toolSlots.length; index += 1) if (toolSlots[index] && !ownedTools.includes(toolSlots[index] as Exclude<EquippedTool, null>)) toolSlots[index] = null;
+  ownedTools.forEach((ownedTool) => {
+    if (toolSlots.includes(ownedTool)) return;
+    const emptySlot = toolSlots.findIndex((slot) => slot === null);
+    if (emptySlot >= 0) toolSlots[emptySlot] = ownedTool;
+  });
+
+  const seeds = emptyPlantQuantities();
+  const harvests = emptyPlantQuantities();
+  const events = emptyPlantQuantities();
+  for (const species of PLANT_SPECIES) {
+    const sourceSeeds = input.seedQuantities && typeof input.seedQuantities === 'object' ? input.seedQuantities[species] : undefined;
+    const sourceHarvests = input.harvestQuantities && typeof input.harvestQuantities === 'object' ? input.harvestQuantities[species] : undefined;
+    const sourceEvents = input.growingEvents && typeof input.growingEvents === 'object' ? input.growingEvents[species] : undefined;
+    seeds[species] = quantity(sourceSeeds);
+    harvests[species] = quantity(sourceHarvests);
+    events[species] = quantity(sourceEvents);
+  }
+  let piecesRemaining = Number.isFinite(Number(input.brokenPotPiecesRemaining))
+    ? Math.max(0, Math.min(BROKEN_POT_PIECE_COUNT, Math.floor(Number(input.brokenPotPiecesRemaining))))
+    : BROKEN_POT_PIECE_COUNT;
+  let piecesOwned = Number.isFinite(Number(input.brokenPotPiecesOwned))
+    ? Math.max(0, Math.min(BROKEN_POT_PIECE_COUNT, Math.floor(Number(input.brokenPotPiecesOwned))))
+    : (Boolean(input.brokenPotOwned) || condition === 'broken' ? 0 : Math.max(0, BROKEN_POT_PIECE_COUNT - piecesRemaining));
+  const savedCollectedPieces = Array.isArray(input.brokenPotPiecesCollected)
+    ? [...new Set(input.brokenPotPiecesCollected.filter((id): id is string => typeof id === 'string' && BROKEN_POT_PIECE_IDS.includes(id as typeof BROKEN_POT_PIECE_IDS[number])))]
+    : null;
+  const activeBrokenPieces = Boolean(input.brokenPotAvailable) && !Boolean(input.brokenPotOwned);
+  // Count-only saves collected pieces left-to-right. Convert that count into
+  // stable IDs once; new saves can then collect the remaining IDs in any order.
+  const brokenPotPiecesCollected = activeBrokenPieces
+    ? savedCollectedPieces ?? BROKEN_POT_PIECE_IDS.slice(0, piecesOwned)
+    : [];
+  if (activeBrokenPieces) {
+    piecesOwned = brokenPotPiecesCollected.length;
+    piecesRemaining = BROKEN_POT_PIECE_COUNT - piecesOwned;
+  }
+  const legacyWindowProgress = Math.max(0, Math.floor(Number(input.windowCleaningProgress) || 0));
+  const savedWindowSections = input.windowCleaningSections && typeof input.windowCleaningSections === 'object'
+    ? input.windowCleaningSections : null;
+  let unassignedLegacySprays = legacyWindowProgress;
+  const windowCleaningSections = Object.fromEntries(HOMES_WINDOW_CLEAN_SECTIONS.map((section) => {
+    const saved = savedWindowSections ? Number(savedWindowSections[section.id]) : Number.NaN;
+    const progress = Number.isFinite(saved)
+      ? Math.max(0, Math.min(section.spraysRequired, Math.floor(saved)))
+      : Math.max(0, Math.min(section.spraysRequired, unassignedLegacySprays));
+    if (!Number.isFinite(saved)) unassignedLegacySprays -= progress;
+    return [section.id, progress];
+  }));
+  const windowCleaningProgress = HOMES_WINDOW_CLEAN_SECTIONS.reduce(
+    (total, section) => total + (windowCleaningSections[section.id] ?? 0), 0,
+  );
+  const legacyProgressExists = Boolean(input.coins)
+    || condition !== null
+    || Boolean(input.saleComplete)
+    || Boolean(input.windowJobAccepted)
+    || Boolean(input.windowJobComplete)
+    || Boolean(input.rentalBondPaid)
+    || Object.values(input.welcomeGiftsClaimed ?? {}).some(Boolean)
+    || Boolean(input.placedWorldItem)
+    || (Array.isArray(input.growingPots) && input.growingPots.length > 0);
+  const openingComplete = typeof input.openingComplete === 'boolean' ? input.openingComplete : legacyProgressExists;
+  const rentalBondPaid = Boolean(input.rentalBondPaid);
+  const requestedProperty = input.activeProperty === 'second-rental' || input.activeProperty === 'starter-apartment' ? input.activeProperty : null;
+  const activeProperty: PropertyId = rentalBondPaid ? (requestedProperty ?? 'starter-apartment') : 'none';
+  const rentalBondTotal = rentalBondPaid ? (activeProperty === 'second-rental' ? SECOND_RENTAL_TOTAL_BOND : RENTAL_BOND_COST) : 0;
+  const shopHasBasilSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-basil-leaves');
+  const shopHasMintSaleEvidence = shopStock.some((entry) => entry.item === 'fresh-mint-leaves');
+  const basilHarvestSaleRecorded = Boolean(input.basilHarvestSaleRecorded) || shopHasBasilSaleEvidence;
+  // Before dedicated delivery state existed, the first recorded basil sale
+  // also cleared the request. Preserve that completed state for old saves;
+  // explicit false remains authoritative for new ordinary sales.
+  const basilDeliveryComplete = typeof input.basilDeliveryComplete === 'boolean'
+    ? input.basilDeliveryComplete
+    : basilHarvestSaleRecorded;
+  const ownedPremiumPlants = Array.isArray(input.ownedPremiumPlants)
+    ? [...new Set(input.ownedPremiumPlants.filter(isPremiumPlantId))]
+    : [];
+  const progress: ProgressState = {
+    playtestCompletionShown: Boolean(input.playtestCompletionShown),
+    openingComplete,
+    openingGoldenPothosCollected,
+    commonParlourPalmCollected,
+    commonParlourPalmSold,
+    rareBegoniaCollected,
+    rareBegoniaSold,
+    buildings,
+    graphicsUpgradeUnlocked,
+    graphicsUpgradeInstalled,
+    graphicsUpgradeStage: graphicsUpgradeInstalled ? (graphicsUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : graphicsUpgradeStage,
+    colourUpgradeInstalled,
+    colourUpgradeStage: colourUpgradeInstalled ? (colourUpgradeStage === 'acknowledgement' ? 'acknowledgement' : 'none') : colourUpgradeStage,
+    alexGraphics: graphicsUpgradeInstalled ? alexGraphics : 'green-screen',
+    interfaceTheme,
+    coins: Number.isFinite(input.coins) ? Math.max(0, Math.floor(input.coins as number)) : 0,
+    inventoryPot: condition, inventoryItem, inventoryInstanceId, placedWorldItem: condition === null ? placedItem : null,
+    saleComplete, repairedPotSaleComplete, shopGoldenPothosStock: Boolean(input.shopGoldenPothosStock) || saleComplete, shopStock, ownedPremiumPlants,
+    windowJobAccepted: Boolean(input.windowJobAccepted), buySellBwUpgradePending, buySellBwUpgradeAcknowledged, windowCleaningProgress, windowCleaningSections, windowJobComplete: Boolean(input.windowJobComplete),
+    cleanerOwned, repairToolOwned, glueCharges: quantity(input.glueCharges), brokenPotAvailable: Boolean(input.brokenPotAvailable), brokenPotOwned: Boolean(input.brokenPotOwned),
+    brokenPotPiecesRemaining: piecesRemaining, brokenPotPiecesOwned: piecesOwned, brokenPotPiecesCollected,
+    repairStep: Math.max(0, Math.min(10, quantity(input.repairStep))), equippedTool: tool, task,
+    rentalBondPaid, rentalKeyOwned: Boolean(input.rentalKeyOwned) || rentalBondPaid, activeProperty, rentalBondTotal,
+    basilHarvestSaleRecorded,
+    basilDeliveryComplete,
+    mintHarvestSaleRecorded: Boolean(input.mintHarvestSaleRecorded) || shopHasMintSaleEvidence,
+    welcomeGiftsClaimed: input.welcomeGiftsClaimed && typeof input.welcomeGiftsClaimed === 'object'
+      ? { 'starter-apartment': input.welcomeGiftsClaimed['starter-apartment'] === true, 'second-rental': input.welcomeGiftsClaimed['second-rental'] === true }
+      : {},
+    propertyHandoversAcknowledged: input.propertyHandoversAcknowledged && typeof input.propertyHandoversAcknowledged === 'object'
+      ? { 'starter-apartment': input.propertyHandoversAcknowledged['starter-apartment'] === true, 'second-rental': input.propertyHandoversAcknowledged['second-rental'] === true }
+      : {},
+    mintLowSuppliesAcknowledged: Boolean(input.mintLowSuppliesAcknowledged),
+    growingPots: sanitizeGrowingPots(input), seedQuantities: seeds, harvestQuantities: harvests, growingEvents: events,
+    additionalGrowingPotsPurchased: Math.max(0, Math.min(MAX_ADDITIONAL_GROWING_POTS, quantity(input.additionalGrowingPotsPurchased))),
+    growingPotPurchaseSerial: Math.max(
+      quantity(input.growingPotPurchaseSerial),
+      ...sanitizeGrowingPots(input).map((pot) => Number(pot.id.match(/growing-pot-(\d+)$/)?.[1] ?? 1) - 1),
+      quantity(input.additionalGrowingPotsPurchased),
+    ),
+    basicFertilizerCharges: quantity(input.basicFertilizerCharges), wateringCanOwned, toolSlots,
+  };
+  return progress;
+}
+
+function sanitizeShopStock(value: unknown, legacyPothosStock: boolean, inventoryPot: PotCondition | null): ShopStockEntry[] {
+  const hasNewStockField = Array.isArray(value);
+  const normalized: ShopStockEntry[] = [];
+  const uniqueIds = new Set<string>();
+  const source = hasNewStockField ? value : [];
+  for (const candidate of source) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const raw = candidate as Partial<ShopStockEntry> & { item?: string };
+    const item = raw.item === 'small-golden-pothos' || raw.item === 'special-repair-pot' || raw.item === 'rare-spotted-begonia' || raw.item === 'common-parlour-palm' || isPlantProductItem(raw.item)
+      ? raw.item : raw.item === 'basil-harvest' ? 'fresh-basil-leaves' : null;
+    if (!item) continue;
+    const plantDefinition = isPlantProductItem(item)
+      ? getPlantDefinition(PLANT_SPECIES.find((species) => getPlantDefinition(species).harvestItem === item) ?? 'basil')
+      : null;
+    const expectedCondition: ShopStockCondition = plantDefinition
+      ? plantDefinition.yieldMode === 'whole-plant' ? 'living' : 'fresh'
+      : item === 'small-golden-pothos' || item === 'rare-spotted-begonia' || item === 'common-parlour-palm' ? 'ordinary' : 'repaired';
+    const quality = typeof raw.quality === 'string' && raw.quality.trim() ? raw.quality.trim() : DEFAULT_SHOP_STOCK_QUALITY;
+    const condition = raw.condition === 'ordinary' || raw.condition === 'broken' || raw.condition === 'repaired' || raw.condition === 'fresh' || raw.condition === 'living' ? raw.condition : expectedCondition;
+    if (condition !== expectedCondition) continue;
+    const amount = Math.min(Number.MAX_SAFE_INTEGER, quantity(raw.quantity));
+    if (amount < 1) continue;
+    if (isPlantProductItem(item)) {
+      const existing = normalized.find((entry) => entry.item === item && entry.quality === quality && entry.condition === condition);
+      if (existing) existing.quantity += amount;
+      else normalized.push({ stockId: quality === DEFAULT_SHOP_STOCK_QUALITY ? item : `${item}:${quality}`, item, quality, condition, quantity: amount, instanceIds: [] });
+      continue;
+    }
+    const candidateIds = Array.isArray(raw.instanceIds) ? raw.instanceIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map((id) => id.trim()) : [];
+    const fallbackId = typeof raw.stockId === 'string' && raw.stockId.trim()
+      ? raw.stockId.trim()
+      : item === 'small-golden-pothos' ? OPENING_GOLDEN_POTHOS_INSTANCE_ID
+        : item === 'rare-spotted-begonia' ? RARE_SPOTTED_BEGONIA_INSTANCE_ID
+          : item === 'common-parlour-palm' ? COMMON_PARLOUR_PALM_INSTANCE_ID
+          : SPECIAL_REPAIR_POT_INSTANCE_ID;
+    const instanceIds = candidateIds.length > 0 ? candidateIds : [fallbackId];
+    instanceIds.forEach((instanceId) => {
+      if (uniqueIds.has(instanceId)) return;
+      uniqueIds.add(instanceId);
+      normalized.push({ stockId: instanceId, item, quality, condition, quantity: 1, instanceIds: [instanceId] });
+    });
+  }
+  if (!hasNewStockField && legacyPothosStock && inventoryPot !== 'ordinary' && !normalized.some((entry) => entry.item === 'small-golden-pothos')) normalized.push({ stockId: OPENING_GOLDEN_POTHOS_INSTANCE_ID, item: 'small-golden-pothos', quality: DEFAULT_SHOP_STOCK_QUALITY, condition: 'ordinary', quantity: 1, instanceIds: [OPENING_GOLDEN_POTHOS_INSTANCE_ID] });
+  return normalized;
 }
