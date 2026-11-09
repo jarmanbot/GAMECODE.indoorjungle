@@ -943,6 +943,10 @@ export class HudController {
     const topHud = document.querySelector<HTMLElement>('.hud-top');
     const controlPanel = document.querySelector<HTMLElement>('#phone-control-panel');
     const bottomHud = document.querySelector<HTMLElement>('.hud-bottom');
+    const viewportWidth = Math.min(
+      shell.getBoundingClientRect().width,
+      window.visualViewport?.width ?? window.innerWidth,
+    );
     const viewportHeight = Math.min(
       shell.getBoundingClientRect().height,
       window.visualViewport?.height ?? window.innerHeight,
@@ -951,7 +955,7 @@ export class HudController {
       + (controlPanel?.getBoundingClientRect().height ?? 0)
       + (bottomHud?.getBoundingClientRect().height ?? 0);
     const availableHeight = Math.max(1, viewportHeight - reservedHeight);
-    const size = Math.max(1, Math.min(shell.getBoundingClientRect().width, availableHeight));
+    const size = Math.max(1, Math.min(viewportWidth, availableHeight));
     stage.style.width = `${Math.round(size)}px`;
     stage.style.height = `${Math.round(size)}px`;
     requestAnimationFrame(() => {
