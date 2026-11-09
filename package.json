@@ -11,7 +11,8 @@
     "check:regression": "node scripts/validate-pass3.mjs",
     "check:checkpoints": "node scripts/validate-checkpoints.mjs",
     "check:economy": "node scripts/audit-economy.mjs",
-    "check:playtest": "node scripts/validate-playtest.mjs"
+    "check:playtest": "node scripts/validate-playtest.mjs",
+    "check:android-layout": "node scripts/validate-android-layout.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"
